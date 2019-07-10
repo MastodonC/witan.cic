@@ -1,3 +1,4 @@
+.~lock*
 pom.xml
 pom.xml.asc
 *.jar
@@ -13,3 +14,5 @@ pom.xml.asc
 .nrepl-port
 .cpcache/
 *.csv
+*.xlsx
+*.xls
