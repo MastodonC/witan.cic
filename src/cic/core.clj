@@ -64,9 +64,41 @@
                                (partition 2 1 timelines))]
     (map #(assoc %1 :period-id (period-id %1 %2)) timelines period-ids)))
 
+(defn episodes
+  "Takes a parsed CSV and returns cleansed episodes data"
+  [csv]
+  (->> csv
+       (remove-stale-rows)
+       (remove-unmodelled-episodes)))
+
+(defn summarise-periods-at
+  "Summarise a contiguous period of episodes at a point in time"
+  [episodes timestamp]
+  (let [first-episode (first episodes)
+        last-episode (last episodes)]
+    (-> (select-keys first-episode [:period-id :dob :report-date])
+        (rename-keys {:report-date :beginning})
+        (assoc :open? (or (-> last-episode :ceased nil?)
+                          (t/> (:ceased last-episode) timestamp)))
+        (assoc :duration (t/days (t/duration (t/new-interval (:report-date first-episode) timestamp)))))))
+
+
+(defn open-periods
+  "Takes episodes data and returns just the open periods ready for projection"
+  [episodes]
+  (let [projection-start (->> (mapcat (juxt :report-date :ceased) episodes)
+                              (remove nil?)
+                              (sort)
+                              (last))]
+    (->> episodes
+         (assoc-period-id)
+         (group-by :period-id)
+         (vals)
+         (map #(summarise-periods-at % projection-start))
+         (filter :open?))))
+
 (defn -main [filename]
   (let [data (load-csv filename)]
     (-> data
-        (remove-stale-rows)
-        (remove-unmodelled-episodes)
-        (assoc-period-id))))
+        (episodes)
+        (open-periods))))
