@@ -33,7 +33,7 @@
      (map (comp format-row (partial zipmap headers)) parsed-data))))
 
 (defn remove-UASCs-and-V4s [data]
-  (remove (some-fn :uasc (comp #{"V4"} :legal_status)) data))
+  (remove (some-fn :uasc (comp #{:V4} :legal-status)) data))
 
 (defn -main [filename]
   (let [data (load-csv filename)]
