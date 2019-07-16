@@ -2,6 +2,7 @@
   (:require [camel-snake-kebab.core :as csk]
             [clojure.data.csv :as data-csv]
             [clojure.java.io :as io]
+            [clojure.set :refer [rename-keys]]
             [clojure.string :refer [blank?]]
             [tick.alpha.api :as t]))
 
@@ -10,7 +11,9 @@
 
 (defn format-row
   [row]
-  (-> row
+  (-> (rename-keys row {:id :child-id})
+      (update :child-id #(Long/parseLong %))
+      (update :dob #(Long/parseLong %))
       (update :report-date t/date)
       (update :ceased #(when-not (blank? %) (t/date %)))
       (update :report-year #(Long/parseLong %))
@@ -43,8 +46,27 @@
   (let [latest-report-year (->> data (map :report-year) (apply max))]
     (remove #(and (< (:report-year %) latest-report-year) (nil? (:ceased %))) data)))
 
+(defn period-id
+  "Period ID is a composite key of the child's ID and a period number"
+  [episode period-index]
+  (format "%s-%s" (:child-id episode) period-index))
+
+(defn assoc-period-id
+  "Each child has a unique ID. Some children leave care and return again later.
+  Since each period in care is modelled separately, we assign each period its own ID."
+  [data]
+  (let [timelines (sort-by (juxt :child-id :report-date) data)
+        period-ids (reductions (fn [period [one next]]
+                                 (cond (not= (:child-id one) (:child-id next)) 0
+                                       (not= (:ceased one) (:report-date next)) (inc period)
+                                       :else period))
+                               0
+                               (partition 2 1 timelines))]
+    (map #(assoc %1 :period-id (period-id %1 %2)) timelines period-ids)))
+
 (defn -main [filename]
   (let [data (load-csv filename)]
     (-> data
-        (remove-stale-items)
-        (remove-unmodelled-episodes))))
+        (remove-stale-rows)
+        (remove-unmodelled-episodes)
+        (assoc-period-id))))
