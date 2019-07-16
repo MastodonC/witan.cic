@@ -32,9 +32,19 @@
          headers (map csk/->kebab-case-keyword (first parsed-csv))]
      (map (comp format-row (partial zipmap headers)) parsed-data))))
 
-(defn remove-UASCs-and-V4s [data]
+(defn remove-unmodelled-episodes [data]
   (remove (some-fn :uasc (comp #{:V4} :legal-status)) data))
+
+(defn remove-stale-rows
+  "The raw data may contain multiple open episodes for a child, one per report year that the episode was open.
+  We want to remove open episodes from prior report years, since these are stale data.
+  This function removes episodes without a cease date from report years prior to the latest."
+  [data]
+  (let [latest-report-year (->> data (map :report-year) (apply max))]
+    (remove #(and (< (:report-year %) latest-report-year) (nil? (:ceased %))) data)))
 
 (defn -main [filename]
   (let [data (load-csv filename)]
-    (remove-UASCs-and-V4s data)))
+    (-> data
+        (remove-stale-items)
+        (remove-unmodelled-episodes))))
