@@ -2,20 +2,20 @@
   (:require [camel-snake-kebab.core :as csk]
             [clojure.data.csv :as data-csv]
             [clojure.java.io :as io]
-            [clojure.set :refer [rename-keys]]
-            [clojure.string :refer [blank?]]
+            [clojure.set :as cs]
+            [clojure.string :as str]
             [tick.alpha.api :as t]))
 
 (defn blank-row? [row]
-  (every? blank? row))
+  (every? str/blank? row))
 
 (defn format-row
   [row]
-  (-> (rename-keys row {:id :child-id})
+  (-> (cs/rename-keys row {:id :child-id})
       (update :child-id #(Long/parseLong %))
       (update :dob #(Long/parseLong %))
       (update :report-date t/date)
-      (update :ceased #(when-not (blank? %) (t/date %)))
+      (update :ceased #(when-not (str/blank? %) (t/date %)))
       (update :report-year #(Long/parseLong %))
       (update :placement keyword)
       (update :care-status keyword)
@@ -77,7 +77,7 @@
   (let [first-episode (first episodes)
         last-episode (last episodes)]
     (-> (select-keys first-episode [:period-id :dob :report-date])
-        (rename-keys {:report-date :beginning})
+        (cs/rename-keys {:report-date :beginning})
         (assoc :open? (or (-> last-episode :ceased nil?)
                           (t/> (:ceased last-episode) timestamp)))
         (assoc :duration (t/days (t/duration (t/new-interval (:report-date first-episode) timestamp)))))))
