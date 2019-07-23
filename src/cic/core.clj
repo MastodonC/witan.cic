@@ -82,6 +82,20 @@
                           (t/> (:ceased last-episode) timestamp)))
         (assoc :duration (t/days (t/duration (t/new-interval (:report-date first-episode) timestamp)))))))
 
+(defn summarise-period
+  [episodes]
+  (let [first-episode (first episodes)
+        last-episode (last episodes)]
+    (-> (select-keys first-episode [:period-id :dob :report-date])
+        (cs/rename-keys {:report-date :beginning})
+        (assoc :end (:ceased last-episode)))))
+
+(defn episodes->periods
+  [episodes]
+  (->> (assoc-period-id episodes)
+       (group-by :period-id)
+       (vals)
+       (map summarise-period)))
 
 (defn open-periods
   "Takes episodes data and returns just the open periods ready for projection"
@@ -97,8 +111,7 @@
          (map #(summarise-periods-at % projection-start))
          (filter :open?))))
 
-(defn -main [filename]
-  (let [data (load-csv filename)]
-    (-> data
-        (episodes)
-        (open-periods))))
+(defn csv->episodes
+  [filename]
+  (-> (load-csv filename)
+      (episodes)))

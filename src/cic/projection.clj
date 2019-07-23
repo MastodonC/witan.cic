@@ -67,20 +67,20 @@
 (defn daily-summary
   "Takes inferred future periods and calculates the total CiC"
   [periods beginning end]
-  (-> (reduce
-       (fn [[output candidates] date]
-         (let [candidates (filter (fn [{:keys [end]}]
-                                    (t/>= end date))
-                                  candidates)]
-           (vector (assoc output date (count candidates)) candidates)))
-       [{} periods]
-       (day-seq beginning end))
-      (first)))
+  (let [in-care? (fn [date]
+                   (fn [{:keys [beginning end]}]
+                     (and (t/<= beginning date)
+                          (or (nil? end)
+                              (t/>= end date)))))]
+    (reduce (fn [output date]
+              (assoc output date (transduce (filter (in-care? date)) k/count periods)))
+            {} (day-seq beginning end))))
 
 (defn project-1
   [open-periods beginning end]
-  (-> (map project-period-close open-periods)
-      (daily-summary beginning end)))
+  (let [seed (rand-int 10000)]
+    (-> (map project-period-close (prepare-ages open-periods seed))
+        (daily-summary beginning end))))
 
 (defn vals-histogram
   "Histogram reducing function for the the vals corresponding to `key`.
@@ -108,15 +108,3 @@
   [open-periods beginning end n-runs]
   (->> (repeatedly n-runs #(project-1 open-periods beginning end))
        (summarise)))
-
-(defn format-projection
-  [projection]
-  (let [fields (juxt (comp str :date) :min :q1 :median :q3 :max)
-        field-sep "\t"
-        line-sep "\n"]
-    (->> (for [future-estimate projection]
-           (str/join field-sep (fields future-estimate)))
-         (str/join line-sep))))
-
-;; (format-projection (project (map project-period-close (prepare-ages open-periods 42)) (t/date "2018-03-31") (t/date "2025-03-31") 1000))
-
