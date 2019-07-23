@@ -2,11 +2,18 @@
   (:require [clojure.string :as str]
             [cic.core :as core]
             [cic.projection :as projection]
-            [tick.alpha.api :as t]))
+            [clj-time.format :as f]))
+
+(def date-format
+  (f/formatter :date))
+
+(defn date->str
+  [date]
+  (f/unparse date-format date))
 
 (defn format-projection-tsv
   [projection]
-  (let [fields (juxt (comp str :date) :actual :min :q1 :median :q3 :max)
+  (let [fields (juxt (comp date->str :date) :actual :min :q1 :median :q3 :max)
         field-sep "\t"
         line-sep "\n"
         headers ["date" "actual" "min" "q1" "median" "q3" "max"]]
@@ -28,9 +35,9 @@
 (defn episodes->projection-tsv
   [output-file episodes-file]
   (let [episodes (core/csv->episodes episodes-file)
-        output-from (t/date "2015-03-31")
-        project-from (t/date "2018-03-31")
-        project-to (t/date "2025-03-31")
+        output-from (f/parse date-format "2010-03-31")
+        project-from (f/parse date-format "2018-03-31")
+        project-to (f/parse date-format "2025-03-31")
         summary (-> (core/csv->episodes episodes-file)
                     (core/episodes->periods)
                     (projection/daily-summary output-from project-from))

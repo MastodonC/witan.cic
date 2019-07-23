@@ -7,7 +7,7 @@
                  [org.clojure/data.csv "0.1.4"]
                  [camel-snake-kebab "0.4.0"]
                  [kixi/stats "0.5.0"]
-                 [tick "0.4.14-alpha"]]
+                 [clj-time "0.15.0"]]
   :main ^:skip-aot cic.core
   :target-path "target/%s"
   :profiles {:uberjar {:aot :all}})

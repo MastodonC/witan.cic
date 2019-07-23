@@ -1,20 +1,19 @@
 (ns cic.projection
   (:require [clojure.test.check.random :as r]
             [clojure.string :as str]
+            [clj-time.core :as t]
             [kixi.stats.core :as k]
             [kixi.stats.distribution :as d]
             [kixi.stats.protocols :as p]
-            [redux.core :as redux]
-            [tick.alpha.api :as t]
-            [tick.core :as tick]))
+            [redux.core :as redux]))
+
+(defn interval-days
+  [start stop]
+  (t/in-days (t/interval start stop)))
 
 (defn day-offset-in-year
   [date]
-  (t/days (t/duration (t/new-interval (t/year date) date))))
-
-(defn interval-duration
-  [start stop]
-  (t/duration (t/new-interval start stop)))
+  (interval-days (t/date-time (t/year date)) date))
 
 (defn prepare-ages
   "All we know about a child is their year of birth, so we impute an arbitrary birthday.
@@ -24,17 +23,20 @@
   [open-periods seed]
   (let [rngs (r/split-n (r/make-random seed) (count open-periods))]
     (map (fn [{:keys [beginning dob] :as period} rng]
-           (let [base-date (t/new-date dob 1 1)
+           (let [base-date (t/date-time dob 1 1)
                  max-offset (day-offset-in-year beginning)
                  offset (-> (if (= (-> period :beginning t/year) (t/year dob))
                               (d/uniform 0 max-offset)
                               (d/uniform 0 365))
                             (p/sample-1 rng))
-                 birthday (tick/forward-number base-date offset)]
+                 birthday (t/plus base-date (t/days offset))]
              (-> period
                  (assoc :birthday birthday)
-                 (assoc :admission-age (quot (t/days (interval-duration birthday beginning)) 365)))))
+                 (assoc :admission-age (quot (interval-days birthday beginning) 365)))))
          open-periods rngs)))
+
+(def interarrival-time
+  (d/gamma {:shape 1.0 :scale 1.171895}))
 
 (def lifetime
   "FIXME: the distribution parameters will depend on admission age, placement..."
@@ -51,27 +53,36 @@
 (defn project-period-close
   "Sample a possible duration in care which is greater than the existing duration"
   [{:keys [duration beginning] :as open-period}]
-  (let [projected-duration (lifetime-gt duration)]
+  (let [projected-duration (t/days (lifetime-gt duration))]
     (-> (assoc open-period :duration projected-duration)
-        (assoc :end (tick/forward-number beginning projected-duration))
+        (assoc :end (t/plus beginning projected-duration))
         (assoc :open? false))))
+
+(defn project-joiners
+  [beginning end]
+  (let [wait-time (d/draw interarrival-time)
+        next-time (t/plus beginning (t/days wait-time))]
+    (when (t/before? next-time end)
+      (let [period-end (t/plus next-time (t/days (d/draw lifetime)))
+            period {:beginning next-time :end period-end}]
+        (cons period (lazy-seq (project-joiners next-time end)))))))
 
 (defn day-seq
   "Create a sequence of dates with a 7-day interval between two dates"
   [beginning end]
-  (when (t/<= beginning end)
+  (when (t/before? beginning end)
     (lazy-seq
      (cons beginning
-           (day-seq (tick/forward-number beginning 7) end)))))
+           (day-seq (t/plus beginning (t/days 7)) end)))))
 
 (defn daily-summary
   "Takes inferred future periods and calculates the total CiC"
   [periods beginning end]
   (let [in-care? (fn [date]
                    (fn [{:keys [beginning end]}]
-                     (and (t/<= beginning date)
+                     (and (t/before? beginning date)
                           (or (nil? end)
-                              (t/>= end date)))))]
+                              (t/after? end date)))))]
     (reduce (fn [output date]
               (assoc output date (transduce (filter (in-care? date)) k/count periods)))
             {} (day-seq beginning end))))
@@ -79,7 +90,8 @@
 (defn project-1
   [open-periods beginning end]
   (let [seed (rand-int 10000)]
-    (-> (map project-period-close (prepare-ages open-periods seed))
+    (-> (map project-period-close open-periods)
+        (concat (project-joiners beginning end))
         (daily-summary beginning end))))
 
 (defn vals-histogram
