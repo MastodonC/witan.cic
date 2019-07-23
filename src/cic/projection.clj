@@ -1,4 +1,4 @@
-(ns cic.project
+(ns cic.projection
   (:require [clojure.test.check.random :as r]
             [clojure.string :as str]
             [kixi.stats.core :as k]
@@ -37,7 +37,7 @@
          open-periods rngs)))
 
 (def lifetime
-  "FIXME: the distribution paramaters will depend on admission age, placement..."
+  "FIXME: the distribution parameters will depend on admission age, placement..."
   (d/weibull {:shape 0.7131747 :scale 1020.9653067}))
 
 (defn lifetime-gt
@@ -78,7 +78,7 @@
       (first)))
 
 (defn project-1
-  [periods beginning end]
+  [open-periods beginning end]
   (-> (map project-period-close open-periods)
       (daily-summary beginning end)))
 
@@ -119,3 +119,4 @@
          (str/join line-sep))))
 
 ;; (format-projection (project (map project-period-close (prepare-ages open-periods 42)) (t/date "2018-03-31") (t/date "2025-03-31") 1000))
+
