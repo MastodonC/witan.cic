@@ -25,7 +25,7 @@
     (map (fn [{:keys [beginning dob] :as period} rng]
            (let [base-date (t/date-time dob 1 1)
                  max-offset (day-offset-in-year beginning)
-                 offset (-> (if (= (-> period :beginning t/year) (t/year dob))
+                 offset (-> (if (= (-> period :beginning t/year) dob)
                               (d/uniform 0 max-offset)
                               (d/uniform 0 365))
                             (p/sample-1 rng))
@@ -52,8 +52,11 @@
 
 (defn project-period-close
   "Sample a possible duration in care which is greater than the existing duration"
-  [{:keys [duration beginning] :as open-period}]
-  (let [projected-duration (t/days (lifetime-gt duration))]
+  [duration-model {:keys [duration beginning admission-age] :as open-period}]
+  (let [projected-duration (loop [sample (duration-model admission-age)]
+                             (if (>= sample duration)
+                               (t/days sample)
+                               (recur (duration-model admission-age))))]
     (-> (assoc open-period :duration projected-duration)
         (assoc :end (t/plus beginning projected-duration))
         (assoc :open? false))))
@@ -88,10 +91,10 @@
             {} (day-seq beginning end))))
 
 (defn project-1
-  [open-periods beginning end]
+  [open-periods beginning end duration-model]
   (let [seed (rand-int 10000)]
-    (-> (map project-period-close open-periods)
-        (concat (project-joiners beginning end))
+    (-> (map (partial project-period-close duration-model) (prepare-ages open-periods 42))
+        #_(concat (project-joiners beginning end))
         (daily-summary beginning end))))
 
 (defn vals-histogram
@@ -117,6 +120,6 @@
 
 (defn projection
   "Takes the open periods, creates n-runs projections and summarises them."
-  [open-periods beginning end n-runs]
-  (->> (repeatedly n-runs #(project-1 open-periods beginning end))
+  [open-periods beginning end duration-model n-runs]
+  (->> (repeatedly n-runs #(project-1 open-periods beginning end duration-model))
        (summarise)))

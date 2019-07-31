@@ -3,6 +3,7 @@
             [cic.core :as core]
             [clojure.data.csv :as data-csv]
             [clojure.java.io :as io]
+            [cic.model :as model]
             [cic.projection :as projection]
             [clj-time.format :as f]))
 
@@ -21,9 +22,10 @@
       (data-csv/write-csv writer (concat [headers] (map fields projection))))))
 
 (defn project
-  [episodes project-from project-to]
+  [episodes project-from project-to duration-model]
   (projection/projection (core/open-periods episodes)
-                         project-from project-to 100))
+                         project-from project-to duration-model
+                         100))
 
 (defn format-actual-for-output
   [[date count]]
@@ -36,12 +38,19 @@
         output-from (f/parse date-format "2010-03-31")
         project-from (f/parse date-format "2018-03-31")
         project-to (f/parse date-format "2025-03-31")
-        summary (-> (core/csv->episodes episodes-file)
+        duration-model (-> (core/load-duration-csvs "data/duration-model-lower.csv"
+                                                    "data/duration-model-median.csv"
+                                                    "data/duration-model-upper.csv")
+                           (model/duration-model))
+        summary (-> episodes
                     (core/episodes->periods)
                     (projection/daily-summary output-from project-from))
         summary-seq (map format-actual-for-output summary)
         projection (concat summary-seq
-                           (project episodes project-from project-to))]
+                           (project episodes project-from project-to
+                                    duration-model))]
     (write-projection-tsv "data/output.csv" projection)))
 
 #_(episodes->projection-tsv "data/output.tsv" "data/episodes.csv")
+
+#_ (core/load-duration-model "data/duration-model-lower.csv" "data/duration-model-median.csv" "data/duration-model-upper.csv")

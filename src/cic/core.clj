@@ -17,7 +17,15 @@
   [s]
   (f/parse date-format s))
 
-(defn format-row
+(defn parse-double
+  [d]
+  (Double/parseDouble d))
+
+(defn parse-int
+  [i]
+  (int (Double/parseDouble i)))
+
+(defn format-episode
   [row]
   (-> (cs/rename-keys row {:id :child-id})
       (update :child-id #(Long/parseLong %))
@@ -33,15 +41,15 @@
 (defn load-csv
   "Loads csv file with each row as a vector.
    Stored in map separating column-names from data"
-  ([filename]
-   (let [parsed-csv (with-open [in-file (io/reader filename)]
-                      (->> in-file
-                           data-csv/read-csv
-                           (remove blank-row?)
-                           (vec)))
-         parsed-data (rest parsed-csv)
-         headers (map csk/->kebab-case-keyword (first parsed-csv))]
-     (map (comp format-row (partial zipmap headers)) parsed-data))))
+  [filename]
+  (let [parsed-csv (with-open [in-file (io/reader filename)]
+                     (->> in-file
+                          data-csv/read-csv
+                          (remove blank-row?)
+                          (vec)))
+        parsed-data (rest parsed-csv)
+        headers (map csk/->kebab-case-keyword (first parsed-csv))]
+    (map (partial zipmap headers) parsed-data)))
 
 (defn remove-unmodelled-episodes [data]
   (remove (some-fn :uasc (comp #{:V4} :legal-status)) data))
@@ -121,5 +129,38 @@
 
 (defn csv->episodes
   [filename]
-  (-> (load-csv filename)
-      (episodes)))
+  (->> (load-csv filename)
+       (map format-episode)
+       (episodes)))
+
+(defn load-duration-csv
+  [filename]
+  (let [parsed-csv (with-open [in-file (io/reader filename)]
+                     (->> in-file
+                          data-csv/read-csv
+                          (remove blank-row?)
+                          (vec)))
+        parsed-data (rest parsed-csv)]
+    (->> (map (comp (juxt first (comp vec rest)) (partial map parse-int)) parsed-data)
+         (into {}))))
+
+(defn load-duration-csvs
+  [lower median upper]
+  (let [lower (load-duration-csv lower)
+        median (load-duration-csv median)
+        upper (load-duration-csv upper)]
+    (->> (for [age (range 0 18)]
+           (let [lower (get lower age)
+                 median (get median age)
+                 upper (get upper age)]
+             (vector age
+                     (mapv (fn [l m u]
+                             (vector l m u))
+                           lower median upper))))
+         (into {}))))
+
+(defn load-age-csv
+  [filename]
+  (->> (load-csv filename)
+       (map (juxt :coef (comp parse-double :value)))
+       (into {})))
