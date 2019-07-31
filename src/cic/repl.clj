@@ -1,6 +1,8 @@
 (ns cic.repl
   (:require [clojure.string :as str]
             [cic.core :as core]
+            [clojure.data.csv :as data-csv]
+            [clojure.java.io :as io]
             [cic.projection :as projection]
             [clj-time.format :as f]))
 
@@ -11,16 +13,12 @@
   [date]
   (f/unparse date-format date))
 
-(defn format-projection-tsv
-  [projection]
+(defn write-projection-tsv
+  [outfile projection]
   (let [fields (juxt (comp date->str :date) :actual :min :q1 :median :q3 :max)
-        field-sep "\t"
-        line-sep "\n"
         headers ["date" "actual" "min" "q1" "median" "q3" "max"]]
-    (->> (for [future-estimate projection]
-           (str/join field-sep (fields future-estimate)))
-         (concat [(str/join field-sep headers)])
-         (str/join line-sep))))
+    (with-open [writer (io/writer outfile)]
+      (data-csv/write-csv writer (concat [headers] (map fields projection))))))
 
 (defn project
   [episodes project-from project-to]
@@ -44,7 +42,6 @@
         summary-seq (map format-actual-for-output summary)
         projection (concat summary-seq
                            (project episodes project-from project-to))]
-    (->> (format-projection-tsv projection)
-         (spit output-file))))
+    (write-projection-tsv "data/output.csv" projection)))
 
-#_(episodes->projection-tsv "output.tsv" "episodes.csv")
+#_(episodes->projection-tsv "data/output.tsv" "data/episodes.csv")
