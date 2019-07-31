@@ -4,18 +4,26 @@
             [clojure.java.io :as io]
             [clojure.set :as cs]
             [clojure.string :as str]
-            [tick.alpha.api :as t]))
+            [clj-time.core :as t]
+            [clj-time.format :as f]))
 
 (defn blank-row? [row]
   (every? str/blank? row))
+
+(def date-format
+  (f/formatter :date))
+
+(defn parse-date
+  [s]
+  (f/parse date-format s))
 
 (defn format-row
   [row]
   (-> (cs/rename-keys row {:id :child-id})
       (update :child-id #(Long/parseLong %))
       (update :dob #(Long/parseLong %))
-      (update :report-date t/date)
-      (update :ceased #(when-not (str/blank? %) (t/date %)))
+      (update :report-date parse-date)
+      (update :ceased #(when-not (str/blank? %) (parse-date %)))
       (update :report-year #(Long/parseLong %))
       (update :placement keyword)
       (update :care-status keyword)
@@ -79,9 +87,23 @@
     (-> (select-keys first-episode [:period-id :dob :report-date])
         (cs/rename-keys {:report-date :beginning})
         (assoc :open? (or (-> last-episode :ceased nil?)
-                          (t/> (:ceased last-episode) timestamp)))
-        (assoc :duration (t/days (t/duration (t/new-interval (:report-date first-episode) timestamp)))))))
+                          (t/after? (:ceased last-episode) timestamp)))
+        (assoc :duration (t/in-days (t/interval (:report-date first-episode) timestamp))))))
 
+(defn summarise-period
+  [episodes]
+  (let [first-episode (first episodes)
+        last-episode (last episodes)]
+    (-> (select-keys first-episode [:period-id :dob :report-date])
+        (cs/rename-keys {:report-date :beginning})
+        (assoc :end (:ceased last-episode)))))
+
+(defn episodes->periods
+  [episodes]
+  (->> (assoc-period-id episodes)
+       (group-by :period-id)
+       (vals)
+       (map summarise-period)))
 
 (defn open-periods
   "Takes episodes data and returns just the open periods ready for projection"
@@ -97,8 +119,7 @@
          (map #(summarise-periods-at % projection-start))
          (filter :open?))))
 
-(defn -main [filename]
-  (let [data (load-csv filename)]
-    (-> data
-        (episodes)
-        (open-periods))))
+(defn csv->episodes
+  [filename]
+  (-> (load-csv filename)
+      (episodes)))
