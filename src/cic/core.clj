@@ -159,8 +159,13 @@
                            lower median upper))))
          (into {}))))
 
-(defn load-age-csv
-  [filename]
-  (->> (load-csv filename)
-       (map (juxt :coef (comp parse-double :value)))
-       (into {})))
+(defn load-joiner-csvs
+  [ages params]
+  (let [ages (->> (load-csv ages)
+                  (map (juxt :coef (comp parse-double :value)))
+                  (into {}))
+        params (->> (load-csv params)
+                    (map #(-> % (update :shape parse-double) (update :rate parse-double)))
+                    (map (juxt (comp parse-int :age) identity))
+                    (into {}))]
+    {:ages ages :params params}))

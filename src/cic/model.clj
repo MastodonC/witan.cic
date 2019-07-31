@@ -7,15 +7,16 @@
 (defn joiners-model
   "Given the date of a joiner at a particular age,
   returns the interval in days until the next joiner"
-  [coefs]
+  [{:keys [ages params]}]
   (fn [age date]
-    (let [day (t/in-days (t/interval (t/epoch) date))
-          intercept (get coefs "(Intercept)")
-          a (get coefs (str "age" age) 0)
-          b (get coefs "beginning")
-          c (get coefs (str "beginning:age" age) 0)
-          scale (m/exp (+ intercept a (* b day) (* c day)))]
-      (d/draw (d/gamma {:shape 1.0 :scale scale})))))
+    (let [{:keys [shape rate]} (get params age)
+          day (t/in-days (t/interval (t/epoch) date))
+          intercept (get ages "(Intercept)")
+          a (get ages (str "age" age) 0)
+          b (get ages "beginning")
+          c (get ages (str "beginning:age" age) 0)
+          mean (m/exp (+ intercept a (* b day) (* c day)))]
+      (d/draw (d/gamma {:shape shape :scale (/ mean shape)})))))
 
 (defn duration-model
   "Given an admitted date and age of a child in care,
