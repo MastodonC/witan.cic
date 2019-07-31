@@ -23,10 +23,35 @@
   returns an expected duration in days"
   [coefs]
   (fn [age]
-    (let [empirical (get coefs age)
+    (let [empirical (get coefs (max 0 (min age 17)))
           quantile (inc (rand-int 100))
           [lower median upper] (get empirical quantile)
           normal (d/draw (d/normal {:mu 0 :sd 1}))]
-      (if (pos? normal)
-        (+ median (* (- upper median) (/ normal 1.96)))
-        (- median (* (- median lower) (/ normal -1.96)))))))
+      (try (if (pos? normal)
+             (+ median (* (- upper median) (/ normal 1.96)))
+             (- median (* (- median lower) (/ normal -1.96))))
+           (catch Exception e
+             (println {:age age :normal normal :median median :lower lower :upper upper :quantile quantile :empirical empirical
+                       :coef-keys (keys coefs)})
+             (throw e))))))
+
+(defn episodes-model
+  "Given an age of admission and duration,
+  sample likely placements from input data"
+  [closed-periods]
+  (let [lookup (reduce (fn [lookup {:keys [admission-age duration episodes]}]
+                         (let [yrs (/ duration 365.0)]
+                           (-> lookup
+                               (update [(dec admission-age) (int (m/floor yrs))] conj episodes)
+                               (update [admission-age (int (m/floor yrs))] conj episodes)
+                               (update [(inc admission-age) (int (m/floor yrs))] conj episodes)
+                               (update [(dec admission-age) (int (m/ceil yrs))] conj episodes)
+                               (update [admission-age (int (m/ceil yrs))] conj episodes)
+                               (update [(inc admission-age) (int (m/ceil yrs))] conj episodes)))) {} closed-periods)]
+    (fn [age duration]
+      (let [duration (Math/round (/ duration 365.0))
+            candidates (get lookup [(min age 17) duration])]
+        (try (rand-nth candidates)
+             (catch Exception e
+               (println candidates age duration)
+               (throw e)))))))

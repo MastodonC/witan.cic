@@ -25,6 +25,14 @@
   [i]
   (int (Double/parseDouble i)))
 
+(defn parse-placement
+  [s]
+  (let [placement (keyword s)]
+    (cond
+      (#{:U1 :U2 :U3} placement) :Q1
+      (#{:U4 :U5 :U6} placement) :Q2
+      :else placement)))
+
 (defn format-episode
   [row]
   (-> (cs/rename-keys row {:id :child-id})
@@ -33,7 +41,7 @@
       (update :report-date parse-date)
       (update :ceased #(when-not (str/blank? %) (parse-date %)))
       (update :report-year #(Long/parseLong %))
-      (update :placement keyword)
+      (update :placement parse-placement)
       (update :care-status keyword)
       (update :legal-status keyword)
       (update :uasc (comp boolean #{"True"}))))
@@ -91,20 +99,32 @@
   "Summarise a contiguous period of episodes at a point in time"
   [episodes timestamp]
   (let [first-episode (first episodes)
+        beginning (:report-date first-episode)
         last-episode (last episodes)]
     (-> (select-keys first-episode [:period-id :dob :report-date])
         (cs/rename-keys {:report-date :beginning})
         (assoc :open? (or (-> last-episode :ceased nil?)
                           (t/after? (:ceased last-episode) timestamp)))
-        (assoc :duration (t/in-days (t/interval (:report-date first-episode) timestamp))))))
+        (assoc :duration (t/in-days (t/interval beginning timestamp)))
+        (assoc :episodes (mapv (fn [{:keys [placement report-date]}]
+                                 (hash-map :placement placement
+                                           :offset (t/in-days (t/interval beginning report-date))))
+                               episodes)))))
 
 (defn summarise-period
   [episodes]
   (let [first-episode (first episodes)
+        beginning (:report-date first-episode)
         last-episode (last episodes)]
     (-> (select-keys first-episode [:period-id :dob :report-date])
         (cs/rename-keys {:report-date :beginning})
-        (assoc :end (:ceased last-episode)))))
+        (assoc :end (:ceased last-episode))
+        (assoc :duration (when (:ceased last-episode)
+                           (t/in-days (t/interval beginning (:ceased last-episode)))))
+        (assoc :episodes (mapv (fn [{:keys [placement report-date]}]
+                                 (hash-map :placement placement
+                                           :offset (t/in-days (t/interval beginning report-date))))
+                               episodes)))))
 
 (defn episodes->periods
   [episodes]
@@ -169,3 +189,10 @@
                     (map (juxt (comp parse-int :age) identity))
                     (into {}))]
     {:ages ages :params params}))
+
+(defn load-costs-csv
+  [filename]
+  (->> (load-csv filename)
+       (map #(-> %
+                 (update :placement keyword)
+                 (update :cost parse-double)))))
