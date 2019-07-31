@@ -38,18 +38,6 @@
 (def interarrival-time
   (d/gamma {:shape 1.0 :scale 1.171895}))
 
-(def lifetime
-  "FIXME: the distribution parameters will depend on admission age, placement..."
-  (d/weibull {:shape 0.7131747 :scale 1020.9653067}))
-
-(defn lifetime-gt
-  "Sample a value > threshold from the distribution"
-  [threshold]
-  (loop [sample (int (d/draw lifetime))]
-    (if (> sample threshold)
-      sample
-      (recur (int (d/draw lifetime))))))
-
 (defn project-period-close
   "Sample a possible duration in care which is greater than the existing duration"
   [duration-model {:keys [duration beginning admission-age] :as open-period}]
@@ -61,14 +49,20 @@
         (assoc :end (t/plus beginning projected-duration))
         (assoc :open? false))))
 
-(defn project-joiners
-  [beginning end]
-  (let [wait-time (d/draw interarrival-time)
+(defn joiners-seq
+  [joiners-model beginning end]
+  (let [wait-time (joiners-model beginning)
         next-time (t/plus beginning (t/days wait-time))]
     (when (t/before? next-time end)
       (let [period-end (t/plus next-time (t/days (d/draw lifetime)))
             period {:beginning next-time :end period-end}]
-        (cons period (lazy-seq (project-joiners next-time end)))))))
+        (cons period (lazy-seq (joiners-seq joiners-model next-time end)))))))
+
+(defn project-joiners
+  [joiners-model beginning end]
+  (mapcat (fn [age]
+            (joiners-seq (partial joiners-model age) beginning end))
+          (range 0 18)))
 
 (defn day-seq
   "Create a sequence of dates with a 7-day interval between two dates"
@@ -91,10 +85,10 @@
             {} (day-seq beginning end))))
 
 (defn project-1
-  [open-periods beginning end duration-model]
+  [open-periods beginning end joiners-model duration-model]
   (let [seed (rand-int 10000)]
     (-> (map (partial project-period-close duration-model) (prepare-ages open-periods 42))
-        #_(concat (project-joiners beginning end))
+        (concat (project-joiners joiners-model beginning end))
         (daily-summary beginning end))))
 
 (defn vals-histogram
@@ -120,6 +114,6 @@
 
 (defn projection
   "Takes the open periods, creates n-runs projections and summarises them."
-  [open-periods beginning end duration-model n-runs]
-  (->> (repeatedly n-runs #(project-1 open-periods beginning end duration-model))
+  [open-periods beginning end joiners-model duration-model n-runs]
+  (->> (repeatedly n-runs #(project-1 open-periods beginning end joiners-model duration-model))
        (summarise)))

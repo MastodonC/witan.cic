@@ -22,9 +22,10 @@
       (data-csv/write-csv writer (concat [headers] (map fields projection))))))
 
 (defn project
-  [episodes project-from project-to duration-model]
+  [episodes project-from project-to joiners-model duration-model]
   (projection/projection (core/open-periods episodes)
-                         project-from project-to duration-model
+                         project-from project-to
+                         joiners-model duration-model
                          100))
 
 (defn format-actual-for-output
@@ -38,6 +39,8 @@
         output-from (f/parse date-format "2010-03-31")
         project-from (f/parse date-format "2018-03-31")
         project-to (f/parse date-format "2025-03-31")
+        joiners-model (-> (core/load-age-csv "data/age-model.csv")
+                          (model/joiners-model))
         duration-model (-> (core/load-duration-csvs "data/duration-model-lower.csv"
                                                     "data/duration-model-median.csv"
                                                     "data/duration-model-upper.csv")
@@ -48,9 +51,7 @@
         summary-seq (map format-actual-for-output summary)
         projection (concat summary-seq
                            (project episodes project-from project-to
-                                    duration-model))]
+                                    joiners-model duration-model))]
     (write-projection-tsv "data/output.csv" projection)))
 
 #_(episodes->projection-tsv "data/output.tsv" "data/episodes.csv")
-
-#_ (core/load-duration-model "data/duration-model-lower.csv" "data/duration-model-median.csv" "data/duration-model-upper.csv")

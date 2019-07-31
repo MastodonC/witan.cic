@@ -8,7 +8,7 @@
   "Given the date of a joiner at a particular age,
   returns the interval in days until the next joiner"
   [coefs]
-  (fn [date age]
+  (fn [age date]
     (let [day (t/in-days (t/interval (t/epoch) date))
           intercept (get coefs "(Intercept)")
           a (get coefs (str "age" age) 0)
