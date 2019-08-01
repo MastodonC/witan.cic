@@ -169,7 +169,7 @@
   (let [lower (load-duration-csv lower)
         median (load-duration-csv median)
         upper (load-duration-csv upper)]
-    (->> (for [age (range 0 18)]
+    (->> (for [age (range 0 19)]
            (let [lower (get lower age)
                  median (get median age)
                  upper (get upper age)]

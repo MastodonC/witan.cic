@@ -63,7 +63,7 @@
         project-from (f/parse date-format "2018-03-31")
         project-to (f/parse date-format "2025-03-31")
         placement-costs (core/load-costs-csv "data/placement-costs.csv")
-        joiners-model (-> (core/load-joiner-csvs "data/age-model.csv"
+        joiners-model (-> (core/load-joiner-csvs "data/joiner-model.csv"
                                                  "data/joiner-model-params.csv")
                           (model/joiners-model))
         duration-model (-> (core/load-duration-csvs "data/duration-model-lower.csv"

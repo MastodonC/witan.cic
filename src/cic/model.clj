@@ -23,7 +23,7 @@
   returns an expected duration in days"
   [coefs]
   (fn [age]
-    (let [empirical (get coefs (max 0 (min age 17)))
+    (let [empirical (get coefs (max 0 (min age 18)))
           quantile (inc (rand-int 100))
           [lower median upper] (get empirical quantile)
           normal (d/draw (d/normal {:mu 0 :sd 1}))]
@@ -46,5 +46,5 @@
                                (update [(inc admission-age) (int (m/ceil yrs))] conj episodes)))) {} closed-periods)]
     (fn [age duration]
       (let [duration (Math/round (/ duration 365.0))
-            candidates (get lookup [(min age 17) duration])]
+            candidates (get lookup [(min age 18) duration])]
         (rand-nth candidates)))))
