@@ -20,15 +20,17 @@
   (let [fields (juxt (comp date->str :date)
                      :cost
                      (comp :actual)
-                     (comp :min :total)
-                     (comp :q1 :total)
+                     (comp :lower :total)
                      (comp :median :total)
-                     (comp :q3 :total)
-                     (comp :max :total)
-                     :Q2 :K2 :Q1 :R2 :P2 :H5 :R5 :R1 :A6 :P1 :Z1 :S1 :K1 :A4 :T4 :M3 :A5 :A3 :R3 :M2 :T0)
+                     (comp :upper :total)
+                     :Q2 :K2 :Q1 :R2 :P2 :H5 :R5 :R1 :A6 :P1 :Z1 :S1 :K1 :A4 :T4 :M3 :A5 :A3 :R3 :M2 :T0
+                     #(get % 0) #(get % 1) #(get % 2) #(get % 3) #(get % 4) #(get % 5) #(get % 6) #(get % 7) #(get % 8) #(get % 9)
+                     #(get % 10) #(get % 11) #(get % 12) #(get % 13) #(get % 14) #(get % 15) #(get % 16) #(get % 17) #(get % 18))
         placements [:Q2 :K2 :Q1 :R2 :P2 :H5 :R5 :R1 :A6 :P1 :Z1 :S1 :K1 :A4 :T4 :M3 :A5 :A3 :R3 :M2 :T0]
-        headers (concat ["Date" "Cost" "Actual" "Min" "Q1" "Median" "Q3" "Max"]
-                        (map name placements))]
+        ages (range 0 19)
+        headers (concat ["Date" "Cost" "Actual" "Lower" "Median" "Upper"]
+                        (map name placements)
+                        (map str ages))]
     (with-open [writer (io/writer outfile)]
       (data-csv/write-csv writer (concat [headers] (map fields projection))))))
 
@@ -70,6 +72,7 @@
                            (model/duration-model))
         summary (-> episodes
                     (core/episodes->periods)
+                    (projection/prepare-ages)
                     (projection/daily-summary output-from project-from))
         summary-seq (map format-actual-for-output summary)
         projection (->> (concat summary-seq
