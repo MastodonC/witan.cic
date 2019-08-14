@@ -1,5 +1,6 @@
 (ns cic.projection
-  (:require [clojure.test.check.random :as r]
+  (:require [cic.model :as model]
+            [clojure.test.check.random :as r]
             [clojure.string :as str]
             [clj-time.core :as t]
             [kixi.stats.core :as k]
@@ -20,14 +21,14 @@
   Each projection will use randomly generated birthdays with corresponding random ages of admission.
   This allows the output to account for uncertainty in the input.
   The only constraint besides their year of birth is that a child can't be a negative age at admission"
-  [open-periods seed]
-  (let [rngs (r/split-n (r/make-random seed) (count open-periods))]
+  [open-periods]
+  (let [rngs (r/split-n (r/make-random) (count open-periods))]
     (map (fn [{:keys [beginning dob] :as period} rng]
            (let [base-date (t/date-time dob 1 1)
                  max-offset (day-offset-in-year beginning)
-                 offset (-> (if (= (-> period :beginning t/year) (t/year dob))
-                              (d/uniform 0 max-offset)
-                              (d/uniform 0 365))
+                 offset (-> (if (= (-> period :beginning t/year) dob)
+                              (d/uniform {:a 0 :b max-offset})
+                              (d/uniform {:a 0 :b 365}))
                             (p/sample-1 rng))
                  birthday (t/plus base-date (t/days offset))]
              (-> period
@@ -38,34 +39,36 @@
 (def interarrival-time
   (d/gamma {:shape 1.0 :scale 1.171895}))
 
-(def lifetime
-  "FIXME: the distribution parameters will depend on admission age, placement..."
-  (d/weibull {:shape 0.7131747 :scale 1020.9653067}))
-
-(defn lifetime-gt
-  "Sample a value > threshold from the distribution"
-  [threshold]
-  (loop [sample (int (d/draw lifetime))]
-    (if (> sample threshold)
-      sample
-      (recur (int (d/draw lifetime))))))
-
 (defn project-period-close
   "Sample a possible duration in care which is greater than the existing duration"
-  [{:keys [duration beginning] :as open-period}]
-  (let [projected-duration (t/days (lifetime-gt duration))]
+  [duration-model {:keys [duration beginning admission-age] :as open-period}]
+  (let [projected-duration (loop [sample (duration-model admission-age)]
+                             (if (>= sample duration)
+                               (t/days sample)
+                               (recur (duration-model admission-age))))]
     (-> (assoc open-period :duration projected-duration)
-        (assoc :end (t/plus beginning projected-duration))
+        (assoc :end (t/with-time-at-start-of-day (t/plus beginning projected-duration)))
         (assoc :open? false))))
 
-(defn project-joiners
-  [beginning end]
-  (let [wait-time (d/draw interarrival-time)
-        next-time (t/plus beginning (t/days wait-time))]
+(defn joiners-seq
+  [joiners-model duration-model episodes-model beginning end]
+  (let [wait-time (joiners-model beginning)
+        next-time (t/plus beginning (t/days wait-time))
+        duration (duration-model)
+        episodes (episodes-model duration)]
     (when (t/before? next-time end)
-      (let [period-end (t/plus next-time (t/days (d/draw lifetime)))
-            period {:beginning next-time :end period-end}]
-        (cons period (lazy-seq (project-joiners next-time end)))))))
+      (let [period-end (t/plus next-time (t/days duration))
+            period {:beginning (t/with-time-at-start-of-day next-time)
+                    :end (t/with-time-at-start-of-day period-end)
+                    :episodes episodes}]
+        (cons period (lazy-seq (joiners-seq joiners-model duration-model episodes-model next-time end)))))))
+
+(defn project-joiners
+  [joiners-model duration-model episodes-model beginning end]
+  (mapcat (fn [age]
+            (->> (joiners-seq (partial joiners-model age) (partial duration-model age) (partial episodes-model age) beginning end)
+                 (map #(assoc % :birthday (t/minus (:beginning %) (t/years age))))))
+          (range 0 19)))
 
 (defn day-seq
   "Create a sequence of dates with a 7-day interval between two dates"
@@ -75,40 +78,79 @@
      (cons beginning
            (day-seq (t/plus beginning (t/days 7)) end)))))
 
+(defn episode-on
+  [{:keys [beginning episodes]} date]
+  (let [offset (t/in-days (t/interval beginning date))]
+    ;; We want the last episode whose offset is less
+    (some #(when (<= (:offset %) offset) %) (reverse episodes))))
+
+(defn age-on
+  [{:keys [birthday]} date]
+  (t/in-years (t/interval birthday date)))
+
 (defn daily-summary
   "Takes inferred future periods and calculates the total CiC"
   [periods beginning end]
   (let [in-care? (fn [date]
                    (fn [{:keys [beginning end]}]
-                     (and (t/before? beginning date)
+                     (and (or (t/before? beginning date)
+                              (t/equal? beginning date))
                           (or (nil? end)
-                              (t/after? end date)))))]
+                              (t/equal? end date)
+                              (t/after? end date)))))
+        placements [:Q2 :K2 :Q1 :R2 :P2 :H5 :R5 :R1 :A6 :P1 :Z1 :S1 :K1 :A4 :T4 :M3 :A5 :A3 :R3 :M2 :T0]
+        placements-zero (zipmap placements (repeat 0))
+        ages (range 0 19)
+        ages-zero (zipmap ages (repeat 0))]
     (reduce (fn [output date]
-              (assoc output date (transduce (filter (in-care? date)) k/count periods)))
+              (let [in-care (filter (in-care? date) periods)
+                    by-placement (->> (map #(:placement (episode-on % date)) in-care)
+                                      (frequencies))
+                    by-age (->> (map #(age-on % date) in-care)
+                                (frequencies))]
+                (assoc output date (merge-with + {:total (count in-care)}
+                                               placements-zero by-placement
+                                               ages-zero by-age))))
             {} (day-seq beginning end))))
 
 (defn project-1
-  [open-periods beginning end]
-  (let [seed (rand-int 10000)]
-    (-> (map project-period-close open-periods)
-        (concat (project-joiners beginning end))
+  [open-periods closed-periods beginning end joiners-model duration-model]
+  (let [episodes-model (model/episodes-model (prepare-ages closed-periods))]
+    (-> (map (partial project-period-close duration-model) (prepare-ages open-periods))
+        (concat (project-joiners joiners-model duration-model episodes-model beginning end))
         (daily-summary beginning end))))
 
 (defn vals-histogram
   "Histogram reducing function for the the vals corresponding to `key`.
   Returns a summary of the histogram"
-  [key]
+  [f]
   (-> k/histogram
-      (redux/pre-step #(get % key))
-      (redux/post-complete d/summary)))
+      (redux/pre-step f)
+      (redux/post-complete
+       (fn [dist]
+         {:lower (d/quantile dist 0.025)
+          :median (d/quantile dist 0.5)
+          :upper (d/quantile dist 0.975)}))))
 
 (defn summarise
   "Creates a histogram reducing function over each key of the maps returned by the runs.
   Each histogram is summarised into a map with the date associated."
   [runs]
   (let [dates (->> runs first keys)
+        placements [:Q2 :K2 :Q1 :R2 :P2 :H5 :R5 :R1 :A6 :P1 :Z1 :S1 :K1 :A4 :T4 :M3 :A5 :A3 :R3 :M2 :T0]
+        placements-spec (fn [date]
+                          (reduce (fn [rf-spec placement]
+                                    (assoc rf-spec placement (redux/pre-step k/median #(get-in % [date placement]))))
+                                  {} placements))
+        ages (range 0 19)
+        ages-spec (fn [date]
+                    (reduce (fn [rf-spec age]
+                              (assoc rf-spec age (redux/pre-step k/median #(get-in % [date age]))))
+                            {} ages))
         rf-spec (reduce (fn [rf-spec date]
-                          (assoc rf-spec date (vals-histogram date)))
+                          (assoc rf-spec date (redux/fuse (merge {:total (vals-histogram #(get-in % [date :total]))}
+                                                                 (placements-spec date)
+                                                                 (ages-spec date)))))
                         {}
                         dates)
         rf (redux/fuse rf-spec)]
@@ -117,6 +159,6 @@
 
 (defn projection
   "Takes the open periods, creates n-runs projections and summarises them."
-  [open-periods beginning end n-runs]
-  (->> (repeatedly n-runs #(project-1 open-periods beginning end))
+  [open-periods closed-periods beginning end joiners-model duration-model n-runs]
+  (->> (repeatedly n-runs #(project-1 open-periods closed-periods beginning end joiners-model duration-model))
        (summarise)))

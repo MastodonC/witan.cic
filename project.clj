@@ -6,7 +6,7 @@
   :dependencies [[org.clojure/clojure "1.10.1"]
                  [org.clojure/data.csv "0.1.4"]
                  [camel-snake-kebab "0.4.0"]
-                 [kixi/stats "0.5.0"]
+                 [kixi/stats "0.5.2"]
                  [clj-time "0.15.0"]]
   :main ^:skip-aot cic.core
   :target-path "target/%s"

@@ -17,7 +17,23 @@
   [s]
   (f/parse date-format s))
 
-(defn format-row
+(defn parse-double
+  [d]
+  (Double/parseDouble d))
+
+(defn parse-int
+  [i]
+  (int (Double/parseDouble i)))
+
+(defn parse-placement
+  [s]
+  (let [placement (keyword s)]
+    (cond
+      (#{:U1 :U2 :U3} placement) :Q1
+      (#{:U4 :U5 :U6} placement) :Q2
+      :else placement)))
+
+(defn format-episode
   [row]
   (-> (cs/rename-keys row {:id :child-id})
       (update :child-id #(Long/parseLong %))
@@ -25,7 +41,7 @@
       (update :report-date parse-date)
       (update :ceased #(when-not (str/blank? %) (parse-date %)))
       (update :report-year #(Long/parseLong %))
-      (update :placement keyword)
+      (update :placement parse-placement)
       (update :care-status keyword)
       (update :legal-status keyword)
       (update :uasc (comp boolean #{"True"}))))
@@ -33,15 +49,15 @@
 (defn load-csv
   "Loads csv file with each row as a vector.
    Stored in map separating column-names from data"
-  ([filename]
-   (let [parsed-csv (with-open [in-file (io/reader filename)]
-                      (->> in-file
-                           data-csv/read-csv
-                           (remove blank-row?)
-                           (vec)))
-         parsed-data (rest parsed-csv)
-         headers (map csk/->kebab-case-keyword (first parsed-csv))]
-     (map (comp format-row (partial zipmap headers)) parsed-data))))
+  [filename]
+  (let [parsed-csv (with-open [in-file (io/reader filename)]
+                     (->> in-file
+                          data-csv/read-csv
+                          (remove blank-row?)
+                          (vec)))
+        parsed-data (rest parsed-csv)
+        headers (map csk/->kebab-case-keyword (first parsed-csv))]
+    (map (partial zipmap headers) parsed-data)))
 
 (defn remove-unmodelled-episodes [data]
   (remove (some-fn :uasc (comp #{:V4} :legal-status)) data))
@@ -83,20 +99,32 @@
   "Summarise a contiguous period of episodes at a point in time"
   [episodes timestamp]
   (let [first-episode (first episodes)
+        beginning (:report-date first-episode)
         last-episode (last episodes)]
     (-> (select-keys first-episode [:period-id :dob :report-date])
         (cs/rename-keys {:report-date :beginning})
         (assoc :open? (or (-> last-episode :ceased nil?)
                           (t/after? (:ceased last-episode) timestamp)))
-        (assoc :duration (t/in-days (t/interval (:report-date first-episode) timestamp))))))
+        (assoc :duration (t/in-days (t/interval beginning timestamp)))
+        (assoc :episodes (mapv (fn [{:keys [placement report-date]}]
+                                 (hash-map :placement placement
+                                           :offset (t/in-days (t/interval beginning report-date))))
+                               episodes)))))
 
 (defn summarise-period
   [episodes]
   (let [first-episode (first episodes)
+        beginning (:report-date first-episode)
         last-episode (last episodes)]
     (-> (select-keys first-episode [:period-id :dob :report-date])
         (cs/rename-keys {:report-date :beginning})
-        (assoc :end (:ceased last-episode)))))
+        (assoc :end (:ceased last-episode))
+        (assoc :duration (when (:ceased last-episode)
+                           (t/in-days (t/interval beginning (:ceased last-episode)))))
+        (assoc :episodes (mapv (fn [{:keys [placement report-date]}]
+                                 (hash-map :placement placement
+                                           :offset (t/in-days (t/interval beginning report-date))))
+                               episodes)))))
 
 (defn episodes->periods
   [episodes]
@@ -121,5 +149,50 @@
 
 (defn csv->episodes
   [filename]
-  (-> (load-csv filename)
-      (episodes)))
+  (->> (load-csv filename)
+       (map format-episode)
+       (episodes)))
+
+(defn load-duration-csv
+  [filename]
+  (let [parsed-csv (with-open [in-file (io/reader filename)]
+                     (->> in-file
+                          data-csv/read-csv
+                          (remove blank-row?)
+                          (vec)))
+        parsed-data (rest parsed-csv)]
+    (->> (map (comp (juxt first (comp vec rest)) (partial map parse-int)) parsed-data)
+         (into {}))))
+
+(defn load-duration-csvs
+  [lower median upper]
+  (let [lower (load-duration-csv lower)
+        median (load-duration-csv median)
+        upper (load-duration-csv upper)]
+    (->> (for [age (range 0 19)]
+           (let [lower (get lower age)
+                 median (get median age)
+                 upper (get upper age)]
+             (vector age
+                     (mapv (fn [l m u]
+                             (vector l m u))
+                           lower median upper))))
+         (into {}))))
+
+(defn load-joiner-csvs
+  [ages params]
+  (let [ages (->> (load-csv ages)
+                  (map (juxt :coef (comp parse-double :value)))
+                  (into {}))
+        params (->> (load-csv params)
+                    (map #(-> % (update :shape parse-double) (update :rate parse-double)))
+                    (map (juxt (comp parse-int :age) identity))
+                    (into {}))]
+    {:ages ages :params params}))
+
+(defn load-costs-csv
+  [filename]
+  (->> (load-csv filename)
+       (map #(-> %
+                 (update :placement keyword)
+                 (update :cost parse-double)))))
