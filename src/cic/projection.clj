@@ -161,6 +161,8 @@
 
 (defn projection
   "Takes the open periods, creates n-runs projections and summarises them."
-  [open-periods closed-periods beginning end joiners-model duration-model n-runs]
-  (->> (repeatedly n-runs #(project-1 open-periods closed-periods beginning end joiners-model duration-model))
-       (summarise)))
+  [periods beginning end joiners-model duration-model n-runs]
+  (let [open-periods (filter :open? periods)
+        closed-periods (filter :end periods)]
+   (->> (repeatedly n-runs #(project-1 open-periods closed-periods beginning end joiners-model duration-model))
+        (summarise))))

@@ -38,10 +38,8 @@
 
 (defn project
   [episodes project-from project-to joiners-model duration-model]
-  (let [closed-periods (->> (core/episodes->periods episodes)
-                            (filter :end))]
-    (projection/projection (core/open-periods episodes)
-                           closed-periods
+  (let [periods (core/episodes->periods episodes)]
+    (projection/projection periods
                            project-from project-to
                            joiners-model duration-model
                            100)))
