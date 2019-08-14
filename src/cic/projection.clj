@@ -128,9 +128,11 @@
       (redux/pre-step f)
       (redux/post-complete
        (fn [dist]
-         {:lower (d/quantile dist 0.025)
+         {:lower (d/quantile dist 0.05)
+          :q1 (d/quantile dist 0.25)
           :median (d/quantile dist 0.5)
-          :upper (d/quantile dist 0.975)}))))
+          :q3 (d/quantile dist 0.75)
+          :upper (d/quantile dist 0.95)}))))
 
 (defn summarise
   "Creates a histogram reducing function over each key of the maps returned by the runs.

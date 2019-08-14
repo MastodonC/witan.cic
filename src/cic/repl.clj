@@ -21,14 +21,16 @@
                      :cost
                      (comp :actual)
                      (comp :lower :total)
+                     (comp :q1 :total)
                      (comp :median :total)
+                     (comp :q3 :total)
                      (comp :upper :total)
                      :Q2 :K2 :Q1 :R2 :P2 :H5 :R5 :R1 :A6 :P1 :Z1 :S1 :K1 :A4 :T4 :M3 :A5 :A3 :R3 :M2 :T0
                      #(get % 0) #(get % 1) #(get % 2) #(get % 3) #(get % 4) #(get % 5) #(get % 6) #(get % 7) #(get % 8) #(get % 9)
                      #(get % 10) #(get % 11) #(get % 12) #(get % 13) #(get % 14) #(get % 15) #(get % 16) #(get % 17) #(get % 18))
         placements [:Q2 :K2 :Q1 :R2 :P2 :H5 :R5 :R1 :A6 :P1 :Z1 :S1 :K1 :A4 :T4 :M3 :A5 :A3 :R3 :M2 :T0]
         ages (range 0 19)
-        headers (concat ["Date" "Cost" "Actual" "Lower" "Median" "Upper"]
+        headers (concat ["Date" "Cost" "Actual" "Lower" "Q1" "Median" "Q3" "Upper"]
                         (map name placements)
                         (map str ages))]
     (with-open [writer (io/writer outfile)]
