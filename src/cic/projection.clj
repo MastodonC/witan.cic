@@ -41,13 +41,15 @@
 
 (defn project-period-close
   "Sample a possible duration in care which is greater than the existing duration"
-  [duration-model {:keys [duration beginning admission-age] :as open-period}]
+  [duration-model episodes-model {:keys [duration beginning admission-age episodes] :as open-period}]
   (let [projected-duration (loop [sample (duration-model admission-age)]
                              (if (>= sample duration)
-                               (t/days sample)
-                               (recur (duration-model admission-age))))]
+                               sample
+                               (recur (duration-model admission-age))))
+        episodes (episodes-model admission-age projected-duration episodes)]
     (-> (assoc open-period :duration projected-duration)
-        (assoc :end (t/with-time-at-start-of-day (t/plus beginning projected-duration)))
+        #_ (assoc :episodes episodes)
+        (assoc :end (t/with-time-at-start-of-day (t/plus beginning (t/days projected-duration))))
         (assoc :open? false))))
 
 (defn joiners-seq
@@ -116,7 +118,7 @@
 (defn project-1
   [open-periods closed-periods beginning end joiners-model duration-model]
   (let [episodes-model (model/episodes-model (prepare-ages closed-periods))]
-    (-> (map (partial project-period-close duration-model) (prepare-ages open-periods))
+    (-> (map (partial project-period-close duration-model episodes-model) (prepare-ages open-periods))
         (concat (project-joiners joiners-model duration-model episodes-model beginning end))
         (daily-summary beginning end))))
 
