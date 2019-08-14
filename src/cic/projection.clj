@@ -68,7 +68,7 @@
   (mapcat (fn [age]
             (->> (joiners-seq (partial joiners-model age) (partial duration-model age) (partial episodes-model age) beginning end)
                  (map #(assoc % :birthday (t/minus (:beginning %) (t/years age))))))
-          (range 0 19)))
+          (range 0 18)))
 
 (defn day-seq
   "Create a sequence of dates with a 7-day interval between two dates"
