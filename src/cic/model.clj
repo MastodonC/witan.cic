@@ -37,7 +37,7 @@
   (let [ks (mapv (fn [k]
                    (cond
                      (or (double? k) (ratio? k))
-                     [(m/floor k) (m/ceil k)]
+                     [(int (m/floor k)) (int (m/ceil k))]
                      (int? k)
                      [(dec k) k (inc k)]
                      :else [k]))
@@ -56,22 +56,13 @@
                                         (update-fuzzy lookup [admission-age yrs] conj episodes)))
                                     {} closed-periods)
         age-duration-placement-offset-lookup (reduce (fn [lookup {:keys [admission-age duration episodes]}]
-                                                       (let [duration-yrs (/ duration 365)]
+                                                       (let [duration-yrs (/ duration 365.0)]
                                                          (reduce (fn [lookup {:keys [offset placement]}]
                                                                    (let [offset-yrs (/ offset 365)]
                                                                      (update-fuzzy lookup [admission-age duration-yrs placement offset-yrs] conj episodes)))
                                                                  lookup
                                                                  episodes)))
-                                                     {} closed-periods)
-        #_age-duration-lookup #_(reduce (fn [lookup {:keys [admission-age duration episodes]}]
-                                          (let [yrs (/ duration 365.0)]
-                                            (-> lookup
-                                                (update [(dec admission-age) (int (m/floor yrs))] conj episodes)
-                                                (update [admission-age (int (m/floor yrs))] conj episodes)
-                                                (update [(inc admission-age) (int (m/floor yrs))] conj episodes)
-                                                (update [(dec admission-age) (int (m/ceil yrs))] conj episodes)
-                                                (update [admission-age (int (m/ceil yrs))] conj episodes)
-                                                (update [(inc admission-age) (int (m/ceil yrs))] conj episodes)))) {} closed-periods)]
+                                                     {} closed-periods)]
     (fn
       ([age duration]
        (let [duration-yrs (Math/round (/ duration 365.0))
@@ -82,5 +73,8 @@
          (let [duration-yrs (Math/round (/ duration 365.0))
                offset-yrs (Math/round (/ offset 365.0))
                candidates (get age-duration-placement-offset-lookup [(min age 17) duration-yrs placement offset-yrs])
-               candidate (rand-nth candidates)]
-           (concat episodes (drop-while #(< (:offset %) offset) candidate))))))))
+               candidate (rand-nth candidates)
+               future-episodes (->> candidate
+                                    (drop-while #(<= (:offset %) offset))
+                                    (take-while #(< (:offset %) duration)))]
+           (concat episodes future-episodes)))))))

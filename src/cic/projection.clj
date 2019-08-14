@@ -48,7 +48,7 @@
                                (recur (duration-model admission-age))))
         episodes (episodes-model admission-age projected-duration episodes)]
     (-> (assoc open-period :duration projected-duration)
-        #_ (assoc :episodes episodes)
+        (assoc :episodes episodes)
         (assoc :end (t/with-time-at-start-of-day (t/plus beginning (t/days projected-duration))))
         (assoc :open? false))))
 

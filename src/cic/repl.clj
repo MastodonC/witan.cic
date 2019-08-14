@@ -30,7 +30,7 @@
                      #(get % 10) #(get % 11) #(get % 12) #(get % 13) #(get % 14) #(get % 15) #(get % 16) #(get % 17) #(get % 18))
         placements [:Q2 :K2 :Q1 :R2 :P2 :H5 :R5 :R1 :A6 :P1 :Z1 :S1 :K1 :A4 :T4 :M3 :A5 :A3 :R3 :M2 :T0]
         ages (range 0 19)
-        headers (concat ["Date" "Cost" "Actual" "Lower" "Q1" "Median" "Q3" "Upper"]
+        headers (concat ["Date" "Cost" "Actual" "Lower CI" "Lower Quartile" "Median" "Upper Quartile" "Upper CI"]
                         (map name placements)
                         (map str ages))]
     (with-open [writer (io/writer outfile)]
