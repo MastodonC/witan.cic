@@ -68,13 +68,13 @@
        (let [duration-yrs (Math/round (/ duration 365.0))
              candidates (get age-duration-lookup [(min age 17) duration-yrs])]
          (rand-nth candidates)))
-      ([age duration episodes]
+      ([age duration {:keys [episodes] :as open-period}]
        (let [{:keys [placement offset]} (last episodes)]
          (let [duration-yrs (Math/round (/ duration 365.0))
                offset-yrs (Math/round (/ offset 365.0))
                candidates (get age-duration-placement-offset-lookup [(min age 17) duration-yrs placement offset-yrs])
                candidate (rand-nth candidates)
                future-episodes (->> candidate
-                                    (drop-while #(<= (:offset %) offset))
+                                    (drop-while #(<= (:offset %) (:duration open-period)))
                                     (take-while #(< (:offset %) duration)))]
            (concat episodes future-episodes)))))))

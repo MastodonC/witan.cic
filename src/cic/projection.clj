@@ -46,7 +46,7 @@
                              (if (>= sample duration)
                                sample
                                (recur (duration-model admission-age))))
-        episodes (episodes-model admission-age projected-duration episodes)]
+        episodes (episodes-model admission-age projected-duration open-period)]
     (-> (assoc open-period :duration projected-duration)
         (assoc :episodes episodes)
         (assoc :end (t/with-time-at-start-of-day (t/plus beginning (t/days projected-duration))))
