@@ -4,9 +4,9 @@ Joiners modelled as a Poisson process
 
 # Context
 
-Each combination of age/CIN/legal status has a mean days in between
-each child joining CiC. This rate does not seem to be directly related
-to the general population outside of CiC.
+Each combination of age/CIN/legal status has a mean number of days in
+between each child joining CiC. This rate does not seem to be directly
+related to the general population outside of CiC.
 
 # Decision
 
