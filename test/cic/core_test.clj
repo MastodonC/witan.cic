@@ -19,6 +19,10 @@
        (sort)
        (last)))
 
+(deftest remove-unmodelled-episodes-test
+  (testing "3 unmodelled episodes removed corresponding to UASC, V3 and V4"
+    (is (= 7 (count (remove-unmodelled-episodes data))))))
+
 (deftest episodes-test
   (testing "remove invalid records"
     (is (= 5 (count (episodes data))))))

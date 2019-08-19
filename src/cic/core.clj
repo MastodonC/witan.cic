@@ -60,7 +60,7 @@
     (map (partial zipmap headers) parsed-data)))
 
 (defn remove-unmodelled-episodes [data]
-  (remove (some-fn :uasc (comp #{:V4} :legal-status)) data))
+  (remove (some-fn :uasc (comp #{:V4 :V3} :legal-status)) data))
 
 (defn remove-stale-rows
   "The raw data may contain multiple open episodes for a child, one per report year that the episode was open.
