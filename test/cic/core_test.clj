@@ -45,4 +45,10 @@
     (testing "a single open episode"
       (is (= 1 (count (filter #(= true (:open? %)) result)))))
     (testing "duration in care calculated"
-      (is (= 1550 (:duration (first (filter #(= (:period-id %) "120-0") result))))))))
+      (is (= 1550 (:duration (first (filter #(= (:period-id %) "120-0") result))))))
+    (testing "multiple episodes in a period"
+      (is (= [{:offset 0, :placement :K1} {:offset 8, :placement :K2}]
+             (->> result
+                  (filter #(= (:period-id %) "120-2"))
+                  first
+                  :episodes))))))
