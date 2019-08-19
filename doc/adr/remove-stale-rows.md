@@ -13,4 +13,5 @@ We want to remove open episodes from prior report years, since these are stale d
 Accepted.
 
 ## Consequences
+
 We remove episodes without a cease date from report years prior to the latest.
