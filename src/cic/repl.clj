@@ -37,12 +37,13 @@
       (data-csv/write-csv writer (concat [headers] (map fields projection))))))
 
 (defn project
-  [episodes project-from project-to joiners-model duration-model]
+  [episodes project-from project-to joiners-model duration-model seed]
   (let [periods (core/episodes->periods episodes)]
     (projection/projection periods
                            project-from project-to
                            joiners-model duration-model
-                           100)))
+                           seed
+                           10)))
 
 (defn format-actual-for-output
   [[date summary]]
@@ -57,7 +58,7 @@
     (assoc placement-counts :cost cost)))
 
 (defn episodes->projection-tsv
-  [output-file episodes-file]
+  [output-file episodes-file seed]
   (let [episodes (core/csv->episodes episodes-file)
         output-from (f/parse date-format "2010-03-31")
         project-from (f/parse date-format "2018-03-31")
@@ -77,8 +78,8 @@
         summary-seq (map format-actual-for-output summary)
         projection (->> (concat summary-seq
                                 (project episodes project-from project-to
-                                         joiners-model duration-model))
+                                         joiners-model duration-model seed))
                         (map (partial assoc-costs placement-costs)))]
     (write-projection-tsv output-file projection)))
 
-#_(episodes->projection-tsv "data/witan.cic.output.ci.csv" "data/episodes.csv")
+#_(episodes->projection-tsv "data/witan.cic.output.ci.csv" "data/episodes.csv" 42)
