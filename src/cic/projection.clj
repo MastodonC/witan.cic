@@ -36,18 +36,17 @@
                  (assoc :admission-age (quot (interval-days birthday beginning) 365)))))
          open-periods rngs)))
 
-(def interarrival-time
-  (d/gamma {:shape 1.0 :scale 1.171895}))
-
 (defn project-period-close
   "Sample a possible duration in care which is greater than the existing duration"
-  [duration-model {:keys [duration beginning admission-age] :as open-period}]
+  [duration-model episodes-model {:keys [duration beginning admission-age episodes] :as open-period}]
   (let [projected-duration (loop [sample (duration-model admission-age)]
                              (if (>= sample duration)
-                               (t/days sample)
-                               (recur (duration-model admission-age))))]
+                               sample
+                               (recur (duration-model admission-age))))
+        episodes (episodes-model admission-age projected-duration open-period)]
     (-> (assoc open-period :duration projected-duration)
-        (assoc :end (t/with-time-at-start-of-day (t/plus beginning projected-duration)))
+        (assoc :episodes episodes)
+        (assoc :end (t/with-time-at-start-of-day (t/plus beginning (t/days projected-duration))))
         (assoc :open? false))))
 
 (defn joiners-seq
@@ -68,7 +67,7 @@
   (mapcat (fn [age]
             (->> (joiners-seq (partial joiners-model age) (partial duration-model age) (partial episodes-model age) beginning end)
                  (map #(assoc % :birthday (t/minus (:beginning %) (t/years age))))))
-          (range 0 19)))
+          (range 0 18)))
 
 (defn day-seq
   "Create a sequence of dates with a 7-day interval between two dates"
@@ -115,8 +114,9 @@
 
 (defn project-1
   [open-periods closed-periods beginning end joiners-model duration-model]
-  (let [episodes-model (model/episodes-model (prepare-ages closed-periods))]
-    (-> (map (partial project-period-close duration-model) (prepare-ages open-periods))
+  (let [episodes-model (model/episodes-model (prepare-ages closed-periods))
+        joiners-model (joiners-model)]
+    (-> (map (partial project-period-close duration-model episodes-model) (prepare-ages open-periods))
         (concat (project-joiners joiners-model duration-model episodes-model beginning end))
         (daily-summary beginning end))))
 
@@ -128,9 +128,11 @@
       (redux/pre-step f)
       (redux/post-complete
        (fn [dist]
-         {:lower (d/quantile dist 0.025)
+         {:lower (d/quantile dist 0.05)
+          :q1 (d/quantile dist 0.25)
           :median (d/quantile dist 0.5)
-          :upper (d/quantile dist 0.975)}))))
+          :q3 (d/quantile dist 0.75)
+          :upper (d/quantile dist 0.95)}))))
 
 (defn summarise
   "Creates a histogram reducing function over each key of the maps returned by the runs.
@@ -159,6 +161,8 @@
 
 (defn projection
   "Takes the open periods, creates n-runs projections and summarises them."
-  [open-periods closed-periods beginning end joiners-model duration-model n-runs]
-  (->> (repeatedly n-runs #(project-1 open-periods closed-periods beginning end joiners-model duration-model))
-       (summarise)))
+  [periods beginning end joiners-model duration-model n-runs]
+  (let [open-periods (filter :open? periods)
+        closed-periods (filter :end periods)]
+   (->> (repeatedly n-runs #(project-1 open-periods closed-periods beginning end joiners-model duration-model))
+        (summarise))))

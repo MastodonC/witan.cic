@@ -21,14 +21,16 @@
                      :cost
                      (comp :actual)
                      (comp :lower :total)
+                     (comp :q1 :total)
                      (comp :median :total)
+                     (comp :q3 :total)
                      (comp :upper :total)
                      :Q2 :K2 :Q1 :R2 :P2 :H5 :R5 :R1 :A6 :P1 :Z1 :S1 :K1 :A4 :T4 :M3 :A5 :A3 :R3 :M2 :T0
                      #(get % 0) #(get % 1) #(get % 2) #(get % 3) #(get % 4) #(get % 5) #(get % 6) #(get % 7) #(get % 8) #(get % 9)
                      #(get % 10) #(get % 11) #(get % 12) #(get % 13) #(get % 14) #(get % 15) #(get % 16) #(get % 17) #(get % 18))
         placements [:Q2 :K2 :Q1 :R2 :P2 :H5 :R5 :R1 :A6 :P1 :Z1 :S1 :K1 :A4 :T4 :M3 :A5 :A3 :R3 :M2 :T0]
         ages (range 0 19)
-        headers (concat ["Date" "Cost" "Actual" "Lower" "Median" "Upper"]
+        headers (concat ["Date" "Cost" "Actual" "Lower CI" "Lower Quartile" "Median" "Upper Quartile" "Upper CI"]
                         (map name placements)
                         (map str ages))]
     (with-open [writer (io/writer outfile)]
@@ -36,10 +38,8 @@
 
 (defn project
   [episodes project-from project-to joiners-model duration-model]
-  (let [closed-periods (->> (core/episodes->periods episodes)
-                            (filter :end))]
-    (projection/projection (core/open-periods episodes)
-                           closed-periods
+  (let [periods (core/episodes->periods episodes)]
+    (projection/projection periods
                            project-from project-to
                            joiners-model duration-model
                            100)))
@@ -63,7 +63,7 @@
         project-from (f/parse date-format "2018-03-31")
         project-to (f/parse date-format "2025-03-31")
         placement-costs (core/load-costs-csv "data/placement-costs.csv")
-        joiners-model (-> (core/load-joiner-csvs "data/joiner-model.csv"
+        joiners-model (-> (core/load-joiner-csvs "data/joiner-model-mvn.csv"
                                                  "data/joiner-model-params.csv")
                           (model/joiners-model))
         duration-model (-> (core/load-duration-csvs "data/duration-model-lower.csv"
@@ -81,4 +81,4 @@
                         (map (partial assoc-costs placement-costs)))]
     (write-projection-tsv output-file projection)))
 
-#_(episodes->projection-tsv "data/output.csv" "data/episodes.csv")
+#_(episodes->projection-tsv "data/witan.cic.output.ci.csv" "data/episodes.csv")

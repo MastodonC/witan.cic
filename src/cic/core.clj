@@ -35,14 +35,14 @@
 
 (defn format-episode
   [row]
-  (-> (cs/rename-keys row {:id :child-id})
+  (-> (cs/rename-keys row {:id :child-id :care-status :CIN})
       (update :child-id #(Long/parseLong %))
       (update :dob #(Long/parseLong %))
       (update :report-date parse-date)
       (update :ceased #(when-not (str/blank? %) (parse-date %)))
       (update :report-year #(Long/parseLong %))
       (update :placement parse-placement)
-      (update :care-status keyword)
+      (update :CIN keyword)
       (update :legal-status keyword)
       (update :uasc (comp boolean #{"True"}))))
 
@@ -95,23 +95,8 @@
        (remove-stale-rows)
        (remove-unmodelled-episodes)))
 
-(defn summarise-periods-at
+(defn summarise-periods
   "Summarise a contiguous period of episodes at a point in time"
-  [episodes timestamp]
-  (let [first-episode (first episodes)
-        beginning (:report-date first-episode)
-        last-episode (last episodes)]
-    (-> (select-keys first-episode [:period-id :dob :report-date])
-        (cs/rename-keys {:report-date :beginning})
-        (assoc :open? (or (-> last-episode :ceased nil?)
-                          (t/after? (:ceased last-episode) timestamp)))
-        (assoc :duration (t/in-days (t/interval beginning timestamp)))
-        (assoc :episodes (mapv (fn [{:keys [placement report-date]}]
-                                 (hash-map :placement placement
-                                           :offset (t/in-days (t/interval beginning report-date))))
-                               episodes)))))
-
-(defn summarise-period
   [episodes]
   (let [first-episode (first episodes)
         beginning (:report-date first-episode)
@@ -119,21 +104,20 @@
     (-> (select-keys first-episode [:period-id :dob :report-date])
         (cs/rename-keys {:report-date :beginning})
         (assoc :end (:ceased last-episode))
-        (assoc :duration (when (:ceased last-episode)
-                           (t/in-days (t/interval beginning (:ceased last-episode)))))
         (assoc :episodes (mapv (fn [{:keys [placement report-date]}]
                                  (hash-map :placement placement
                                            :offset (t/in-days (t/interval beginning report-date))))
                                episodes)))))
 
-(defn episodes->periods
-  [episodes]
-  (->> (assoc-period-id episodes)
-       (group-by :period-id)
-       (vals)
-       (map summarise-period)))
+(defn assoc-open-at
+  [{:keys [beginning end] :as period} date]
+  (let [open? (and (t/before? beginning date)
+                   (or (nil? end)
+                       (t/after? end date)))]
+    (-> (assoc period :open? open?)
+        (assoc :duration (t/in-days (t/interval beginning (or end date)))))))
 
-(defn open-periods
+(defn episodes->periods
   "Takes episodes data and returns just the open periods ready for projection"
   [episodes]
   (let [projection-start (->> (mapcat (juxt :report-date :ceased) episodes)
@@ -144,8 +128,8 @@
          (assoc-period-id)
          (group-by :period-id)
          (vals)
-         (map #(summarise-periods-at % projection-start))
-         (filter :open?))))
+         (map (comp #(assoc-open-at % projection-start)
+                    summarise-periods)))))
 
 (defn csv->episodes
   [filename]
@@ -180,13 +164,15 @@
          (into {}))))
 
 (defn load-joiner-csvs
-  [ages params]
-  (let [ages (->> (load-csv ages)
-                  (map (juxt :coef (comp parse-double :value)))
-                  (into {}))
+  [mvn params]
+  (let [ages (->> (load-csv mvn)
+                  (mapv #(reduce-kv (fn [coll k v] (assoc coll k (parse-double v))) {} %)))
         params (->> (load-csv params)
-                    (map #(-> % (update :shape parse-double) (update :rate parse-double)))
-                    (map (juxt (comp parse-int :age) identity))
+                    (map #(-> %
+                              (update :shape parse-double)
+                              (update :rate parse-double)
+                              (update :dispersion parse-double)))
+                    (map (juxt (comp parse-int :age) #(dissoc % :age)))
                     (into {}))]
     {:ages ages :params params}))
 
