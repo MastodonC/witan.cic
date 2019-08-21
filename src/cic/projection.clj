@@ -18,11 +18,11 @@
 
 (defn prepare-ages
   "All we know about a child is their year of birth, so we impute an arbitrary birthday.
-  Each projection will use randbomly generated birthdays with corresponding random ages of admission.
+  Each projection will use randomly generated birthdays with corresponding random ages of admission.
   This allows the output to account for uncertainty in the input.
   The only constraint besides their year of birth is that a child can't be a negative age at admission"
-  [open-periods]
-  (let [rngs (r/split-n (r/make-random) (count open-periods))]
+  [open-periods seed]
+  (let [rngs (r/split-n seed (count open-periods))]
     (map (fn [{:keys [beginning dob] :as period} rng]
            (let [base-date (t/date-time dob 1 1)
                  max-offset (day-offset-in-year beginning)
@@ -117,10 +117,11 @@
 
 (defn project-1
   [open-periods closed-periods beginning end joiners-model duration-model seed]
-  (let [episodes-model (model/episodes-model (prepare-ages closed-periods))
+  (let [[s1 s2 s3] (r/split-n seed 3)
+        episodes-model (model/episodes-model (prepare-ages closed-periods s1))
         joiners-model (joiners-model seed)]
-    (-> (map (partial project-period-close duration-model episodes-model) (prepare-ages open-periods) (r/split-n seed (count open-periods)))
-        (concat (project-joiners joiners-model duration-model episodes-model beginning end seed))
+    (-> (map (partial project-period-close duration-model episodes-model) (prepare-ages open-periods s2) (r/split-n s3 (count open-periods)))
+        (concat (project-joiners joiners-model duration-model episodes-model beginning end s3))
         (daily-summary beginning end))))
 
 (defn vals-histogram

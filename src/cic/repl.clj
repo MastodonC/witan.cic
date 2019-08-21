@@ -1,6 +1,7 @@
 (ns cic.repl
   (:require [clojure.string :as str]
             [clojure.set :as cs]
+            [clojure.test.check.random :as r]
             [cic.core :as core]
             [clojure.data.csv :as data-csv]
             [clojure.java.io :as io]
@@ -73,7 +74,7 @@
                            (model/duration-model))
         summary (-> episodes
                     (core/episodes->periods)
-                    (projection/prepare-ages)
+                    (projection/prepare-ages (r/make-random seed))
                     (projection/daily-summary output-from project-from))
         summary-seq (map format-actual-for-output summary)
         projection (->> (concat summary-seq
