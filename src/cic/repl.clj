@@ -63,7 +63,7 @@
         project-from (f/parse date-format "2018-03-31")
         project-to (f/parse date-format "2025-03-31")
         placement-costs (core/load-costs-csv "data/placement-costs.csv")
-        joiners-model (-> (core/load-joiner-csvs "data/joiner-model.csv"
+        joiners-model (-> (core/load-joiner-csvs "data/joiner-model-mvn.csv"
                                                  "data/joiner-model-params.csv")
                           (model/joiners-model))
         duration-model (-> (core/load-duration-csvs "data/duration-model-lower.csv"
@@ -81,4 +81,4 @@
                         (map (partial assoc-costs placement-costs)))]
     (write-projection-tsv output-file projection)))
 
-#_(episodes->projection-tsv "data/output.csv" "data/episodes.csv")
+#_(episodes->projection-tsv "data/witan.cic.output.ci.csv" "data/episodes.csv")

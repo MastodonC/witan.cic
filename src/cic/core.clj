@@ -164,13 +164,15 @@
          (into {}))))
 
 (defn load-joiner-csvs
-  [ages params]
-  (let [ages (->> (load-csv ages)
-                  (map (juxt :coef (comp parse-double :value)))
-                  (into {}))
+  [mvn params]
+  (let [ages (->> (load-csv mvn)
+                  (mapv #(reduce-kv (fn [coll k v] (assoc coll k (parse-double v))) {} %)))
         params (->> (load-csv params)
-                    (map #(-> % (update :shape parse-double) (update :rate parse-double)))
-                    (map (juxt (comp parse-int :age) identity))
+                    (map #(-> %
+                              (update :shape parse-double)
+                              (update :rate parse-double)
+                              (update :dispersion parse-double)))
+                    (map (juxt (comp parse-int :age) #(dissoc % :age)))
                     (into {}))]
     {:ages ages :params params}))
 

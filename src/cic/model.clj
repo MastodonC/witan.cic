@@ -9,15 +9,19 @@
   "Given the date of a joiner at a particular age,
   returns the interval in days until the next joiner"
   [{:keys [ages params]}]
-  (fn [age date]
-    (let [{:keys [shape rate]} (get params age)
-          day (t/in-days (t/interval (t/epoch) date))
-          intercept (get ages "(Intercept)")
-          a (get ages (str "age" age) 0)
-          b (get ages "beginning")
-          c (get ages (str "beginning:age" age) 0)
-          mean (m/exp (+ intercept a (* b day) (* c day)))]
-      (d/draw (d/gamma {:shape shape :scale (/ mean shape)})))))
+  (fn []
+    (let [model (rand-nth ages)]
+      (fn [age date]
+        (let [{:keys [dispersion]} (get params age)
+              shape (/ 1 dispersion)
+              day (t/in-days (t/interval (t/epoch) date))
+
+              intercept (:intercept model)
+              a (get model (keyword (str "age-" age)) 0.0)
+              b (get model :beginning)
+              c (get model (keyword (str "beginning:age-" age)) 0.0)
+              mean (m/exp (+ intercept a (* b day) (* c day)))]
+          (d/draw (d/gamma {:shape shape :scale (/ mean shape)})))))))
 
 (defn duration-model
   "Given an admitted date and age of a child in care,

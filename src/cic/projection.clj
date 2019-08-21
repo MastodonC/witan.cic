@@ -36,9 +36,6 @@
                  (assoc :admission-age (quot (interval-days birthday beginning) 365)))))
          open-periods rngs)))
 
-(def interarrival-time
-  (d/gamma {:shape 1.0 :scale 1.171895}))
-
 (defn project-period-close
   "Sample a possible duration in care which is greater than the existing duration"
   [duration-model episodes-model {:keys [duration beginning admission-age episodes] :as open-period}]
@@ -117,7 +114,8 @@
 
 (defn project-1
   [open-periods closed-periods beginning end joiners-model duration-model]
-  (let [episodes-model (model/episodes-model (prepare-ages closed-periods))]
+  (let [episodes-model (model/episodes-model (prepare-ages closed-periods))
+        joiners-model (joiners-model)]
     (-> (map (partial project-period-close duration-model episodes-model) (prepare-ages open-periods))
         (concat (project-joiners joiners-model duration-model episodes-model beginning end))
         (daily-summary beginning end))))
