@@ -23,6 +23,16 @@
               mean (m/exp (+ intercept a (* b day) (* c day)))]
           (d/draw (d/gamma {:shape shape :scale (/ mean shape)})))))))
 
+(defn sample-ci
+  "Given a 95% lower bound, median and 95% upper bound,
+  sample from a skewed normal with these properties.
+  We make use of the fact that the normal 95% CI is +/- 1.96"
+  [lower median upper]
+  (let [normal (d/draw (d/normal {:mu 0 :sd 1}))]
+    (if (pos? normal)
+      (+ median (* (- upper median) (/ normal 1.96)))
+      (- median (* (- median lower) (/ normal -1.96))))))
+
 (defn duration-model
   "Given an admitted date and age of a child in care,
   returns an expected duration in days"
@@ -30,13 +40,21 @@
   (fn [age]
     (let [empirical (get coefs (max 0 (min age 17)))
           quantile (inc (rand-int 100))
-          [lower median upper] (get empirical quantile)
-          normal (d/draw (d/normal {:mu 0 :sd 1}))]
-      (if (pos? normal)
-        (+ median (* (- upper median) (/ normal 1.96)))
-        (- median (* (- median lower) (/ normal -1.96)))))))
+          [lower median upper] (get empirical quantile)]
+      (sample-ci lower median upper))))
 
 (defn update-fuzzy
+  "Like `update`, but the key is expected to be a vector of values.
+  Any numeric values in the key are fuzzed, so for example
+  `(update-fuzzy {} [5 0.5] conj :value)` will return:
+  {(4 0) (:value),
+   (4 1) (:value),
+   (5 0) (:value),
+   (5 1) (:value),
+   (6 0) (:value),
+   (6 1) (:value)}
+  This enables efficient lookup of values which are similar to,
+  but not neccessarily identical to, the input key."
   [coll ks f & args]
   (let [ks (mapv (fn [k]
                    (cond
