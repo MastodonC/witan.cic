@@ -26,15 +26,14 @@ jobs:
 
       # Download and cache dependencies
       - restore_cache:
-          key:
-            - witan.cic-{{ checksum "project.clj" }}
+          key: witan.cic-{{ checksum "project.clj" }}
 
       - run: lein deps
 
       - save_cache:
+          key: witan.cic-{{ checksum "project.clj" }}
           paths:
             - ~/.m2
-	 key: witan.cic-{{ checksum "project.clj" }}
 
       # run tests!
       - run: lein test

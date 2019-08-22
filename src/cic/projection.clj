@@ -21,8 +21,8 @@
   Each projection will use randomly generated birthdays with corresponding random ages of admission.
   This allows the output to account for uncertainty in the input.
   The only constraint besides their year of birth is that a child can't be a negative age at admission"
-  [open-periods]
-  (let [rngs (r/split-n (r/make-random) (count open-periods))]
+  [open-periods seed]
+  (let [rngs (r/split-n seed (count open-periods))]
     (map (fn [{:keys [beginning dob] :as period} rng]
            (let [base-date (t/date-time dob 1 1)
                  max-offset (day-offset-in-year beginning)
@@ -38,36 +38,39 @@
 
 (defn project-period-close
   "Sample a possible duration in care which is greater than the existing duration"
-  [duration-model episodes-model {:keys [duration beginning admission-age episodes] :as open-period}]
-  (let [projected-duration (loop [sample (duration-model admission-age)]
-                             (if (>= sample duration)
-                               sample
-                               (recur (duration-model admission-age))))
-        episodes (episodes-model admission-age projected-duration open-period)]
+  [duration-model episodes-model {:keys [duration beginning admission-age episodes] :as open-period} seed]
+  (let [projected-duration (loop [[r1 r2] (r/split seed)]
+                             (let [sample (duration-model admission-age r1)]
+                               (if (>= sample duration)
+                                 sample
+                                 (recur (r/split r2)))))
+        episodes (episodes-model admission-age projected-duration open-period seed)]
     (-> (assoc open-period :duration projected-duration)
         (assoc :episodes episodes)
         (assoc :end (t/with-time-at-start-of-day (t/plus beginning (t/days projected-duration))))
         (assoc :open? false))))
 
 (defn joiners-seq
-  [joiners-model duration-model episodes-model beginning end]
-  (let [wait-time (joiners-model beginning)
+  [joiners-model duration-model episodes-model beginning end seed]
+  (let [[seed-1 seed-2 seed-3] (r/split-n seed 3)
+        wait-time (joiners-model beginning seed-1)
         next-time (t/plus beginning (t/days wait-time))
-        duration (duration-model)
-        episodes (episodes-model duration)]
+        duration (duration-model seed-2)
+        episodes (episodes-model duration seed-3)]
     (when (t/before? next-time end)
       (let [period-end (t/plus next-time (t/days duration))
             period {:beginning (t/with-time-at-start-of-day next-time)
                     :end (t/with-time-at-start-of-day period-end)
                     :episodes episodes}]
-        (cons period (lazy-seq (joiners-seq joiners-model duration-model episodes-model next-time end)))))))
+        (cons period (lazy-seq (joiners-seq joiners-model duration-model episodes-model next-time end (second (r/split seed-2)))))))))
 
 (defn project-joiners
-  [joiners-model duration-model episodes-model beginning end]
-  (mapcat (fn [age]
-            (->> (joiners-seq (partial joiners-model age) (partial duration-model age) (partial episodes-model age) beginning end)
+  [joiners-model duration-model episodes-model beginning end seed]
+  (mapcat (fn [age seed]
+            (->> (joiners-seq (partial joiners-model age) (partial duration-model age) (partial episodes-model age) beginning end seed)
                  (map #(assoc % :birthday (t/minus (:beginning %) (t/years age))))))
-          (range 0 18)))
+          (range 0 18)
+          (r/split-n seed 18)))
 
 (defn day-seq
   "Create a sequence of dates with a 7-day interval between two dates"
@@ -113,11 +116,12 @@
             {} (day-seq beginning end))))
 
 (defn project-1
-  [open-periods closed-periods beginning end joiners-model duration-model]
-  (let [episodes-model (model/episodes-model (prepare-ages closed-periods))
-        joiners-model (joiners-model)]
-    (-> (map (partial project-period-close duration-model episodes-model) (prepare-ages open-periods))
-        (concat (project-joiners joiners-model duration-model episodes-model beginning end))
+  [open-periods closed-periods beginning end joiners-model duration-model seed]
+  (let [[s1 s2 s3] (r/split-n seed 3)
+        episodes-model (model/episodes-model (prepare-ages closed-periods s1))
+        joiners-model (joiners-model seed)]
+    (-> (map (partial project-period-close duration-model episodes-model) (prepare-ages open-periods s2) (r/split-n s3 (count open-periods)))
+        (concat (project-joiners joiners-model duration-model episodes-model beginning end s3))
         (daily-summary beginning end))))
 
 (defn vals-histogram
@@ -161,8 +165,8 @@
 
 (defn projection
   "Takes the open periods, creates n-runs projections and summarises them."
-  [periods beginning end joiners-model duration-model n-runs]
+  [periods beginning end joiners-model duration-model seed n-runs]
   (let [open-periods (filter :open? periods)
         closed-periods (filter :end periods)]
-   (->> (repeatedly n-runs #(project-1 open-periods closed-periods beginning end joiners-model duration-model))
-        (summarise))))
+    (->> (map #(project-1 open-periods closed-periods beginning end joiners-model duration-model %) (r/split-n (r/make-random seed) n-runs))
+         (summarise))))
