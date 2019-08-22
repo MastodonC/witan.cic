@@ -3,7 +3,8 @@
             [clojure.test :refer :all]
             [cic.core :as c]
             [cic.model :as m]
-            [clj-time.core :as t]))
+            [clj-time.core :as t]
+            [clojure.test.check.random :as r]))
 
 (def example (c/episodes->periods (c/episodes (map c/format-episode '({:sex "2", :care-status "N1", :legal-status "C2", :uasc "False", :dob "1999", :ceased "2017-02-18", :id "120", :report-year "2017", :placement "K1", :report-date "2017-02-10"}
                                                                       {:sex "2", :care-status "N1", :legal-status "C2", :uasc "False", :dob "1999", :ceased "2017-04-18", :id "120", :report-year "2017", :placement "K2", :report-date "2017-02-18"}
@@ -37,9 +38,9 @@
                                 18 [[0 0 0] [1 6 17] [35 56 83]]}))
 
 (deftest prepare-ages-test
-  (let [result (first (prepare-ages example))]
+  (let [result (prepare-ages example (r/make-random 50))]
     (testing "birthday is within correct year"
-      (is (= 14 (t/in-years (t/interval (:birthday (first (prepare-ages example))) (t/date-time 2014))))))
+      (is (= 14 (t/in-years (t/interval (:birthday (first result)) (t/date-time 2014))))))
     (testing "admission age in correctly calculated"
-      (is (= (- (t/in-years (t/interval (t/date-time 1999) (t/date-time 2014))) 1)
-             (:admission-age (first (prepare-ages example))))))))
+      (is (= (t/in-years (t/interval (t/date-time 1999) (t/date-time 2014)))
+             (:admission-age (first result)))))))
