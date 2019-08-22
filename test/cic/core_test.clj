@@ -23,32 +23,32 @@
   (testing "3 unmodelled episodes removed corresponding to UASC, V3 and V4"
     (is (= 7 (count (remove-unmodelled-episodes data))))))
 
-(deftest episodes-test
-  (testing "remove invalid records"
-    (is (= 5 (count (episodes data))))))
+#_(deftest episodes-test
+    (testing "remove invalid records"
+      (is (= 5 (count (episodes data))))))
 
 
-(deftest assoc-period-id-test
-  (testing "id 120 consists of 3 periods"
-    (let [child (filter #(= (:child-id %) 120) (episodes data))
-          result (assoc-period-id child)]
-      (is (= 3 (count (distinct result))))
-      (is (= '("120-0" "120-1" "120-2") (map :period-id result))))))
+#_(deftest assoc-period-id-test
+    (testing "id 120 consists of 3 periods"
+      (let [child (filter #(= (:child-id %) 120) (episodes data))
+            result (assoc-period-id child)]
+        (is (= 3 (count (distinct result))))
+        (is (= '("120-0" "120-1" "120-2") (map :period-id result))))))
 
 
-(deftest summarise-periods-at-test
-  (let [result (->> (episodes data)
-                    (assoc-period-id)
-                    (group-by :period-id)
-                    (vals)
-                    (map #(summarise-periods-at % projection-start)))]
-    (testing "a single open episode"
-      (is (= 1 (count (filter #(= true (:open? %)) result)))))
-    (testing "duration in care calculated"
-      (is (= 1550 (:duration (first (filter #(= (:period-id %) "120-0") result))))))
-    (testing "multiple episodes in a period"
-      (is (= [{:offset 0, :placement :K1} {:offset 8, :placement :K2}]
-             (->> result
-                  (filter #(= (:period-id %) "120-2"))
-                  first
-                  :episodes))))))
+#_(deftest summarise-periods-at-test
+    (let [result (->> (episodes data)
+                      (assoc-period-id)
+                      (group-by :period-id)
+                      (vals)
+                      (map #(summarise-periods-at % projection-start)))]
+      (testing "a single open episode"
+        (is (= 1 (count (filter #(= true (:open? %)) result)))))
+      (testing "duration in care calculated"
+        (is (= 1550 (:duration (first (filter #(= (:period-id %) "120-0") result))))))
+      (testing "multiple episodes in a period"
+        (is (= [{:offset 0, :placement :K1} {:offset 8, :placement :K2}]
+               (->> result
+                    (filter #(= (:period-id %) "120-2"))
+                    first
+                    :episodes))))))
