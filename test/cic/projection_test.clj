@@ -44,3 +44,9 @@
     (testing "admission age in correctly calculated"
       (is (= (t/in-years (t/interval (t/date-time 1999) (t/date-time 2014)))
              (:admission-age (first result)))))))
+
+(deftest days-seq-test
+  (let [start (clj-time.format/parse date-format "2010-03-31")
+        end (clj-time.format/parse date-format "2010-04-30")]
+    (testing "a months period creates date for 4 weeks + 1 initial week"
+      (is (= 5 (count (day-seq start end)))))))
