@@ -15,3 +15,5 @@ Accepted
 ## Consequences
 
 Survival analysis compensates for the fact that many episodes are still open, but does not factor in any temporal trends to duration in care.
+
+Currently there is no surival analysis model available in Clojure. As such this analysis is done in R.
