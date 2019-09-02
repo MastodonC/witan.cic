@@ -4,6 +4,7 @@
             [cic.core :as c]
             [cic.model :as m]
             [clj-time.core :as t]
+            [clj-time.format :as f]
             [clojure.test.check.random :as r]))
 
 (def example (c/episodes->periods (c/episodes (map c/format-episode '({:sex "2", :care-status "N1", :legal-status "C2", :uasc "False", :dob "1999", :ceased "2017-02-18", :id "120", :report-year "2017", :placement "K1", :report-date "2017-02-10"}
@@ -37,6 +38,9 @@
                                 17 [[0 0 0] [1 6 17] [35 56 83]]
                                 18 [[0 0 0] [1 6 17] [35 56 83]]}))
 
+(def date-format
+  (f/formatter :date))
+
 (deftest prepare-ages-test
   (let [result (prepare-ages example (r/make-random 50))]
     (testing "birthday is within correct year"
@@ -46,7 +50,16 @@
              (:admission-age (first result)))))))
 
 (deftest days-seq-test
-  (let [start (clj-time.format/parse date-format "2010-03-31")
-        end (clj-time.format/parse date-format "2010-04-30")]
+  (let [start (f/parse date-format "2010-03-31")
+        end (f/parse date-format "2010-04-30")]
     (testing "a months period creates date for 4 weeks + 1 initial week"
       (is (= 5 (count (day-seq start end)))))))
+
+(deftest daily-summary-test
+  (let [result (daily-summary (prepare-ages example (r/make-random 50))
+                              (f/parse date-format "2015-02-10")
+                              (f/parse date-format "2015-02-28"))]
+    (testing "frequency count of one 15yr old in Q1 for two weeks out of a possible three"
+      (= 3 (count result))
+      (is (= 2 (reduce + (map #(get (val %) 15) result))))
+      (is (= 2 (reduce + (map #(get (val %) :Q1) result)))))))
