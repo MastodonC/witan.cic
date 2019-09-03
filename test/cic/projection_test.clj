@@ -7,16 +7,22 @@
             [clj-time.format :as f]
             [clojure.test.check.random :as r]))
 
-(def example (c/episodes->periods (c/episodes (map c/format-episode '({:sex "2", :care-status "N1", :legal-status "C2", :uasc "False", :dob "1999", :ceased "2017-02-18", :id "120", :report-year "2017", :placement "K1", :report-date "2017-02-10"}
-                                                                      {:sex "2", :care-status "N1", :legal-status "C2", :uasc "False", :dob "1999", :ceased "2017-04-18", :id "120", :report-year "2017", :placement "K2", :report-date "2017-02-18"}
-                                                                      {:sex "2", :care-status "N1", :legal-status "C2", :uasc "False", :dob "1999", :ceased "2015-02-18", :id "120", :report-year "2015", :placement "U1", :report-date "2015-02-10"}
-                                                                      {:sex "2", :care-status "N1", :legal-status "C2", :uasc "False", :dob "1999", :ceased "2014-02-18", :id "120", :report-year "2014", :placement "U1", :report-date "2014-02-10"}
-                                                                      {:sex "2", :care-status "B1", :legal-status "C1", :uasc "False", :dob "2000", :ceased nil, :id "121", :report-year "2017", :placement "U1", :report-date "2017-02-10"}
-                                                                      {:sex "2", :care-status "N1", :legal-status "C2", :uasc "False", :dob "1998", :ceased "2017-05-18", :id "122", :report-year "2017", :placement "U2", :report-date "2017-05-10"}
-                                                                      {:sex "2", :care-status "N1", :legal-status "C2", :uasc "False", :dob "1998", :ceased nil, :id "122", :report-year "2018", :placement "U2", :report-date "2018-05-10"}
-                                                                      {:sex "2", :care-status "N1", :legal-status "C2", :uasc "True", :dob "1999", :ceased "2017-07-18", :id "124", :report-year "2017", :placement "U2", :report-date "2017-06-10"}
-                                                                      {:sex "2", :care-status "N1", :legal-status "V3", :uasc "True", :dob "1999", :ceased "2017-07-18", :id "124", :report-year "2017", :placement "U2", :report-date "2017-06-10"}
-                                                                      {:sex "2", :care-status "N1", :legal-status "V4", :uasc "True", :dob "1999", :ceased "2017-07-18", :id "124", :report-year "2017", :placement "U2", :report-date "2017-06-10"})))))
+(def example-data '({:sex "2", :care-status "N1", :legal-status "C2", :uasc "False", :dob "1999", :ceased "2017-02-18", :id "120", :report-year "2017", :placement "K1", :report-date "2017-02-10"}
+                    {:sex "2", :care-status "N1", :legal-status "C2", :uasc "False", :dob "1999", :ceased "2017-04-18", :id "120", :report-year "2017", :placement "K2", :report-date "2017-02-18"}
+                    {:sex "2", :care-status "N1", :legal-status "C2", :uasc "False", :dob "1999", :ceased "2015-02-18", :id "120", :report-year "2015", :placement "U1", :report-date "2015-02-10"}
+                    {:sex "2", :care-status "N1", :legal-status "C2", :uasc "False", :dob "1999", :ceased "2014-02-18", :id "120", :report-year "2014", :placement "U1", :report-date "2014-02-10"}
+                    {:sex "2", :care-status "B1", :legal-status "C1", :uasc "False", :dob "2000", :ceased nil, :id "121", :report-year "2017", :placement "U1", :report-date "2017-02-10"}
+                    {:sex "2", :care-status "N1", :legal-status "C2", :uasc "False", :dob "1998", :ceased "2017-05-18", :id "122", :report-year "2017", :placement "U2", :report-date "2017-05-10"}
+                    {:sex "2", :care-status "N1", :legal-status "C2", :uasc "False", :dob "1998", :ceased nil, :id "122", :report-year "2018", :placement "U2", :report-date "2018-05-10"}
+                    {:sex "2", :care-status "N1", :legal-status "C2", :uasc "True", :dob "1999", :ceased "2017-07-18", :id "124", :report-year "2017", :placement "U2", :report-date "2017-06-10"}
+                    {:sex "2", :care-status "N1", :legal-status "V3", :uasc "True", :dob "1999", :ceased "2017-07-18", :id "124", :report-year "2017", :placement "U2", :report-date "2017-06-10"}
+                    {:sex "2", :care-status "N1", :legal-status "V4", :uasc "True", :dob "1999", :ceased "2017-07-18", :id "124", :report-year "2017", :placement "U2", :report-date "2017-06-10"}))
+
+(def example (prepare-ages (->> example-data
+                                (map c/format-episode)
+                                c/episodes
+                                c/episodes->periods)
+                           (r/make-random 50)))
 
 (def d-model (m/duration-model {0 [[0 0 0] [1 6 17] [35 56 83]]
                                 1 [[0 0 0] [1 6 17] [35 56 83]]
@@ -42,12 +48,11 @@
   (f/formatter :date))
 
 (deftest prepare-ages-test
-  (let [result (prepare-ages example (r/make-random 50))]
-    (testing "birthday is within correct year"
-      (is (= 14 (t/in-years (t/interval (:birthday (first result)) (t/date-time 2014))))))
-    (testing "admission age in correctly calculated"
-      (is (= (t/in-years (t/interval (t/date-time 1999) (t/date-time 2014)))
-             (:admission-age (first result)))))))
+  (testing "birthday is within correct year"
+    (is (= 14 (t/in-years (t/interval (:birthday (first example)) (t/date-time 2014))))))
+  (testing "admission age in correctly calculated"
+    (is (= (t/in-years (t/interval (t/date-time 1999) (t/date-time 2014)))
+           (:admission-age (first example))))))
 
 (deftest days-seq-test
   (let [start (f/parse date-format "2010-03-31")
@@ -56,7 +61,7 @@
       (is (= 5 (count (day-seq start end)))))))
 
 (deftest daily-summary-test
-  (let [result (daily-summary (prepare-ages example (r/make-random 50))
+  (let [result (daily-summary example
                               (f/parse date-format "2015-02-10")
                               (f/parse date-format "2015-02-28"))]
     (testing "frequency count of one 15yr old in Q1 for two weeks out of a possible three"
