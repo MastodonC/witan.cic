@@ -20,31 +20,44 @@
                     {:sex "2", :care-status "N1", :legal-status "V3", :uasc "True", :dob "1999", :ceased "2017-07-18", :id "124", :report-year "2017", :placement "U2", :report-date "2017-06-10"}
                     {:sex "2", :care-status "N1", :legal-status "V4", :uasc "True", :dob "1999", :ceased "2017-07-18", :id "124", :report-year "2017", :placement "U2", :report-date "2017-06-10"}))
 
+(def seed (r/make-random 50))
+
 (def example (prepare-ages (->> example-data
                                 (map c/format-episode)
                                 c/episodes
-                                c/episodes->periods)
-                           (r/make-random 50)))
+                                c/episodes->periods) seed))
 
-(def d-model (m/duration-model {0 [[0 0 0] [1 6 17] [35 56 83]]
-                                1 [[0 0 0] [1 6 17] [35 56 83]]
-                                2 [[0 0 0] [1 6 17] [35 56 83]]
-                                3 [[0 0 0] [1 6 17] [35 56 83]]
-                                4 [[0 0 0] [1 6 17] [35 56 83]]
-                                5 [[0 0 0] [1 6 17] [35 56 83]]
-                                6 [[0 0 0] [1 6 17] [35 56 83]]
-                                7 [[0 0 0] [1 6 17] [35 56 83]]
-                                8 [[0 0 0] [1 6 17] [35 56 83]]
-                                9 [[0 0 0] [1 6 17] [35 56 83]]
-                                10 [[0 0 0] [1 6 17] [35 56 83]]
-                                11 [[0 0 0] [1 6 17] [35 56 83]]
-                                12 [[0 0 0] [1 6 17] [35 56 83]]
-                                13 [[0 0 0] [1 6 17] [35 56 83]]
-                                14 [[0 0 0] [1 6 17] [35 56 83]]
-                                15 [[0 0 0] [1 6 17] [35 56 83]]
-                                16 [[0 0 0] [1 6 17] [35 56 83]]
-                                17 [[0 0 0] [1 6 17] [35 56 83]]
-                                18 [[0 0 0] [1 6 17] [35 56 83]]}))
+(defn duration-model-for-testing
+  "Given an admitted date and age of a child in care,
+  returns an expected duration in days - copied from
+  witan.cic.model"
+  [coefs]
+  (fn [age seed]
+    (let [empirical (get coefs (max 0 (min age 17)))
+          [r1 r2] (r/split seed)
+          quantile (int (p/sample-1 (d/uniform {:a 1 :b 3}) r1))
+          [lower median upper] (get empirical quantile)]
+      (m/sample-ci lower median upper r2))))
+
+(def d-model (duration-model-for-testing {0 [[0 0 0] [1 6 17] [35 56 83]]
+                                          1 [[0 0 0] [1 6 17] [35 56 83]]
+                                          2 [[0 0 0] [1 6 17] [35 56 83]]
+                                          3 [[0 0 0] [1 6 17] [35 56 83]]
+                                          4 [[0 0 0] [1 6 17] [35 56 83]]
+                                          5 [[0 0 0] [1 6 17] [35 56 83]]
+                                          6 [[0 0 0] [1 6 17] [35 56 83]]
+                                          7 [[0 0 0] [1 6 17] [35 56 83]]
+                                          8 [[0 0 0] [1 6 17] [35 56 83]]
+                                          9 [[0 0 0] [1 6 17] [35 56 83]]
+                                          10 [[0 0 0] [1 6 17] [35 56 83]]
+                                          11 [[0 0 0] [1 6 17] [35 56 83]]
+                                          12 [[0 0 0] [1 6 17] [35 56 83]]
+                                          13 [[0 0 0] [1 6 17] [35 56 83]]
+                                          14 [[0 0 0] [1 6 17] [35 56 83]]
+                                          15 [[0 0 0] [1 6 17] [35 56 83]]
+                                          16 [[0 0 0] [1 6 17] [35 56 83]]
+                                          17 [[0 0 0] [1 6 17] [35 56 83]]
+                                          18 [[0 0 0] [1 6 17] [35 56 83]]}))
 
 (def date-format
   (f/formatter :date))
