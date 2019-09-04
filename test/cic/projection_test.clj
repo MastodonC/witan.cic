@@ -83,3 +83,14 @@
       (= 3 (count result))
       (is (= 2 (reduce + (map #(get (val %) 15) result))))
       (is (= 2 (reduce + (map #(get (val %) :Q1) result)))))))
+
+(def e-model (m/episodes-model example))
+
+(deftest project-period-close-test
+  (let [open-data (-> example first (assoc :open? true))
+        result (project-period-close d-model e-model open-data seed)]
+    (testing "duration increases"
+      (is (> (:duration result) (:duration (first example)))))
+    (testing "duration is different with alternate seed"
+      (is (not= (:duration (project-period-close d-model e-model open-data (r/make-random 49)))
+                (:duration (first example)))))))
