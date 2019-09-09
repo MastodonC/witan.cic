@@ -44,7 +44,7 @@
                            project-from project-to
                            joiners-model duration-model
                            seed
-                           10)))
+                           1)))
 
 (defn format-actual-for-output
   [[date summary]]
@@ -61,7 +61,7 @@
 (defn episodes->projection-tsv
   [output-file episodes-file seed]
   (let [episodes (core/csv->episodes episodes-file)
-        output-from (f/parse date-format "2010-03-31")
+        output-from (f/parse date-format "2015-03-31")
         project-from (f/parse date-format "2018-03-31")
         project-to (f/parse date-format "2025-03-31")
         placement-costs (core/load-costs-csv "data/placement-costs.csv")
