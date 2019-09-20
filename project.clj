@@ -8,7 +8,8 @@
                  [org.clojure/math.combinatorics "0.1.6"]
                  [camel-snake-kebab "0.4.0"]
                  [kixi/stats "0.5.2"]
-                 [clj-time "0.15.0"]]
+                 [clj-time "0.15.0"]
+                 [net.cgrand/xforms "0.18.2"]]
   :main ^:skip-aot cic.core
   :target-path "target/%s"
   :profiles {:uberjar {:aot :all}})

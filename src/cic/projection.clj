@@ -124,6 +124,8 @@
     (with-open [file (io/writer path)]
       (data-csv/write-csv file (cons headers rows)))))
 
+(def pupil-data (atom nil))
+
 (defn project-1
   [open-periods closed-periods beginning end joiners-model duration-model seed]
   (let [[s1 s2 s3] (r/split-n seed 3)
@@ -131,7 +133,11 @@
         joiners-model (joiners-model seed)
         result (-> (map (partial project-period-close duration-model episodes-model) (prepare-ages open-periods s2) (r/split-n s3 (count open-periods)))
                    (concat (project-joiners joiners-model duration-model episodes-model beginning end s3)))]
-    (write-csv "pupil-data.csv" (map #(update % :episodes vec) result))
+    (reset! pupil-data
+            (into []
+                  (map #(update % :episodes vec))
+                  result))
+    ;;(write-csv "pupil-data.csv" (map #(update % :episodes vec) result))
     (daily-summary result beginning end)))
 
 (defn vals-histogram
