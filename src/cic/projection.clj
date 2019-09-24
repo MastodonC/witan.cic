@@ -6,7 +6,9 @@
             [kixi.stats.core :as k]
             [kixi.stats.distribution :as d]
             [kixi.stats.protocols :as p]
-            [redux.core :as redux]))
+            [redux.core :as redux]
+            [clojure.data.csv :as data-csv]
+            [clojure.java.io :as io]))
 
 (defn interval-days
   [start stop]
@@ -115,14 +117,28 @@
                                                ages-zero by-age))))
             {} (day-seq beginning end))))
 
+(defn write-csv [path row-data]
+  (let [columns (keys (first row-data))
+        headers (map name columns)
+        rows (mapv #(mapv % columns) row-data)]
+    (with-open [file (io/writer path)]
+      (data-csv/write-csv file (cons headers rows)))))
+
+(def pupil-data (atom nil))
+
 (defn project-1
   [open-periods closed-periods beginning end joiners-model duration-model seed]
   (let [[s1 s2 s3] (r/split-n seed 3)
         episodes-model (model/episodes-model (prepare-ages closed-periods s1))
-        joiners-model (joiners-model seed)]
-    (-> (map (partial project-period-close duration-model episodes-model) (prepare-ages open-periods s2) (r/split-n s3 (count open-periods)))
-        (concat (project-joiners joiners-model duration-model episodes-model beginning end s3))
-        (daily-summary beginning end))))
+        joiners-model (joiners-model seed)
+        result (-> (map (partial project-period-close duration-model episodes-model) (prepare-ages open-periods s2) (r/split-n s3 (count open-periods)))
+                   (concat (project-joiners joiners-model duration-model episodes-model beginning end s3)))]
+    (reset! pupil-data
+            (into []
+                  (map #(update % :episodes vec))
+                  result))
+    ;;(write-csv "pupil-data.csv" (map #(update % :episodes vec) result))
+    (daily-summary result beginning end)))
 
 (defn vals-histogram
   "Histogram reducing function for the the vals corresponding to `key`.
