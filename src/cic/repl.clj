@@ -31,13 +31,14 @@
 (defn write-projection!
   "Main REPL function for writing a projection CSV"
   [output-file n-runs seed]
-  (let [{:keys [periods placement-costs]} (load-model-inputs)
+  (let [{:keys [periods placement-costs duration-model]} (load-model-inputs)
         project-from (time/max-date (map :beginning periods))
         project-to (time/years-after project-from 3)
         learn-from (time/years-before project-from 4)
         projection-seed {:seed (filter :open? periods)
                          :date project-from}
         model-seed {:seed periods
+                    :duration-model duration-model
                     :joiner-range [learn-from project-from]
                     :episodes-range [learn-from project-from]}
         output-from (time/years-before learn-from 2)
@@ -55,7 +56,7 @@
 (defn write-validation!
   "Outputs model projection and linear regression projection together with actuals for comparison."
   [out-file n-runs seed]
-  (let [{:keys [periods placement-costs]} (load-model-inputs)]
+  (let [{:keys [periods placement-costs duration-model]} (load-model-inputs)]
     (->> (for [as-at (time/month-seq (time/make-date 2010 1 1)
                                      (time/make-date 2010 3 1))
                :let [periods-as-at (periods/periods-as-at periods as-at)
@@ -64,6 +65,7 @@
                      projection-seed {:seed (filter :open? periods-as-at)
                                       :date as-at}
                      model-seed {:seed periods
+                                 :duration-model duration-model
                                  :joiner-range [learn-from as-at]}]]
            (hash-map :date as-at
                      :model (validate/model projection-seed model-seed project-to {:seed seed :n-runs n-runs})
@@ -74,13 +76,14 @@
 (defn write-episodes!
   "Outputs a file showing a single projection in rowise episodes format."
   [out-file seed]
-  (let [{:keys [periods]} (load-model-inputs)
+  (let [{:keys [periods duration-model]} (load-model-inputs)
         project-from (time/max-date (map :beginning periods))
         project-to (time/years-after project-from 3)
         learn-from (time/years-before project-from 4)
         projection-seed {:seed (filter :open? periods)
                          :date project-from}
         model-seed {:seed periods
+                    :duration-model duration-model
                     :joiner-range [learn-from project-from]}]
     (->> (projection/project-1 projection-seed model-seed project-to (rand/seed seed))
          (write/episodes-output! out-file project-to))))

@@ -57,7 +57,7 @@
 
 (defn train-model
   "Build stochastic helper models using R. Random seed ensures determinism."
-  [{:keys [seed joiner-range episodes-range] :as model-seed} random-seed]
+  [{:keys [seed joiner-range episodes-range duration-model] :as model-seed} random-seed]
   (let [[s1 s2] (rand/split-n random-seed 2)
         [joiners-from joiners-to] joiner-range
         [episodes-from episodes-to] episodes-range
@@ -67,7 +67,7 @@
                         (model/joiners-model-gen s2))
      :episodes-model (-> (filter #(time/between? (:end %) episodes-from episodes-to) closed-periods)
                          (model/episodes-model))
-     :duration-model (model/duration-model-gen periods)}))
+     :duration-model duration-model}))
 
 (defn project-1
   "Returns a single sequence of projected periods."

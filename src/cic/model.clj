@@ -59,14 +59,6 @@
           [lower median upper] (get empirical quantile)]
       (sample-ci lower median upper r2))))
 
-(defn duration-model-gen
-  "Builds a duration model from calculated inputs."
-  [periods]
-  (-> (read/duration-csvs "data/duration-model-lower.csv"
-                          "data/duration-model-median.csv"
-                          "data/duration-model-upper.csv")
-      (duration-model)))
-
 (defn update-fuzzy
   "Like `update`, but the key is expected to be a vector of values.
   Any numeric values in the key are fuzzed, so for example
