@@ -32,16 +32,23 @@
   [out-file projection]
   (let [fields (apply juxt
                       (comp date->str :date)
-                      :cost
                       :actual
-                      (comp :lower :total)
-                      (comp :q1 :total)
-                      (comp :median :total)
-                      (comp :q3 :total)
-                      (comp :upper :total)
+                      :actual-cost
+                      (comp :lower :projected)
+                      (comp :q1 :projected)
+                      (comp :median :projected)
+                      (comp :q3 :projected)
+                      (comp :upper :projected)
+                      (comp :lower :projected-cost)
+                      (comp :q1 :projected-cost)
+                      (comp :median :projected-cost)
+                      (comp :q3 :projected-cost)
+                      (comp :upper :projected-cost)
                       (concat (map #(comp % :placements) spec/placements)
                               (map (fn [age] #(get-in % [:ages age])) spec/ages)))
-        headers (concat ["Date" "Cost" "Actual" "Lower CI" "Lower Quartile" "Median" "Upper Quartile" "Upper CI"]
+        headers (concat ["Date" "Actual" "Cost"]
+                        ["CiC Lower CI" "CiC Lower Quartile" "CiC Median" "CiC Upper Quartile" "CiC Upper CI"]
+                        ["Cost Lower CI" "Cost Lower Quartile" "Cost Median" "Cost Upper Quartile" "Cost Upper CI"]
                         (map name spec/placements)
                         (map str spec/ages))]
     (with-open [writer (io/writer out-file)]
