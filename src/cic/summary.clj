@@ -6,12 +6,11 @@
             [kixi.stats.core :as k]
             [kixi.stats.distribution :as d]))
 
-(defn assoc-costs
+(defn placements-cost
   [placement-costs placement-counts]
-  (let [cost (reduce (fn [total {:keys [placement cost]}]
-                       (+ total (* cost (get placement-counts placement 0))))
-                     0 placement-costs)]
-    (assoc placement-counts :cost cost)))
+  (reduce (fn [total {:keys [placement cost]}]
+            (+ total (* cost (get placement-counts placement 0))))
+          0 placement-costs))
 
 (defn periods-summary
   "Takes inferred future periods and calculates the total CiC"
@@ -21,11 +20,12 @@
     (reduce (fn [output date]
               (let [in-care (filter (periods/in-care? date) periods)
                     by-placement (->> (map #(:placement (periods/episode-on % date)) in-care)
-                                      (frequencies)
-                                      (assoc-costs placement-costs))
+                                      (frequencies))
                     by-age (->> (map #(periods/age-on % date) in-care)
-                                (frequencies))]
-                (assoc output date {:total (count in-care)
+                                (frequencies))
+                    cost (placements-cost placement-costs by-placement)]
+                (assoc output date {:count (count in-care)
+                                    :cost cost
                                     :placements (merge-with + placements-zero by-placement)
                                     :ages (merge-with + ages-zero by-age)})))
             {} dates)))
@@ -68,12 +68,12 @@
 
 (def combo-rf
   "A reducing function which will calculate data for each output row"
-  (redux/fuse {:total (redux/pre-step histogram-rf :total)
-               :cost (redux/pre-step k/median :cost)
-               :placements (-> (median-for-keys spec/placements)
-                               (redux/pre-step :placements))
-               :ages (-> (median-for-keys spec/ages)
-                         (redux/pre-step :ages))}))
+  (redux/fuse {:projected (redux/pre-step histogram-rf :count)
+               :projected-cost (redux/pre-step histogram-rf :cost)
+               :projected-placements (-> (median-for-keys spec/placements)
+                                         (redux/pre-step :placements))
+               :projected-ages (-> (median-for-keys spec/ages)
+                                   (redux/pre-step :ages))}))
 
 (defn grand-summary
   "A function to transduce over all runs.
