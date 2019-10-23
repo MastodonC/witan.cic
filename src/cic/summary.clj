@@ -70,10 +70,10 @@
   "A reducing function which will calculate data for each output row"
   (redux/fuse {:projected (redux/pre-step histogram-rf :count)
                :projected-cost (redux/pre-step histogram-rf :cost)
-               :projected-placements (-> (median-for-keys spec/placements)
-                                         (redux/pre-step :placements))
-               :projected-ages (-> (median-for-keys spec/ages)
-                                   (redux/pre-step :ages))}))
+               :placements (-> (median-for-keys spec/placements)
+                               (redux/pre-step :placements))
+               :ages (-> (median-for-keys spec/ages)
+                         (redux/pre-step :ages))}))
 
 (defn grand-summary
   "A function to transduce over all runs.

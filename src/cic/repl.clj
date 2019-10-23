@@ -29,7 +29,7 @@
       (cs/rename-keys {:count :actual
                        :cost :actual-cost})))
 
-(defn write-projection!
+(defn generate-projection-csv!
   "Main REPL function for writing a projection CSV"
   [output-file n-runs seed]
   (let [{:keys [periods placement-costs duration-model]} (load-model-inputs)
@@ -52,29 +52,20 @@
                                           (time/day-seq project-from project-to 7)
                                           placement-costs
                                           seed n-runs)]
+    (clojure.pprint/pprint (first projection))
+    (clojure.pprint/pprint (first summary-seq))
     (write/projection-output! output-file (concat summary-seq projection))))
 
-(defn write-validation!
+(defn generate-validation-csv!
   "Outputs model projection and linear regression projection together with actuals for comparison."
   [out-file n-runs seed]
   (let [{:keys [periods placement-costs duration-model]} (load-model-inputs)]
-    (->> (for [as-at (time/month-seq (time/make-date 2010 1 1)
-                                     (time/make-date 2010 3 1))
-               :let [periods-as-at (periods/periods-as-at periods as-at)
-                     learn-from (time/years-before as-at 2)
-                     project-to (time/years-after as-at 1)
-                     projection-seed {:seed (filter :open? periods-as-at)
-                                      :date as-at}
-                     model-seed {:seed periods
-                                 :duration-model duration-model
-                                 :joiner-range [learn-from as-at]}]]
-           (hash-map :date as-at
-                     :model (validate/model projection-seed model-seed project-to {:seed seed :n-runs n-runs})
-                     :comparison (validate/linear-regression periods-as-at project-to)
-                     :actual (validate/actual periods project-to)))
+    (->> (time/month-seq (time/make-date 2010 1 1)
+                         (time/make-date 2010 3 1))
+         (map #(validate/compare-models-at % duration-model periods seed n-runs))
          (write/validation-output! out-file))))
 
-(defn write-episodes!
+(defn generate-episodes-csv!
   "Outputs a file showing a single projection in rowise episodes format."
   [out-file seed]
   (let [{:keys [periods duration-model]} (load-model-inputs)

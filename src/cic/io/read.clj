@@ -64,6 +64,7 @@
        (map format-episode)))
 
 (defn duration-csv
+  "Helper function for duration-csvs"
   [filename]
   (let [parsed-csv (with-open [in-file (io/reader filename)]
                      (->> in-file
@@ -75,10 +76,13 @@
          (into {}))))
 
 (defn duration-csvs
-  [lower median upper]
-  (let [lower (duration-csv lower)
-        median (duration-csv median)
-        upper (duration-csv upper)]
+  "Loads three files containing the lower, median and upper bounds
+  of duration in care by age of entry.
+  Each of these files is output by a survival analysis in R."
+  [lower-filename median-filename upper-filename]
+  (let [lower (duration-csv lower-filename)
+        median (duration-csv median-filename)
+        upper (duration-csv upper-filename)]
     (->> (for [age (range 0 19)]
            (let [lower (get lower age)
                  median (get median age)
@@ -90,18 +94,23 @@
          (into {}))))
 
 (defn joiner-csvs
-  [mvn params]
-  (let [ages (->> (load-csv mvn)
-                  (mapv #(reduce-kv (fn [coll k v] (assoc coll k (parse-double v))) {} %)))
-        params (->> (load-csv params)
-                    (map #(-> %
-                              (update :admission-age parse-int)
-                              (update :shape parse-double)
-                              (update :rate parse-double)
-                              (update :dispersion parse-double)))
-                    (map (juxt :admission-age identity))
-                    (into {}))]
-    {:ages ages :params params}))
+  "Loads the two files required for projecting joiners.
+  The first is a sample of coefficients from the GLM (see coef.samples in joiners.R)
+  The second is an inference of the gamma dispersion by age (see gamma.rates in joiners.R)
+  although currently the same dispersion is reported for all ages."
+  [coefs-filename dispersion-filename]
+  (let [model-coefs (->> (load-csv coefs-filename)
+                         (first) ;; We're only interested in the first row
+                         (reduce-kv (fn [coll k v] (assoc coll k (parse-double v))) {}))
+        gamma-params (->> (load-csv dispersion-filename)
+                          (map #(-> %
+                                    (update :admission-age parse-int)
+                                    (update :shape parse-double)
+                                    (update :rate parse-double)
+                                    (update :dispersion parse-double)))
+                          (map (juxt :admission-age identity))
+                          (into {}))]
+    {:model-coefs model-coefs :gamma-params gamma-params}))
 
 (defn costs-csv
   [filename]
