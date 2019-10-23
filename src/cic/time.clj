@@ -74,3 +74,16 @@
 (def year t/year)
 
 (def without-time t/with-time-at-start-of-day)
+
+(defn financial-year-end
+  [date]
+  (let [year-end (t/date-time (t/year date) 3 31)]
+    (if (<= date year-end)
+      year-end
+      (years-after year-end 1))))
+
+(defn financial-year-seq
+  "Given a seed date, return a lazy seq of subsequent year-ends"
+  [date]
+  (p/periodic-seq (financial-year-end date)
+                  (t/years 1)))

@@ -1,6 +1,7 @@
 (ns cic.validate
   (:require [cic.periods :as periods]
             [cic.projection :as p]
+            [cic.summary :as summary]
             [cic.time :as time]
             [clj-time.coerce :as coerce]
             [clj-time.core :as tc]

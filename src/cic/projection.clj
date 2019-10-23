@@ -80,15 +80,20 @@
 
 (defn project-n
   "Returns n stochastic sequences of projected periods."
-  [projection-seed model-seed project-dates placement-costs seed n-runs]
+  [projection-seed model-seed project-dates seed n-runs]
   (let [max-date (time/max-date project-dates)]
-    (map #(-> (project-1 projection-seed model-seed max-date %)
-              (summary/periods-summary project-dates placement-costs))
+    (map #(project-1 projection-seed model-seed max-date %)
          (-> (rand/seed seed)
              (rand/split-n n-runs)))))
 
 (defn projection
   "Calculates summary statistics over n sequences of projected periods."
   [projection-seed model-seed project-dates placement-costs seed n-runs]
-  (-> (project-n projection-seed model-seed project-dates placement-costs seed n-runs)
-      (summary/grand-summary)))
+  (->> (project-n projection-seed model-seed project-dates seed n-runs)
+       (map #(summary/periods-summary % project-dates placement-costs))
+       (summary/grand-summary)))
+
+(defn cost-projection
+  [projection-seed model-seed project-until placement-costs seed n-runs]
+  (->> (project-n projection-seed model-seed [project-until] seed n-runs)
+       (summary/financial-year placement-costs)))

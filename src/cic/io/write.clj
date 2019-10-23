@@ -87,3 +87,20 @@
           (map (juxt (comp date->str :date) :model :linear-regression :actual) validation))
          (data-csv/write-csv writer))))
 
+(defn financial-output!
+  [out-file cost-projection]
+  (let [headers (concat ["Financial year end" "Cost Lower CI" "Cost Lower Quartile" "Cost Median" "Cost Upper Quartile" "Cost Upper CI"]
+                        (map name spec/placements))
+        fields (apply juxt
+                      :year
+                      (comp :lower :projected-cost)
+                      (comp :q1 :projected-cost)
+                      (comp :median :projected-cost)
+                      (comp :q3 :projected-cost)
+                      (comp :upper :projected-cost)
+                      (map #(comp % :placements) spec/placements))]
+    (with-open [writer (io/writer out-file)]
+      (->> (map fields cost-projection)
+           (concat [headers])
+           (data-csv/write-csv writer)))))
+

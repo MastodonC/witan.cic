@@ -52,9 +52,28 @@
                                           (time/day-seq project-from project-to 7)
                                           placement-costs
                                           seed n-runs)]
-    (clojure.pprint/pprint (first projection))
-    (clojure.pprint/pprint (first summary-seq))
     (write/projection-output! output-file (concat summary-seq projection))))
+
+(defn generate-financial-csv!
+  [output-file n-runs seed]
+  (let [{:keys [periods placement-costs duration-model]} (load-model-inputs)
+        project-from (time/max-date (map :beginning periods))
+        project-to (time/financial-year-end (time/years-after project-from 3))
+        learn-from (time/years-before project-from 4)
+        projection-seed {:seed (filter :open? periods)
+                         :date project-from}
+        model-seed {:seed periods
+                    :duration-model duration-model
+                    :joiner-range [learn-from project-from]
+                    :episodes-range [learn-from project-from]}
+        output-from (time/years-before learn-from 2)
+        cost-projection (->> (projection/cost-projection projection-seed
+                                                         model-seed
+                                                         project-to
+                                                         placement-costs
+                                                         seed n-runs)
+                             (filter #(and (<= (time/year project-from) (:year %) (time/year project-to)))))]
+    (write/financial-output! output-file cost-projection)))
 
 (defn generate-validation-csv!
   "Outputs model projection and linear regression projection together with actuals for comparison."
