@@ -11,6 +11,5 @@
                  [kixi/stats "0.5.2"]
                  [clj-time "0.15.0"]
                  [com.taoensso/timbre "4.10.0"]]
-  :main ^:skip-aot cic.core
   :target-path "target/%s"
   :profiles {:uberjar {:aot :all}})

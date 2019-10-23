@@ -13,16 +13,15 @@
 (defn joiners-model
   "Given the date of a joiner at a particular age,
   returns the interval in days until the next joiner"
-  [{:keys [ages params]}]
+  [{:keys [model-coefs gamma-params]}]
   (fn [age date seed]
-    (let [model (first ages)
-          {:keys [dispersion]} (get params age)
+    (let [{:keys [dispersion]} (get gamma-params age)
           shape (/ 1 dispersion)
           day (t/in-days (t/interval (t/epoch) date))
-          intercept (:intercept model)
-          a (get model (keyword (str "admission-age-" age)) 0.0)
-          b (get model :beginning)
-          c (get model (keyword (str "beginning:admission-age-" age)) 0.0)
+          intercept (:intercept model-coefs)
+          a (get model-coefs (keyword (str "admission-age-" age)) 0.0)
+          b (get model-coefs :beginning)
+          c (get model-coefs (keyword (str "beginning:admission-age-" age)) 0.0)
           mean (m/exp (+ intercept a (* b day) (* c day)))]
       (p/sample-1 (d/gamma {:shape shape :scale (/ mean shape)}) seed))))
 

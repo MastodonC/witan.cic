@@ -83,7 +83,7 @@
   [out-file validation]
   (with-open [writer (io/writer out-file)]
     (->> (concat
-          (vector ["Date" "Model" "Comparison" "Actual"])
-          (map (juxt (comp date->str :date) :model :comparison :actual) validation))
+          (vector ["Date" "Model" "Linear Regression" "Actual"])
+          (map (juxt (comp date->str :date) :model :linear-regression :actual) validation))
          (data-csv/write-csv writer))))
 
