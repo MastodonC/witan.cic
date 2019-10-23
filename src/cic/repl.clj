@@ -26,7 +26,8 @@
 (defn format-actual-for-output
   [[date summary]]
   (-> (assoc summary :date date)
-      (cs/rename-keys {:total :actual})))
+      (cs/rename-keys {:count :actual
+                       :cost :actual-cost})))
 
 (defn write-projection!
   "Main REPL function for writing a projection CSV"
