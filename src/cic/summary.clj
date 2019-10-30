@@ -149,37 +149,44 @@
     (* days (get costs-lookup placement 0))))
 
 (def fnil-plus (fnil + 0))
+(def fnil-inc (fnil inc 0))
 
-(defn financial-year-costs
+(defn financial-year-metrics
   "Calculates the cost per financial year for a single period"
   [costs-lookup periods]
-  (reduce (fn [coll period]
-            (reduce (fn [coll [year episodes]]
-                      (reduce (fn [coll {:keys [placement] :as episode}]
-                                (let [cost (episode-cost costs-lookup episode)]
-                                  (-> coll
-                                      (update-in [year :cost] fnil-plus cost)
-                                      (update-in [year :placements placement] fnil-plus cost))))
-                              coll
-                              episodes))
-                    coll
-                    (episodes-per-financial-year period)))
+  (reduce (fn [coll {:keys [beginning admission-age] :as period}]
+            (let [year (time/year (time/financial-year-end beginning))]
+              (-> (reduce (fn [coll [year episodes]]
+                            (reduce (fn [coll {:keys [placement] :as episode}]
+                                      (let [cost (episode-cost costs-lookup episode)]
+                                        (-> coll
+                                            (update-in [year :cost] fnil-plus cost)
+                                            (update-in [year :placements placement] fnil-plus cost))))
+                                    coll
+                                    episodes))
+                          coll
+                          (episodes-per-financial-year period))
+                  (update-in [year :joiners-ages admission-age] fnil-inc)
+                  (update-in [year :joiners] fnil-inc))))
           {}
           periods))
 
-(def financial-rf
+(def annual-rf
   "A reducing function which will calculate data for each output row"
   (redux/fuse {:projected-cost (redux/pre-step histogram-rf :cost)
                :placements (-> (median-for-keys spec/placements)
-                               (redux/pre-step :placements))}))
+                               (redux/pre-step :placements))
+               :projected-joiners (redux/pre-step histogram-rf :joiners)
+               :joiners-ages (-> (median-for-keys spec/ages)
+                                 (redux/pre-step :joiners-ages))}))
 
-(defn financial-year
+(defn annual
   "Main entry function for calculating the cost per financial year from a sequence of runs."
   [placement-costs runs]
   (let [costs-lookup (into {} (map (juxt :placement :cost) placement-costs))
-        run-costs (map #(financial-year-costs costs-lookup %) runs)
+        run-costs (map #(financial-year-metrics costs-lookup %) runs)
         years (-> run-costs first keys)
-        rf (->> (map (fn [year] (vector year (redux/pre-step financial-rf (getter year)))) years)
+        rf (->> (map (fn [year] (vector year (redux/pre-step annual-rf (getter year)))) years)
                 (into {})
                 (redux/fuse))]
     (->> (transduce identity rf run-costs)

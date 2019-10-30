@@ -39,6 +39,7 @@
                     :end (time/without-time period-end)
                     :period-id (rand/rand-id 8 seed-4)
                     :birthday birthday
+                    :admission-age age
                     :dob (time/year birthday)
                     :episodes episodes}]
         (cons period
@@ -96,4 +97,4 @@
 (defn cost-projection
   [projection-seed model-seed project-until placement-costs seed n-runs]
   (->> (project-n projection-seed model-seed [project-until] seed n-runs)
-       (summary/financial-year placement-costs)))
+       (summary/annual placement-costs)))
