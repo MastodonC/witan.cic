@@ -11,16 +11,6 @@
   (doto (File/createTempFile prefix suffix)
     (.deleteOnExit)))
 
-(defn write-mapseq
-  [mapseq]
-  (let [path (temp-file "file" ".csv")
-        cols (-> mapseq first keys)]
-    (with-open [writer (io/writer path)]
-      (data-csv/write-csv writer
-                          (concat (vector (map name cols))
-                                  (map (apply juxt cols) mapseq))))
-    path))
-
 (def date-format
   (f/formatter :date))
 
@@ -28,8 +18,8 @@
   [date]
   (f/unparse date-format date))
 
-(defn projection-output!
-  [out-file projection]
+(defn projection-table
+  [projection]
   (let [fields (apply juxt
                       (comp date->str :date)
                       :actual
@@ -51,44 +41,47 @@
                         ["Cost Lower CI" "Cost Lower Quartile" "Cost Median" "Cost Upper Quartile" "Cost Upper CI"]
                         (map name spec/placements)
                         (map str spec/ages))]
-    (with-open [writer (io/writer out-file)]
-      (data-csv/write-csv writer (concat [headers] (map fields projection))))))
+    (into [headers]
+          (map fields)
+          projection)))
 
-(defn episodes-output!
-  [out-file project-to projection]
-  (with-open [writer (io/writer out-file)]
-    (->> projection
-         (mapcat (fn [{:keys [period-id beginning duration dob episodes end]}]
-                   (->> (partition-all 2 1 episodes)
-                        (filter (fn [[a b]]
-                                  (or (nil? b) (> (:offset b) (:offset a)))))
-                        (map-indexed (fn [idx [{:keys [placement offset]} to]]
-                                       (hash-map :period-id period-id
-                                                 :dob dob
-                                                 :episode (inc idx)
-                                                 :start (time/days-after beginning offset)
-                                                 :end (or (some->> to :offset dec (time/days-after beginning)) end)
-                                                 :placement placement)))
-                        (filter (fn [{:keys [period-id dob episode start end placement]}]
-                                  (time/< start project-to)))
-                        (map (fn [{:keys [period-id dob episode start end placement] :as period}]
-                               (vector period-id dob episode
-                                       (date->str start)
-                                       (when (time/< end project-to) (date->str end))
-                                       (name placement)))))))
-         (concat [(vector "ID" "DOB" "Episode" "Start" "End" "Placement")])
-         (data-csv/write-csv writer))))
+(defn period->episodes-rows
+  [project-to {:keys [period-id beginning dob episodes end]}]
+  (->> (partition-all 2 1 episodes)
+       (filter (fn [[a b]]
+                 (or (nil? b) (> (:offset b) (:offset a)))))
+       (map-indexed (fn [idx [{:keys [placement offset]} to]]
+                      (hash-map :period-id period-id
+                                :dob dob
+                                :episode (inc idx)
+                                :start (time/days-after beginning offset)
+                                :end (or (some->> to :offset dec (time/days-after beginning)) end)
+                                :placement placement)))
+       (filter (fn [{:keys [period-id dob episode start end placement]}]
+                 (time/< start project-to)))
+       (map (fn [{:keys [period-id dob episode start end placement] :as period}]
+              (vector period-id dob episode
+                      (date->str start)
+                      (when (time/< end project-to) (date->str end))
+                      (name placement))))))
 
-(defn validation-output!
+(defn episodes-table
+  [project-to projection]
+  (let [headers ["ID" "DOB" "Episode" "Start" "End" "Placement"]]
+    (into [headers]
+          (mapcat (partial period->episodes-rows project-to))
+          projection)))
+
+(defn validation-table
   [out-file validation]
-  (with-open [writer (io/writer out-file)]
-    (->> (concat
-          (vector ["Date" "Model" "Linear Regression" "Actual"])
-          (map (juxt (comp date->str :date) :model :linear-regression :actual) validation))
-         (data-csv/write-csv writer))))
+  (let [headers ["Date" "Model" "Linear Regression" "Actual"]
+        fields (juxt (comp date->str :date) :model :linear-regression :actual)]
+    (into [headers]
+          (map fields)
+          validation)))
 
-(defn financial-output!
-  [out-file cost-projection]
+(defn annual-report-table
+  [cost-projection]
   (let [headers (concat ["Financial year end" "Cost Lower CI" "Cost Lower Quartile" "Cost Median" "Cost Upper Quartile" "Cost Upper CI"]
                         (map name spec/placements))
         fields (apply juxt
@@ -99,8 +92,21 @@
                       (comp :q3 :projected-cost)
                       (comp :upper :projected-cost)
                       (map #(comp % :placements) spec/placements))]
-    (with-open [writer (io/writer out-file)]
-      (->> (map fields cost-projection)
-           (concat [headers])
-           (data-csv/write-csv writer)))))
+    (into [headers]
+          (map fields)
+          cost-projection)))
 
+(defn write-csv!
+  [out-file tablular-data]
+  (with-open [writer (io/writer out-file)]
+    (data-csv/write-csv writer tablular-data)))
+
+(defn mapseq->csv!
+  [mapseq]
+  (let [path (temp-file "file" ".csv")
+        cols (-> mapseq first keys)]
+    (->> (into [(mapv name cols)]
+               (map (apply juxt cols))
+               mapseq)
+         (write-csv! path))
+    path))

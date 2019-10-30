@@ -43,18 +43,20 @@
                     :joiner-range [learn-from project-from]
                     :episodes-range [learn-from project-from]}
         output-from (time/years-before learn-from 2)
-        summary-seq (->> (summary/periods-summary (rand/prepare-ages periods (rand/seed seed))
-                                                  (time/day-seq output-from project-from 7)
-                                                  placement-costs)
-                         (map format-actual-for-output))
+        summary-seq (into []
+                          (map format-actual-for-output)
+                          (summary/periods-summary (rand/prepare-ages periods (rand/seed seed))
+                                                   (time/day-seq output-from project-from 7)
+                                                   placement-costs))
         projection (projection/projection projection-seed
                                           model-seed
                                           (time/day-seq project-from project-to 7)
                                           placement-costs
                                           seed n-runs)]
-    (write/projection-output! output-file (concat summary-seq projection))))
+    (->> (write/projection-table (concat summary-seq projection))
+         (write/write-csv! output-file))))
 
-(defn generate-financial-csv!
+(defn generate-annual-csv!
   [output-file n-runs seed]
   (let [{:keys [periods placement-costs duration-model]} (load-model-inputs)
         project-from (time/max-date (map :beginning periods))
@@ -67,22 +69,28 @@
                     :joiner-range [learn-from project-from]
                     :episodes-range [learn-from project-from]}
         output-from (time/years-before learn-from 2)
-        cost-projection (->> (projection/cost-projection projection-seed
-                                                         model-seed
-                                                         project-to
-                                                         placement-costs
-                                                         seed n-runs)
-                             (filter #(and (<= (time/year project-from) (:year %) (time/year project-to)))))]
-    (write/financial-output! output-file cost-projection)))
+        cost-projection (into []
+                              (filter #(<= (time/year project-from)
+                                           (:year %)
+                                           (time/year project-to)))
+                              (projection/cost-projection projection-seed
+                                                          model-seed
+                                                          project-to
+                                                          placement-costs
+                                                          seed n-runs))]
+    (->> (write/annual-report-table cost-projection)
+         (write/write-csv! output-file))))
 
 (defn generate-validation-csv!
   "Outputs model projection and linear regression projection together with actuals for comparison."
   [out-file n-runs seed]
-  (let [{:keys [periods placement-costs duration-model]} (load-model-inputs)]
-    (->> (time/month-seq (time/make-date 2010 1 1)
-                         (time/make-date 2010 3 1))
-         (map #(validate/compare-models-at % duration-model periods seed n-runs))
-         (write/validation-output! out-file))))
+  (let [{:keys [periods placement-costs duration-model]} (load-model-inputs)
+        validation (into []
+                         (map #(validate/compare-models-at % duration-model periods seed n-runs))
+                         (time/month-seq (time/make-date 2010 1 1)
+                                         (time/make-date 2010 3 1)))]
+    (->> (write/validation-table validation)
+         (write/write-csv! out-file))))
 
 (defn generate-episodes-csv!
   "Outputs a file showing a single projection in rowise episodes format."
@@ -97,4 +105,5 @@
                     :duration-model duration-model
                     :joiner-range [learn-from project-from]}]
     (->> (projection/project-1 projection-seed model-seed project-to (rand/seed seed))
-         (write/episodes-output! out-file project-to))))
+         (write/episodes-table project-to)
+         (write/write-csv! out-file))))

@@ -2,6 +2,7 @@
   (:require [cic.time :as time]
             [cic.spec :as spec]
             [cic.periods :as periods]
+            [net.cgrand.xforms :as x]
             [redux.core :as redux]
             [kixi.stats.core :as k]
             [kixi.stats.distribution :as d]))
@@ -93,17 +94,18 @@
   episode ends. We assume each episodes lasts at least one full
   day. A one-day episode will have an identical start and end date."
   [{:keys [beginning end episodes] :as period}]
-  (->> episodes
-       (partition-all 2 1)
-       (map (fn [[{:keys [placement] :as a} b]]
-              (let [start (time/days-after beginning (:offset a))
-                    end (or (some->> b :offset dec (time/days-after beginning))
-                            end)]
-                (when (time/< end start)
-                  (prn period))
-                (hash-map :placement placement
-                          :start start
-                          :end end))))))
+  (into []
+        (comp (x/partition 2 1 [nil]) ;; Simulate partition-all by padding the final partition with one nil
+              (map (fn [[{:keys [placement] :as a} b]]
+                     (let [start (time/days-after beginning (:offset a))
+                           end (or (some->> b :offset dec (time/days-after beginning))
+                                   end)]
+                       (when (time/< end start)
+                         (prn period))
+                       (hash-map :placement placement
+                                 :start start
+                                 :end end)))))
+        episodes))
 
 (defn split-episode-dates-at*
   "Helper for split-episodes-dates-at"
