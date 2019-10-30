@@ -26,4 +26,4 @@
        (map #(-> (select-keys % [:admission-age :beginning])
                  (update :beginning date->str)
                  (cs/rename-keys {:admission-age :admission_age})))
-       (write/write-mapseq)))
+       (write/mapseq->csv!)))

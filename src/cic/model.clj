@@ -106,7 +106,7 @@
              candidates (get age-duration-lookup [(min age 17) duration-yrs])
              candidate (rand/rand-nth candidates seed)]
          (if (seq candidate)
-           candidate
+           (take-while #(< (:offset %) duration) candidate)
            [{:offset 0 :placement spec/unknown-placement}])))
       ([age duration {:keys [episodes] :as open-period} seed]
        (let [{:keys [placement offset]} (last episodes)]
