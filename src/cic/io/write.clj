@@ -105,6 +105,14 @@
           (map fields)
           cost-projection)))
 
+(defn placement-sequence-table
+  [{:keys [age-sequence-totals age-totals]}]
+  (let [headers ["Age" "Placement Sequence" "Proportion"]]
+    (into [headers]
+          (map (fn [[[age sequence] count]]
+                 (vector age sequence (double (/ count (get age-totals age))))))
+          age-sequence-totals)))
+
 (defn write-csv!
   [out-file tablular-data]
   (with-open [writer (io/writer out-file)]

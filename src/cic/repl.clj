@@ -9,7 +9,11 @@
             [cic.summary :as summary]
             [cic.time :as time]
             [cic.validate :as validate]
-            [clojure.set :as cs]))
+            [clojure.set :as cs]
+            [net.cgrand.xforms :as xf]
+            [net.cgrand.xforms.rfs :as xrf]
+            [redux.core :as rx]
+            [kixi.stats.core :as k]))
 
 (defn load-model-inputs
   "A useful REPL function to load the data files and convert them to  model inputs"
@@ -80,6 +84,44 @@
                                                           seed n-runs))]
     (->> (write/annual-report-table cost-projection)
          (write/write-csv! output-file))))
+
+
+(defn period->placement-seq
+  "Takes a period and returns the sequence of placements as AA-BB-CC.
+  Consecutive episodes in the same placement are collapsed into one."
+  [{:keys [episodes] :as period}]
+  (transduce
+   (comp (map :placement)
+         (partition-by identity)
+         (map (comp name first))
+         (interpose "-"))
+   xrf/str
+   episodes))
+
+(defn generate-placement-sequence-csv!
+  [output-file n-runs seed]
+  (let [{:keys [periods placement-costs duration-model]} (load-model-inputs)
+        project-from (time/max-date (map :beginning periods))
+        project-to (time/financial-year-end (time/years-after project-from 3))
+        learn-from (time/years-before project-from 4)
+        projection-seed {:seed (filter :open? periods)
+                         :date project-from}
+        model-seed {:seed periods
+                    :duration-model duration-model
+                    :joiner-range [learn-from project-from]
+                    :episodes-range [learn-from project-from]}
+        output-from (time/years-before learn-from 2)]
+    (let [age-sequence-totals (->> (rand/split-n (rand/seed seed) n-runs)
+                                   (pmap (fn [seed]
+                                           (->> (projection/project-1 projection-seed model-seed project-to seed)
+                                                (xf/into [] (xf/by-key (juxt :admission-age period->placement-seq) xf/count)))))
+                                   (apply concat)
+                                   (into {} (xf/by-key (xf/reduce +))))
+          age-totals (xf/into {} (xf/by-key ffirst second (xf/reduce +)) age-sequence-totals)]
+      (->> {:age-sequence-totals age-sequence-totals
+            :age-totals age-totals}
+           (write/placement-sequence-table)
+           (write/write-csv! output-file)))))
 
 (defn generate-validation-csv!
   "Outputs model projection and linear regression projection together with actuals for comparison."
