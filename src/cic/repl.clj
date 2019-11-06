@@ -63,28 +63,43 @@
 (defn generate-annual-csv!
   [output-file n-runs seed]
   (let [{:keys [periods placement-costs duration-model]} (load-model-inputs)
-        project-from (time/max-date (map :beginning periods))
-        project-to (time/financial-year-end (time/years-after project-from 3))
-        learn-from (time/years-before project-from 4)
+        project-from (time/days-after (time/financial-year-end (time/max-date (map :beginning periods))) 1)
+        project-to (time/financial-year-end (time/years-after project-from 5))
+        learn-from (time/years-before project-from 10)
         projection-seed {:seed (filter :open? periods)
                          :date project-from}
+        costs-lookup (into {} (map (juxt :placement :cost) placement-costs))
+        actuals-by-year-age (into {} (comp (filter #(time/< (:beginning %) project-from))
+                                           (xf/by-key (juxt (comp time/year time/financial-year-end :beginning) :admission-age)
+                                                      (xf/reduce k/count)))
+                                  (rand/prepare-ages periods (rand/seed seed)))
+        actuals-by-year (into {} (xf/by-key ffirst second (xf/reduce +)) actuals-by-year-age)
+        actuals (->> (reduce (fn [coll [year joiners]]
+                               (-> (assoc-in coll [year :actual-joiners] joiners)
+                                   (assoc-in [year :year] year)))
+                             (reduce (fn [coll [[year age] joiners]]
+                                       (assoc-in coll [year :joiners-ages age] joiners))
+                                     {} actuals-by-year-age)
+                             actuals-by-year)
+                     (vals))
         model-seed {:seed periods
                     :duration-model duration-model
                     :joiner-range [learn-from project-from]
                     :episodes-range [learn-from project-from]}
         output-from (time/years-before learn-from 2)
-        cost-projection (into []
-                              (filter #(<= (time/year project-from)
-                                           (:year %)
-                                           (time/year project-to)))
-                              (projection/cost-projection projection-seed
-                                                          model-seed
-                                                          project-to
-                                                          placement-costs
-                                                          seed n-runs))]
+        _(println project-from project-to learn-from output-from)
+        cost-projection (-> (into []
+                                  (filter #(< (time/year project-from)
+                                              (:year %)
+                                              (time/year project-to)))
+                                  (projection/cost-projection projection-seed
+                                                              model-seed
+                                                              project-to
+                                                              placement-costs
+                                                              seed n-runs))
+                            (into actuals))]
     (->> (write/annual-report-table cost-projection)
          (write/write-csv! output-file))))
-
 
 (defn period->placement-seq
   "Takes a period and returns the sequence of placements as AA-BB-CC.
