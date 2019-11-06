@@ -106,12 +106,16 @@
           cost-projection)))
 
 (defn placement-sequence-table
-  [{:keys [age-sequence-totals age-totals]}]
-  (let [headers ["Age" "Placement Sequence" "Proportion"]]
-    (into [headers]
-          (map (fn [[[age sequence] count]]
-                 (vector age sequence (double (/ count (get age-totals age))))))
-          age-sequence-totals)))
+  [{:keys [projected-age-sequence-totals projected-age-totals
+           actual-age-sequence-totals actual-age-totals]}]
+  (let [headers ["Actual / Projected" "Age" "Placement Sequence" "Proportion"]]
+    (-> (into [headers]
+              (map (fn [[[age sequence] count]]
+                     (vector "Projected" age sequence (double (/ count (get projected-age-totals age))))))
+              projected-age-sequence-totals)
+        (into (map (fn [[[age sequence] count]]
+                     (vector "Actual" age sequence (double (/ count (get actual-age-totals age))))))
+              actual-age-sequence-totals))))
 
 (defn write-csv!
   [out-file tablular-data]

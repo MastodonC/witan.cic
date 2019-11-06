@@ -104,6 +104,7 @@
         project-from (time/max-date (map :beginning periods))
         project-to (time/financial-year-end (time/years-after project-from 3))
         learn-from (time/years-before project-from 4)
+        closed-periods (remove :open? periods)
         projection-seed {:seed (filter :open? periods)
                          :date project-from}
         model-seed {:seed periods
@@ -111,15 +112,19 @@
                     :joiner-range [learn-from project-from]
                     :episodes-range [learn-from project-from]}
         output-from (time/years-before learn-from 2)]
-    (let [age-sequence-totals (->> (rand/split-n (rand/seed seed) n-runs)
+    (let [freduce (partial xf/into [] (xf/by-key (juxt :admission-age period->placement-seq) xf/count))
+          age-summary (partial xf/into {} (xf/by-key ffirst second (xf/reduce +)))
+          age-sequence-totals (->> (rand/split-n (rand/seed seed) n-runs)
                                    (pmap (fn [seed]
-                                           (->> (projection/project-1 projection-seed model-seed project-to seed)
-                                                (xf/into [] (xf/by-key (juxt :admission-age period->placement-seq) xf/count)))))
+                                           (freduce (projection/project-1 projection-seed model-seed project-to seed))))
                                    (apply concat)
                                    (into {} (xf/by-key (xf/reduce +))))
-          age-totals (xf/into {} (xf/by-key ffirst second (xf/reduce +)) age-sequence-totals)]
-      (->> {:age-sequence-totals age-sequence-totals
-            :age-totals age-totals}
+          actual-age-sequence-totals (freduce (rand/prepare-ages closed-periods (rand/seed seed)))
+          age-totals (age-summary age-sequence-totals)]
+      (->> {:projected-age-sequence-totals age-sequence-totals
+            :projected-age-totals age-totals
+            :actual-age-sequence-totals actual-age-sequence-totals
+            :actual-age-totals (age-summary actual-age-sequence-totals)}
            (write/placement-sequence-table)
            (write/write-csv! output-file)))))
 
