@@ -82,8 +82,11 @@
 
 (defn annual-report-table
   [cost-projection]
-  (let [headers (concat ["Financial year end" "Cost Lower CI" "Cost Lower Quartile" "Cost Median" "Cost Upper Quartile" "Cost Upper CI"]
-                        (map name spec/placements))
+  (let [headers (concat ["Financial year end"]
+                        ["Cost Lower CI" "Cost Lower Quartile" "Cost Median" "Cost Upper Quartile" "Cost Upper CI"]
+                        ["Joiners Lower CI" "Joiners Lower Quartile" "Joiners Median" "Joiners Upper Quartile" "Joiners Upper CI"]
+                        (map name spec/placements)
+                        (map str spec/ages))
         fields (apply juxt
                       :year
                       (comp :lower :projected-cost)
@@ -91,7 +94,13 @@
                       (comp :median :projected-cost)
                       (comp :q3 :projected-cost)
                       (comp :upper :projected-cost)
-                      (map #(comp % :placements) spec/placements))]
+                      (comp :lower :projected-joiners)
+                      (comp :q1 :projected-joiners)
+                      (comp :median :projected-joiners)
+                      (comp :q3 :projected-joiners)
+                      (comp :upper :projected-joiners)
+                      (concat (map #(comp % :placements) spec/placements)
+                              (map (fn [age] #(get-in % [:joiners-ages age])) spec/ages)))]
     (into [headers]
           (map fields)
           cost-projection)))
