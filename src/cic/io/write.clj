@@ -82,13 +82,14 @@
 
 (defn annual-report-table
   [cost-projection]
-  (let [headers (concat ["Financial year end"]
+  (let [headers (concat ["Financial Year End" "Joiners Actual"]
                         ["Cost Lower CI" "Cost Lower Quartile" "Cost Median" "Cost Upper Quartile" "Cost Upper CI"]
                         ["Joiners Lower CI" "Joiners Lower Quartile" "Joiners Median" "Joiners Upper Quartile" "Joiners Upper CI"]
                         (map name spec/placements)
                         (map str spec/ages))
         fields (apply juxt
                       :year
+                      :actual-joiners
                       (comp :lower :projected-cost)
                       (comp :q1 :projected-cost)
                       (comp :median :projected-cost)
@@ -104,6 +105,18 @@
     (into [headers]
           (map fields)
           cost-projection)))
+
+(defn placement-sequence-table
+  [{:keys [projected-age-sequence-totals projected-age-totals
+           actual-age-sequence-totals actual-age-totals]}]
+  (let [headers ["Actual / Projected" "Age" "Placement Sequence" "Proportion"]]
+    (-> (into [headers]
+              (map (fn [[[age sequence] count]]
+                     (vector "Projected" age sequence (double (/ count (get projected-age-totals age))))))
+              projected-age-sequence-totals)
+        (into (map (fn [[[age sequence] count]]
+                     (vector "Actual" age sequence (double (/ count (get actual-age-totals age))))))
+              actual-age-sequence-totals))))
 
 (defn write-csv!
   [out-file tablular-data]
