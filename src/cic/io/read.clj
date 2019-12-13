@@ -32,18 +32,28 @@
       (#{:U4 :U5 :U6} placement) :Q2
       :else placement)))
 
+(defn parse-ceased [s]
+  (cond
+    str/blank? nil
+    #(= % "NA") nil
+    :else (parse-date s)))
+
 (defn format-episode
   [row]
-  (-> (cs/rename-keys row {:id :child-id :care-status :CIN})
-      (update :child-id #(Long/parseLong %))
-      (update :dob #(Long/parseLong %))
-      (update :report-date parse-date)
-      (update :ceased #(when-not (str/blank? %) (parse-date %)))
-      (update :report-year #(Long/parseLong %))
-      (update :placement parse-placement)
-      (update :CIN keyword)
-      (update :legal-status keyword)
-      (update :uasc (comp boolean #{"True"}))))
+  (try
+    (-> (cs/rename-keys row {:id :child-id :care-status :CIN})
+        (update :child-id #(Long/parseLong %))
+        (update :dob #(Long/parseLong %))
+        (update :report-date parse-date)
+        (update :ceased parse-ceased)
+        (update :report-year #(Long/parseLong %))
+        (update :placement parse-placement)
+        (update :CIN keyword)
+        (update :legal-status keyword)
+        (update :uasc (comp boolean #{"True"})))
+    (catch Exception e
+      {:error (ex-message e)
+       :data row})))
 
 (defn load-csv
   "Loads csv file with each row as a vector.
@@ -118,3 +128,49 @@
        (map #(-> %
                  (update :placement keyword)
                  (update :cost parse-double)))))
+
+(comment
+
+  (require '[clojure.core.async :as a])
+
+  (def episodes-scrubbed-header
+    [:row-id :child-id :report-date :ceased :legal-status :care-status :placement :report-year :sex :dob :period-id :episode-number :phase-number :phase-id])
+
+  (def episodes-xf
+    (comp
+     (drop 1)
+     (map (fn [r] (zipmap episodes-scrubbed-header r)))
+     (map format-episode)))
+
+  (def foo
+    (time
+     (let
+         ;; define transforms, reduces, and intos in the let
+         [episodes-chan (a/chan 512 episodes-xf)
+          episodes-chan-mult (a/mult episodes-chan)
+          well-formatted-episodes (a/into [] (a/tap episodes-chan-mult (a/chan 512 (filter (complement :error)))))
+          error-episodes (a/into [] (a/tap episodes-chan-mult (a/chan 512 (filter :error))))
+          ]
+
+       ;; put data onto the channel
+       (with-open [r (io/reader "/home/bld/wip/cic/witan.csc.cambridgeshire/data/episodes.scrubbed.csv")]
+         (run!
+          #(do #_(println "Sending a line! " (first %))
+               (a/>!! episodes-chan %)
+               #_(println "Sent a line!"))
+          (data-csv/read-csv r))
+         (a/close! episodes-chan))
+
+       ;; do blocking things to get the data out here
+       {:episodes (a/<!! well-formatted-episodes)
+        :error-episodes (a/<!! error-episodes)
+        }
+       )))
+
+  (first foo)
+  (format-episode (first foo))
+  (->> foo
+       (map format-episode)
+       (filter :error))
+
+  )
