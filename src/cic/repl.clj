@@ -20,10 +20,10 @@
   []
   (hash-map :periods (-> (read/episodes "data/episodes.scrubbed.csv")
                          (periods/from-episodes))
-            :placement-costs (read/costs-csv "data/placement-costs.csv")
-            :duration-model (-> (read/duration-csvs "data/duration-model-lower.csv"
-                                                    "data/duration-model-median.csv"
-                                                    "data/duration-model-upper.csv")
+            :placement-costs (read/costs-csv placement-costs-csv)
+            :duration-model (-> (read/duration-csvs duration-lower-csv
+                                                    duration-median-csv
+                                                    duration-upper-csv)
                                 (model/duration-model))))
 
 (defn prepare-model-inputs
@@ -68,8 +68,8 @@
          (write/write-csv! output-file))))
 
 (defn generate-annual-csv!
-  [output-file n-runs seed]
-  (let [{:keys [periods placement-costs duration-model]} (load-model-inputs)
+  [model-input-locations output-file n-runs seed]
+  (let [{:keys [periods placement-costs duration-model]} (load-model-inputs model-input-locations)
         project-from (time/days-after (time/financial-year-end (time/max-date (map :beginning periods))) 1)
         project-to (time/financial-year-end (time/years-after project-from 5))
         learn-from (time/years-before project-from 10)
@@ -121,8 +121,8 @@
    episodes))
 
 (defn generate-placement-sequence-csv!
-  [output-file n-runs seed]
-  (let [{:keys [periods placement-costs duration-model]} (load-model-inputs)
+  [model-input-locations output-file n-runs seed]
+  (let [{:keys [periods placement-costs duration-model]} (load-model-inputs model-input-locations)
         project-from (time/max-date (map :beginning periods))
         project-to (time/financial-year-end (time/years-after project-from 3))
         learn-from (time/years-before project-from 4)
@@ -152,8 +152,8 @@
 
 (defn generate-validation-csv!
   "Outputs model projection and linear regression projection together with actuals for comparison."
-  [out-file n-runs seed]
-  (let [{:keys [periods placement-costs duration-model]} (load-model-inputs)
+  [model-input-locations out-file n-runs seed]
+  (let [{:keys [periods placement-costs duration-model]} (load-model-inputs model-input-locations)
         validation (into []
                          (map #(validate/compare-models-at % duration-model periods seed n-runs))
                          (time/month-seq (time/make-date 2010 1 1)
@@ -163,8 +163,8 @@
 
 (defn generate-episodes-csv!
   "Outputs a file showing a single projection in rowise episodes format."
-  [out-file seed]
-  (let [{:keys [periods duration-model]} (load-model-inputs)
+  [model-input-locations out-file seed]
+  (let [{:keys [periods duration-model]} (load-model-inputs model-input-locations)
         project-from (time/max-date (map :beginning periods))
         project-to (time/years-after project-from 3)
         learn-from (time/years-before project-from 4)
