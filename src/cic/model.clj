@@ -49,6 +49,10 @@
       (+ median (* (- upper median) (/ normal 1.96)))
       (- median (* (- median lower) (/ normal -1.96))))))
 
+(defn clamp
+  [lower x upper]
+  (max (min x upper) lower))
+
 (defn duration-model
   "Given an admitted date and age of a child in care,
   returns an expected duration in days"
@@ -64,9 +68,13 @@
            max-value (dec (time/day-interval birthday (time/years-after birthday 18)))]
        (if (> n 100)
          (int (p/sample-1 (d/uniform {:a min-value :b max-value}) r1))
-         (let [quantile (int (p/sample-1 (d/uniform {:a n :b 100}) r1))
-               [lower median upper] (get empirical quantile)]
-           (max min-value (min (sample-ci lower median upper r2) max-value))))))))
+         (loop [r1 r1 iter 1]
+           (let [quantile (int (p/sample-1 (d/uniform {:a n :b 100}) r1))
+                 [lower median upper] (get empirical quantile)
+                 sample (sample-ci lower median upper r2)]
+             (if (and (< sample min-value) (< iter 5))
+               (recur (second (rand/split r1)) (inc iter))
+               (clamp min-value sample max-value)))))))))
 
 (defn update-fuzzy
   "Like `update`, but the key is expected to be a vector of values.
