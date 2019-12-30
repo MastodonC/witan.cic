@@ -10,12 +10,8 @@
 (defn project-period-close
   "Sample a possible duration in care which is greater than the existing duration"
   [{:keys [duration-model episodes-model] :as model}
-   {:keys [duration beginning admission-age episodes period-id] :as open-period} seed]
-  (let [projected-duration (loop [[r1 r2] (rand/split seed)]
-                             (let [sample (duration-model admission-age r1)]
-                               (if (>= sample duration)
-                                 sample
-                                 (recur (rand/split r2)))))
+   {:keys [duration birthday beginning admission-age episodes period-id] :as open-period} seed]
+  (let [projected-duration (duration-model birthday beginning duration seed)
         episodes (episodes-model admission-age projected-duration open-period seed)]
     (-> (assoc open-period :duration projected-duration)
         (assoc :episodes episodes)
@@ -28,13 +24,13 @@
   (let [[seed-1 seed-2 seed-3 seed-4 seed-5 seed-6] (rand/split-n seed 6)
         interval (joiners-model beginning seed-1)
         next-time (time/days-after beginning interval)
-        duration (duration-model seed-2)
+        start-time (time/without-time next-time)
+        birthday (-> (time/days-before start-time (p/sample-1 (d/uniform {:a 0 :b 364}) seed-6))
+                     (time/years-before age))
+        duration (duration-model birthday start-time seed-2)
         episodes (episodes-model duration seed-3)]
     (when (time/< next-time end)
       (let [period-end (time/days-after next-time duration)
-            start-time (time/without-time next-time)
-            birthday (-> (time/days-before start-time (p/sample-1 (d/uniform {:a 0 :b 364}) seed-6))
-                         (time/years-before age))
             period {:beginning start-time
                     :end (time/without-time period-end)
                     :period-id (rand/rand-id 8 seed-4)
@@ -51,7 +47,7 @@
   [{:keys [joiners-model duration-model episodes-model] :as model} beginning end seed]
   (mapcat (fn [age seed]
             (joiners-seq (partial joiners-model age)
-                         (partial duration-model age)
+                         duration-model
                          (partial episodes-model age) age beginning end seed))
           spec/ages
           (rand/split-n seed (count spec/ages))))
