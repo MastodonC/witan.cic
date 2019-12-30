@@ -27,6 +27,14 @@
                                                     "data/duration-model-upper.csv")
                                 (model/duration-model))))
 
+(defn prepare-model-inputs
+  [{:keys [periods] :as model-inputs}]
+  (let [correct-at (->> (mapcat (juxt :beginning :end) periods)
+                        (keep identity)
+                        (time/max-date))
+        periods (map #(assoc % :correct-at correct-at) periods)]
+    (assoc model-inputs :periods periods)))
+
 (defn format-actual-for-output
   [[date summary]]
   (-> (assoc summary :date date)
@@ -36,7 +44,7 @@
 (defn generate-projection-csv!
   "Main REPL function for writing a projection CSV"
   [output-file n-runs seed]
-  (let [{:keys [periods placement-costs duration-model]} (load-model-inputs)
+  (let [{:keys [periods placement-costs duration-model]} (prepare-model-inputs (load-model-inputs))
         project-from (time/max-date (map :beginning periods))
         project-to (time/years-after project-from 3)
         learn-from (time/years-before project-from 4)

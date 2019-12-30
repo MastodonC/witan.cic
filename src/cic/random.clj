@@ -32,18 +32,22 @@
   "All we know about a child is their year of birth, so we impute an arbitrary birthday.
   Each projection will use randomly generated birthdays with corresponding random ages of admission.
   This allows the output to account for uncertainty in the input.
-  The only constraint besides their year of birth is that a child can't be a negative age at admission"
-  [open-periods seed]
-  (let [rngs (split-n seed (count open-periods))]
-    (map (fn [{:keys [beginning dob] :as period} rng]
-           (let [base-date (time/make-date dob 1 1)
-                 max-offset (time/day-offset-in-year beginning)
-                 offset (-> (if (= (-> period :beginning time/year) dob)
-                              (d/uniform {:a 0 :b max-offset})
-                              (d/uniform {:a 0 :b 365}))
-                            (p/sample-1 rng))
-                 birthday (time/days-after base-date offset)]
+  Constraints:
+  Year of birth must match the provided year
+  A child can't be a negative age at admission
+  A child must have left by the time they are 18"
+  [periods seed]
+  (let [rngs (split-n seed (count periods))]
+    (map (fn [{:keys [beginning correct-at dob end] :as period} rng]
+           (let [earliest-birthday (time/latest (time/days-after (time/years-before (or end correct-at) 18) 1)
+                                                (time/make-date dob 1 1))
+                 latest-birthday (time/earliest beginning
+                                                (time/days-before (time/make-date (inc dob) 1 1) 1))
+                 birthday-offset (-> {:a 0 :b (time/day-interval earliest-birthday latest-birthday)}
+                                     (d/uniform)
+                                     (p/sample-1 rng))
+                 birthday (time/days-after earliest-birthday birthday-offset)]
              (-> period
                  (assoc :birthday birthday)
-                 (assoc :admission-age (quot (time/day-interval birthday beginning) 365)))))
-         open-periods rngs)))
+                 (assoc :admission-age (time/year-interval birthday beginning)))))
+         periods rngs)))
