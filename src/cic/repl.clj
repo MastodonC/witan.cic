@@ -18,8 +18,7 @@
 (defn load-model-inputs
   "A useful REPL function to load the data files and convert them to  model inputs"
   []
-  (hash-map :periods (-> (read/episodes "data/episodes.csv")
-                         (episodes/scrub-episodes)
+  (hash-map :periods (-> (read/episodes "data/episodes.scrubbed.csv")
                          (periods/from-episodes))
             :placement-costs (read/costs-csv "data/placement-costs.csv")
             :duration-model (-> (read/duration-csvs "data/duration-model-lower.csv"
@@ -29,10 +28,10 @@
 
 (defn prepare-model-inputs
   [{:keys [periods] :as model-inputs}]
-  (let [correct-at (->> (mapcat (juxt :beginning :end) periods)
-                        (keep identity)
-                        (time/max-date))
-        periods (map #(assoc % :correct-at correct-at) periods)]
+  (let [report-date (->> (mapcat (juxt :beginning :end) periods)
+                         (keep identity)
+                         (time/max-date))
+        periods (map #(assoc % :reported report-date) periods)]
     (assoc model-inputs :periods periods)))
 
 (defn format-actual-for-output
