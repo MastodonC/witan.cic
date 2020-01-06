@@ -32,18 +32,29 @@
   "All we know about a child is their year of birth, so we impute an arbitrary birthday.
   Each projection will use randomly generated birthdays with corresponding random ages of admission.
   This allows the output to account for uncertainty in the input.
-  The only constraint besides their year of birth is that a child can't be a negative age at admission"
-  [open-periods seed]
-  (let [rngs (split-n seed (count open-periods))]
-    (map (fn [{:keys [beginning dob] :as period} rng]
-           (let [base-date (time/make-date dob 1 1)
-                 max-offset (time/day-offset-in-year beginning)
-                 offset (-> (if (= (-> period :beginning time/year) dob)
-                              (d/uniform {:a 0 :b max-offset})
-                              (d/uniform {:a 0 :b 365}))
-                            (p/sample-1 rng))
-                 birthday (time/days-after base-date offset)]
+  Constraints:
+  Year of birth must match the provided year
+  A child can't be a negative age at admission
+  A child must have left by the time they are 18"
+  [periods seed]
+  (let [rngs (split-n seed (count periods))]
+    (map (fn [{:keys [beginning reported dob end] :as period} rng]
+           (let [;; Earliest possible birthday is either January 1st in the year of their birth
+                 ;; or 18 years prior to their final end date (or current report date if not yet ended),
+                 ;; whichever is the later
+                 earliest-birthday (time/latest (time/days-after (time/years-before (or end reported) 18) 1)
+                                                (time/make-date dob 1 1))
+                 ;; Latest possible birthday is either December 31st in the year of their birth
+                 ;; or the date they were taken into care, whichever is the sooner
+                 latest-birthday (time/earliest beginning
+                                                (time/make-date dob 12 31))
+                 ;; True birthday must be somewhere between earliest and latest birthdays inclusive.
+                 ;; Assume uniform distribution between the two.
+                 birthday-offset (-> {:a 0 :b (time/day-interval earliest-birthday latest-birthday)}
+                                     (d/uniform)
+                                     (p/sample-1 rng))
+                 birthday (time/days-after earliest-birthday birthday-offset)]
              (-> period
                  (assoc :birthday birthday)
-                 (assoc :admission-age (quot (time/day-interval birthday beginning) 365)))))
-         open-periods rngs)))
+                 (assoc :admission-age (time/year-interval birthday beginning)))))
+         periods rngs)))

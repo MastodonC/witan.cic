@@ -18,14 +18,21 @@
 (defn load-model-inputs
   "A useful REPL function to load the data files and convert them to  model inputs"
   []
-  (hash-map :periods (-> (read/episodes "data/episodes.csv")
-                         (episodes/scrub-episodes)
+  (hash-map :periods (-> (read/episodes "data/episodes.scrubbed.csv")
                          (periods/from-episodes))
             :placement-costs (read/costs-csv "data/placement-costs.csv")
             :duration-model (-> (read/duration-csvs "data/duration-model-lower.csv"
                                                     "data/duration-model-median.csv"
                                                     "data/duration-model-upper.csv")
                                 (model/duration-model))))
+
+(defn prepare-model-inputs
+  [{:keys [periods] :as model-inputs}]
+  (let [report-date (->> (mapcat (juxt :beginning :end) periods)
+                         (keep identity)
+                         (time/max-date))
+        periods (map #(assoc % :reported report-date) periods)]
+    (assoc model-inputs :periods periods)))
 
 (defn format-actual-for-output
   [[date summary]]
@@ -36,7 +43,7 @@
 (defn generate-projection-csv!
   "Main REPL function for writing a projection CSV"
   [output-file n-runs seed]
-  (let [{:keys [periods placement-costs duration-model]} (load-model-inputs)
+  (let [{:keys [periods placement-costs duration-model]} (prepare-model-inputs (load-model-inputs))
         project-from (time/max-date (map :beginning periods))
         project-to (time/years-after project-from 3)
         learn-from (time/years-before project-from 4)

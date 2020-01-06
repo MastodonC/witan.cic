@@ -4,8 +4,10 @@
             [cic.random :as rand]
             [cic.rscript :as rscript]
             [cic.spec :as spec]
+            [cic.time :as time]
             [clj-time.core :as t]
             [clojure.math.combinatorics :as c]
+            [kixi.stats.core :as k]
             [kixi.stats.distribution :as d]
             [kixi.stats.math :as m]
             [kixi.stats.protocols :as p]))
@@ -47,16 +49,32 @@
       (+ median (* (- upper median) (/ normal 1.96)))
       (- median (* (- median lower) (/ normal -1.96))))))
 
+(defn clamp
+  [lower x upper]
+  (max (min x upper) lower))
+
 (defn duration-model
   "Given an admitted date and age of a child in care,
   returns an expected duration in days"
   [coefs]
-  (fn [age seed]
-    (let [empirical (get coefs (max 0 (min age 17)))
-          [r1 r2] (rand/split seed)
-          quantile (int (p/sample-1 (d/uniform {:a 1 :b 101}) r1))
-          [lower median upper] (get empirical quantile)]
-      (sample-ci lower median upper r2))))
+  (fn duration-model*
+    ([birthday beginning seed]
+     (duration-model* birthday beginning 0 seed))
+    ([birthday beginning min-value seed]
+     (let [age (time/year-interval birthday beginning)
+           empirical (get coefs (max 0 (min age 17)))
+           n (transduce (take-while (fn [[_ m _]] (<= m min-value))) k/count empirical)
+           [r1 r2] (rand/split seed)
+           max-value (dec (time/day-interval birthday (time/years-after birthday 18)))]
+       (if (> n 100)
+         (int (p/sample-1 (d/uniform {:a min-value :b max-value}) r1))
+         (loop [r1 r1 iter 1]
+           (let [quantile (int (p/sample-1 (d/uniform {:a n :b 100}) r1))
+                 [lower median upper] (get empirical quantile)
+                 sample (sample-ci lower median upper r2)]
+             (if (and (< sample min-value) (< iter 5))
+               (recur (second (rand/split r1)) (inc iter))
+               (clamp min-value sample max-value)))))))))
 
 (defn update-fuzzy
   "Like `update`, but the key is expected to be a vector of values.

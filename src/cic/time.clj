@@ -9,6 +9,10 @@
 
 (def = t/equal?)
 
+(def earliest t/earliest)
+
+(def latest t/latest)
+
 (defn <=
   [a b]
   (or (< a b)
