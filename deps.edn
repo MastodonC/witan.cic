@@ -12,7 +12,8 @@
          kixi/stats                     {:mvn/version "0.5.2"}
          net.cgrand/xforms              {:mvn/version "0.18.2"}}
  :aliases
- {:test {:extra-paths ["clojure/test"]
+ {:big-mem {:jvm-opts ["-Xmx8g"]}
+  :test {:extra-paths ["clojure/test"]
          :extra-deps  {org.clojure/test.check {:mvn/version "0.10.0"}}}
   :runner
   {:extra-deps {com.cognitect/test-runner

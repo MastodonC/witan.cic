@@ -13,14 +13,32 @@
             [net.cgrand.xforms :as xf]
             [net.cgrand.xforms.rfs :as xrf]
             [redux.core :as rx]
-            [kixi.stats.core :as k]))
+            [kixi.stats.core :as k]
+            [clojure.core.async :as a]
+            [redux.core :as redux]))
+
+(set! *warn-on-reflection* true)
+
+(defn debug-log [m]
+  (prn m))
+
+(add-tap debug-log)
 
 (defn load-model-inputs
   "A useful REPL function to load the data files and convert them to  model inputs"
+<<<<<<< HEAD
   []
   (hash-map :periods (-> (read/episodes "data/episodes.scrubbed.csv")
                          (periods/from-episodes))
             :placement-costs (read/costs-csv placement-costs-csv)
+=======
+  [{:keys [episodes-csv placement-costs-csv duration-lower-csv duration-median-csv duration-upper-csv]}]
+  (hash-map :periods (into []
+                           (-> (read/episodes episodes-csv)
+                               (episodes/scrub-episodes)
+                               (periods/from-episodes)))
+            :placement-costs (into [] (read/costs-csv placement-costs-csv))
+>>>>>>> WIP
             :duration-model (-> (read/duration-csvs duration-lower-csv
                                                     duration-median-csv
                                                     duration-upper-csv)
@@ -67,6 +85,120 @@
     (->> (write/projection-table (concat summary-seq projection))
          (write/write-csv! output-file))))
 
+
+(defn project-n-run []
+  (tap> {:debug "project-n-run started"})
+  ;; setup let
+  (let [n-runs 10
+        seed 42
+        model-input-locations {:episodes-csv "/home/bld/wip/cic/witan.csc.suffolk/data/episodes.csv" #_"/home/bld/wip/cic/witan.csc.norfolk/data/episodes.csv"
+                               :duration-lower-csv "/home/bld/wip/cic/witan.csc.suffolk/data/duration-model-lower.csv" #_"/home/bld/wip/cic/witan.csc.norfolk/data/duration-model-lower.csv"
+                               :duration-median-csv "/home/bld/wip/cic/witan.csc.suffolk/data/duration-model-median.csv" #_"/home/bld/wip/cic/witan.csc.norfolk/data/duration-model-median.csv"
+                               :duration-upper-csv "/home/bld/wip/cic/witan.csc.suffolk/data/duration-model-upper.csv" #_"/home/bld/wip/cic/witan.csc.norfolk/data/duration-model-upper.csv"
+                               ;; only Suffolk costs
+                               :placement-costs-csv "/home/bld/wip/cic/witan.csc.suffolk/data/placement-costs.csv"}
+        {:keys [periods placement-costs duration-model]} (load-model-inputs model-input-locations)
+        project-from (time/days-after (time/financial-year-end (time/max-date (map :beginning periods))) 1)
+        project-to (time/financial-year-end (time/years-after project-from 2))
+        learn-from (time/years-before project-from 10)
+        projection-seed {:seed (filter :open? periods)
+                         :date project-from}
+        model-seed {:seed periods
+                    :duration-model duration-model
+                    :joiner-range [learn-from project-from]
+                    :episodes-range [learn-from project-from]}
+        project-dates (time/day-seq project-from project-to 7)
+        simulation-runs (into [] (projection/project-n projection-seed model-seed project-dates seed n-runs))]
+
+    (tap> {:debug "Simulation runs generated"})
+    simulation-runs
+    ;; core.async let
+    #_(let [input-chan (a/chan 512)
+            input-mult (a/mult input-chan)
+            period-summary-chan (a/tap input-mult (a/chan 512 (map (fn [sim-run]
+                                                                     (tap> {:debug "Running periods-summary"})
+                                                                     (summary/periods-summary sim-run project-dates placement-costs)))))
+            period-summary-mult (a/mult period-summary-chan)
+            projected-population (a/transduce (map (fn [[k v]] [k (:count v)]))
+                                              (fn
+                                                ([a] (into {} (map (fn [[k v]] [k (summary/histogram-rf v)])) a))
+                                                ([acc [k v]] (if-let [histogram (:k acc)]
+                                                               (assoc acc k (summary/histogram-rf histogram v))
+                                                               (assoc acc k (-> (summary/histogram-rf)
+                                                                                (summary/histogram-rf v))))))
+                                              {}
+                                              (a/tap period-summary-mult (a/chan 512 (mapcat identity))))
+            sample-period-summary (a/into [] (a/tap period-summary-mult (a/chan 32)))]
+        (tap> {:debug "core.async machinery set up"})
+        (a/pipe (a/to-chan simulation-runs) input-chan)
+        (tap> {:debug "Data pushed to pipe"})
+        {:projected-population (a/<!! projected-population)
+         :sample-period-summary (a/<!! sample-period-summary)})))
+
+(comment
+
+  (def project-n-run-results (project-n-run))
+
+
+  (def foo
+    (let [n-runs 2
+          seed 42
+          model-input-locations {:episodes-csv "/home/bld/wip/cic/witan.csc.suffolk/data/episodes.csv" #_"/home/bld/wip/cic/witan.csc.norfolk/data/episodes.csv"
+                                 :duration-lower-csv "/home/bld/wip/cic/witan.csc.suffolk/data/duration-model-lower.csv" #_"/home/bld/wip/cic/witan.csc.norfolk/data/duration-model-lower.csv"
+                                 :duration-median-csv "/home/bld/wip/cic/witan.csc.suffolk/data/duration-model-median.csv" #_"/home/bld/wip/cic/witan.csc.norfolk/data/duration-model-median.csv"
+                                 :duration-upper-csv "/home/bld/wip/cic/witan.csc.suffolk/data/duration-model-upper.csv" #_"/home/bld/wip/cic/witan.csc.norfolk/data/duration-model-upper.csv"
+                                 ;; only Suffolk costs
+                                 :placement-costs-csv "/home/bld/wip/cic/witan.csc.suffolk/data/placement-costs.csv"}
+          {:keys [periods placement-costs duration-model]} (load-model-inputs model-input-locations)
+          project-from (time/days-after (time/financial-year-end (time/max-date (map :beginning periods))) 1)
+          project-to (time/financial-year-end (time/years-after project-from 2))
+          project-dates (time/day-seq project-from project-to 7)
+          ;; simulation-runs (into [] (projection/project-n projection-seed model-seed project-dates seed n-runs))
+          ]
+      {:periods periods
+       :placement-costs placement-costs
+       :project-dates project-dates}
+      ))
+
+  (first (:project-dates foo))
+
+  (require '[cic.periods :as periods])
+  (def periods-by-date
+    (into {}
+          (map (fn [date]
+                 [date (filter (periods/in-care? date) (:periods foo))]))
+          (count (:project-dates foo))))
+
+
+  )
+
+(comment
+
+  ;; TODO: call projection/project-n by tweaking load-model-inputs and see what result we can push onto a channel and mults
+
+  ;; Norfolk Config
+  (def norfolk-model-inputs
+    {:episodes-csv "/home/bld/wip/cic/witan.csc.norfolk/data/episodes.csv"
+     :duration-lower-csv "/home/bld/wip/cic/witan.csc.norfolk/data/duration-model-lower.csv"
+     :duration-median-csv "/home/bld/wip/cic/witan.csc.norfolk/data/duration-model-median.csv"
+     :duration-upper-csv "/home/bld/wip/cic/witan.csc.norfolk/data/duration-model-upper.csv"
+     ;; only Suffolk costs
+     :placement-costs-csv "/home/bld/wip/cic/witan.csc.suffolk/data/placement-costs.csv"})
+
+  (generate-projection-csv! norfolk-model-inputs "foo.csv" 2 42)
+
+  ;; TODO: This works now that I have all the R code installed. What
+  ;; are the next things to do with this data? Do I want to treat it
+  ;; all as one big seq or do I want to keep it as a seq of seqs?
+  ;;
+  ;; summary/combo-rf is the fused reduction step that needs to be
+  ;; driving the data products it is called from summary/grand-summary
+  (def project-n-run-results (project-n-run))
+
+  (require '[cic.summary :as summary])
+  (def periods-summary (summary/periods-summary (first project-n-run-results)))
+  )
+
 (defn generate-annual-csv!
   [model-input-locations output-file n-runs seed]
   (let [{:keys [periods placement-costs duration-model]} (load-model-inputs model-input-locations)
@@ -107,6 +239,9 @@
                             (into actuals))]
     (->> (write/annual-report-table cost-projection)
          (write/write-csv! output-file))))
+
+
+
 
 (defn period->placement-seq
   "Takes a period and returns the sequence of placements as AA-BB-CC.
@@ -176,3 +311,13 @@
     (->> (projection/project-1 projection-seed model-seed project-to (rand/seed seed))
          (write/episodes-table project-to)
          (write/write-csv! out-file))))
+
+(comment
+
+  (defn debug-log [m]
+    (prn m))
+
+  (add-tap debug-log)
+  (remove-tap debug-log)
+
+  )

@@ -1,10 +1,11 @@
 (ns cic.io.read
-  (:require [camel-snake-kebab.core :as csk]
-            [clj-time.format :as f]
+  (:require [clojure.core.async :as a]
             [clojure.data.csv :as data-csv]
             [clojure.java.io :as io]
             [clojure.set :as cs]
-            [clojure.string :as str]))
+            [clojure.string :as str]
+            [camel-snake-kebab.core :as csk]
+            [clj-time.format :as f]))
 
 (defn blank-row? [row]
   (every? str/blank? row))
@@ -128,9 +129,39 @@
                  (update :placement keyword)
                  (update :cost parse-double)))))
 
+(defn csv->results
+  "tap-map is a map of functions that takes a mult and returns channels via tap/into/reduce/transduce/etc"
+  [in-file-name in-xf tap-map]
+  (let
+      [in-chan (a/chan 512 in-xf)
+       record-mult (a/mult in-chan)
+       tap-map (into {}
+                     (map (fn [[k f]] [k (f record-mult)]))
+                     tap-map)]
+
+    (with-open [r (io/reader in-file-name)]
+      (try
+        (run!
+         (fn [rec]
+           (tap> {:level :debug :msg "Sending a line! " :data (first rec)})
+           (a/>!! in-chan rec)
+           (tap> {:level :debug :msg "Sent a line! " :data (first rec)}))
+         (data-csv/read-csv r))
+        (catch Exception e (tap> {:level :error
+                                  :data (ex-info "Unexpected Error" {:file in-file-name} e)}))
+        (finally (a/close! in-chan))))
+    (into {}
+          (map (fn [[k result-channel]] [k (a/<!! result-channel)]))
+          tap-map)))
+
 (comment
 
-  (require '[clojure.core.async :as a])
+  (defn debug-log [m]
+    (prn m))
+
+  (add-tap debug-log)
+  (remove-tap debug-log)
+
 
   (def episodes-scrubbed-header
     [:row-id :child-id :report-date :ceased :legal-status :care-status :placement :report-year :sex :dob :period-id :episode-number :phase-number :phase-id])
@@ -141,6 +172,13 @@
      (map (fn [r] (zipmap episodes-scrubbed-header r)))
      (map format-episode)))
 
+  (def bar
+    (csv->results "/home/bld/wip/cic/witan.csc.cambridgeshire/data/episodes.scrubbed.csv"
+                  episodes-xf
+                  {:first-one (fn [record-mult] (a/tap record-mult (a/chan 32 (take 1))))
+                   :episodes (fn [record-mult] (a/into [] (a/tap record-mult (a/chan 512 (filter (complement :error))))))
+                   :error-episodes (fn [record-mult] (a/into [] (a/tap record-mult (a/chan 512 (filter :error)))))}))
+
   (def foo
     (time
      (let
@@ -149,22 +187,25 @@
           episodes-chan-mult (a/mult episodes-chan)
           well-formatted-episodes (a/into [] (a/tap episodes-chan-mult (a/chan 512 (filter (complement :error)))))
           error-episodes (a/into [] (a/tap episodes-chan-mult (a/chan 512 (filter :error))))
+          first-one (a/tap episodes-chan-mult (a/chan 32 (take 1)))
           ]
 
        ;; put data onto the channel
        (with-open [r (io/reader "/home/bld/wip/cic/witan.csc.cambridgeshire/data/episodes.scrubbed.csv")]
          (run!
-          #(do #_(println "Sending a line! " (first %))
+          #(do (tap> {:level :debug :msg "Sending a line! " :data (first %)})
                (a/>!! episodes-chan %)
-               #_(println "Sent a line!"))
+               (tap> {:level :debug :msg "Sent a line! " :data (first %)}))
           (data-csv/read-csv r))
          (a/close! episodes-chan))
 
        ;; do blocking things to get the data out here
        {:episodes (a/<!! well-formatted-episodes)
         :error-episodes (a/<!! error-episodes)
-        }
-       )))
+        :first-one (a/<!! first-one)})))
+
+  (require '[clojure.data])
+  (clojure.data/diff bar foo)
 
   (first foo)
   (format-episode (first foo))

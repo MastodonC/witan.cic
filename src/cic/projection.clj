@@ -72,16 +72,19 @@
   (let [[s1 s2 s3 s4] (rand/split-n seed 4)
         model (train-model model-seed s1)
         projection-seed (update projection-seed :seed rand/prepare-ages s4)]
-    (-> (map (partial project-period-close model) (:seed projection-seed) (rand/split-n s2 (count (:seed projection-seed))))
-        (concat (project-joiners model (:date projection-seed) end s3)))))
+    (tap> "project 1")
+    (into (mapv (partial project-period-close model) (:seed projection-seed) (rand/split-n s2 (count (:seed projection-seed))))
+          (project-joiners model (:date projection-seed) end s3))))
 
 (defn project-n
   "Returns n stochastic sequences of projected periods."
   [projection-seed model-seed project-dates seed n-runs]
   (let [max-date (time/max-date project-dates)]
-    (map #(project-1 projection-seed model-seed max-date %)
-         (-> (rand/seed seed)
-             (rand/split-n n-runs)))))
+    (mapv (fn [seed]
+            (tap> "project-n")
+            (project-1 projection-seed model-seed max-date seed))
+          (-> (rand/seed seed)
+              (rand/split-n n-runs)))))
 
 (defn projection
   "Calculates summary statistics over n sequences of projected periods."

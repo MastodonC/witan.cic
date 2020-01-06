@@ -1,11 +1,15 @@
 (ns cic.summary
   (:require [cic.time :as time]
+            [clj-time.core :as clj-time]
             [cic.spec :as spec]
             [cic.periods :as periods]
             [net.cgrand.xforms :as x]
             [redux.core :as redux]
             [kixi.stats.core :as k]
-            [kixi.stats.distribution :as d]))
+            [kixi.stats.distribution :as d]
+            [clojure.zip :as zip]))
+
+(set! *warn-on-reflection* true)
 
 (defn placements-cost
   [placement-costs placement-counts]
@@ -16,15 +20,23 @@
 (defn periods-summary
   "Takes inferred future periods and calculates the total CiC"
   [periods dates placement-costs]
+  #_(zipmap dates
+            (repeat {:count 17
+                     :cost 17.89
+                     :placements (zipmap spec/placements (repeat 1))
+                     :ages (zipmap spec/ages (repeat 1))}))
   (let [placements-zero (zipmap spec/placements (repeat 0))
         ages-zero (zipmap spec/ages (repeat 0))]
     (reduce (fn [output date]
+              (tap> {:debug (format "Creating summary for date %s." date) :time (clj-time/now)})
               (let [in-care (filter (periods/in-care? date) periods)
-                    by-placement (->> (map #(:placement (periods/episode-on % date)) in-care)
-                                      (frequencies))
-                    by-age (->> (map #(periods/age-on % date) in-care)
-                                (frequencies))
-                    cost (placements-cost placement-costs by-placement)]
+                    _ (tap> {:debug (format "Care periods found: %d" (count in-care)) :time (clj-time/now)})
+                    by-placement (frequencies (map #(:placement (periods/episode-on % date)) in-care))
+                    _ (tap> {:debug "by-placement" :data by-placement :time (clj-time/now)})
+                    by-age (frequencies (map #(periods/age-on % date) in-care))
+                    _ (tap> {:debug "by-age" :data by-age :time (clj-time/now)})
+                    cost (placements-cost placement-costs by-placement)
+                    _ (tap> {:debug "cost" :data cost :time (clj-time/now)})]
                 (assoc output date {:count (count in-care)
                                     :cost cost
                                     :placements (merge-with + placements-zero by-placement)
