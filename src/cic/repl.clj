@@ -26,19 +26,12 @@
 
 (defn load-model-inputs
   "A useful REPL function to load the data files and convert them to  model inputs"
-<<<<<<< HEAD
-  []
-  (hash-map :periods (-> (read/episodes "data/episodes.scrubbed.csv")
-                         (periods/from-episodes))
-            :placement-costs (read/costs-csv placement-costs-csv)
-=======
   [{:keys [episodes-csv placement-costs-csv duration-lower-csv duration-median-csv duration-upper-csv]}]
   (hash-map :periods (into []
                            (-> (read/episodes episodes-csv)
                                (episodes/scrub-episodes)
                                (periods/from-episodes)))
             :placement-costs (into [] (read/costs-csv placement-costs-csv))
->>>>>>> WIP
             :duration-model (-> (read/duration-csvs duration-lower-csv
                                                     duration-median-csv
                                                     duration-upper-csv)
