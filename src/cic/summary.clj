@@ -13,6 +13,35 @@
             (+ total (* cost (get placement-counts placement 0))))
           0 placement-costs))
 
+(defn in-care-population-summary [periods dates]
+  (reduce (fn [output date]
+            (assoc output date
+                   (count (filter (periods/in-care? date) periods))))
+          {}
+          dates))
+
+(defn placements-summary [periods dates]
+  (let [placements-zero (zipmap spec/placements (repeat 0))]
+    (reduce (fn [output date]
+              (let [in-care (filter (periods/in-care? date) periods)
+                    by-placement (->> (map #(:placement (periods/episode-on % date)) in-care)
+                                      (frequencies))]
+                (assoc output date
+                       (merge-with + placements-zero by-placement))))
+            {}
+            dates)))
+
+(defn ages-summary [periods dates]
+  (let [ages-zero (zipmap spec/ages (repeat 0))]
+    reduce (fn [output date]
+             (let [in-care (filter (periods/in-care? date) periods)
+                   by-age (->> (map #(periods/age-on % date) in-care)
+                               (frequencies))]
+               (assoc output date
+                      (merge-with + ages-zero by-age))))
+    {}
+    dates))
+
 (defn periods-summary
   "Takes inferred future periods and calculates the total CiC"
   [periods dates placement-costs]
