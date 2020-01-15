@@ -35,7 +35,6 @@
 (defn format-episode
   [row]
   (-> (cs/rename-keys row {:id :child-id :care-status :CIN})
-      (update :child-id #(Long/parseLong %))
       (update :dob #(Long/parseLong %))
       (update :report-date parse-date)
       (update :ceased #(when-not (str/blank? %) (parse-date %)))

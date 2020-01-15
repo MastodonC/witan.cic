@@ -39,10 +39,10 @@
   [periods seed]
   (let [rngs (split-n seed (count periods))]
     (map (fn [{:keys [beginning reported dob end] :as period} rng]
-           (let [;; Earliest possible birthday is either January 1st in the year of their birth
+           (let [ ;; Earliest possible birthday is either January 1st in the year of their birth
                  ;; or 18 years prior to their final end date (or current report date if not yet ended),
                  ;; whichever is the later
-                 earliest-birthday (time/latest (time/days-after (time/years-before (or end reported) 18) 1)
+                 earliest-birthday (time/latest (time/years-before (or end reported) 18)
                                                 (time/make-date dob 1 1))
                  ;; Latest possible birthday is either December 31st in the year of their birth
                  ;; or the date they were taken into care, whichever is the sooner

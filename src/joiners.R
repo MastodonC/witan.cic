@@ -6,6 +6,7 @@ library(MASS)
 library(fitdistrplus)
 library(FAdist)
 library(glm2)
+library(arm)
 
 args = commandArgs(trailingOnly=TRUE)
 input <- args[1]
@@ -29,7 +30,7 @@ diffs <- df %>%
     mutate(admission_age = droplevels(admission_age)) %>%
     as.data.frame
 
-joiners.model <- glm2(diff ~ beginning * admission_age, data = diffs, family=Gamma(link = log))
+joiners.model <- bayesglm(diff ~ beginning * admission_age, data = diffs, family=Gamma(link = log))
 mod.summary <- summary(joiners.model)
 
 coef.samples <- mvrnorm(n = 2, mu = coefficients(joiners.model), Sigma = vcov(joiners.model))
