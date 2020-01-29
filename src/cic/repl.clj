@@ -7,6 +7,7 @@
             [cic.periods :as periods]
             [cic.projection :as projection]
             [cic.random :as rand]
+            [cic.spec :as spec]
             [cic.summary :as summary]
             [cic.time :as time]
             [cic.validate :as validate]
@@ -225,7 +226,7 @@
   (def results
     (time
      (let [ ;; core.async setup
-           input-chan (a/chan 512)
+           input-chan (a/chan 1024)
            input-mult (a/mult input-chan)
 
            ;; simulation setup
@@ -242,7 +243,7 @@
            project-from (time/max-date (map :beginning periods))
            project-to (time/years-after project-from 3)
            project-dates (time/day-seq project-from project-to 7)
-           n-runs 1000
+           n-runs 100
            learn-from (time/years-before project-from 4)
            projection-seed {:seed (filter :open? periods)
                             :date project-from}
@@ -255,29 +256,24 @@
            single-projection (a/into [] (a/take 1 (a/tap input-mult (a/chan 32))))
            all-projections (a/into [] (a/tap input-mult (a/chan 512)))
 
-           ;; TODO: use placement types and expected ages to
-           ;; pre-populate base maps below so that we can just do
-           ;; (k/histogram hist int) rather than having to merge the
-           ;; histograms. This would also mean that we don't have to
-           ;; turn all the maps of counts into maps of histograms and
-           ;; thus create far fewer histograms.
-
            ;; placements
            placement-summary-mult
            (a/mult
             (a/tap input-mult (a/chan 512 (map #(summary/placements-summary % project-dates)))))
            placement-summary-mapped-results (a/into [] (a/tap placement-summary-mult (a/chan 32)))
            placement-weekly-summary (a/transduce
-                                     (comp
-                                      (mapcat identity)
-                                      (map (fn [[k v]] [k (map-of-counts->map-of-histograms v)])))
+                                     (mapcat identity)
                                      (fn
                                        ([] {})
                                        ([acc] (into {} (map (fn [[k v]] [k (summarize-map-of-histograms v)])) acc))
-                                       ([acc [time histogram-map]]
-                                        (assoc acc time (merge-with (fnil merge-histograms {})
-                                                                    (get acc time)
-                                                                    histogram-map))))
+                                       ([acc [time counts]]
+                                        (try
+                                          (assoc acc time (merge-with k/histogram
+                                                                      (get acc time (zipmap spec/placements (repeatedly k/histogram)))
+                                                                      (select-keys counts spec/placements)))
+                                          (catch Exception e
+                                            (println (format "%s %s %s" (get acc time) time counts))
+                                            (throw e)))))
                                      {}
                                      (a/tap placement-summary-mult (a/chan 512)))
 
@@ -287,16 +283,18 @@
             (a/tap input-mult (a/chan 512 (map #(summary/ages-summary % project-dates)))))
            ages-summary-mapped-results (a/into [] (a/tap ages-summary-mult (a/chan 32)))
            ages-weekly-summary (a/transduce
-                                (comp
-                                 (mapcat identity)
-                                 (map (fn [[k v]] [k (map-of-counts->map-of-histograms v)])))
+                                (mapcat identity)
                                 (fn
                                   ([] {})
                                   ([acc] (into {} (map (fn [[k v]] [k (summarize-map-of-histograms v)])) acc))
-                                  ([acc [time histogram-map]]
-                                   (assoc acc time (merge-with (fnil merge-histograms {})
-                                                               (get acc time)
-                                                               histogram-map))))
+                                  ([acc [time counts]]
+                                   (try
+                                     (assoc acc time (merge-with k/histogram
+                                                                 (get acc time (zipmap spec/ages (repeatedly k/histogram)))
+                                                                 (select-keys counts spec/ages)))
+                                     (catch Exception e
+                                       (println (format "%s %s %s" (get acc time) time counts))
+                                       (throw e)))))
                                 {}
                                 (a/tap ages-summary-mult (a/chan 512)))
            ]
@@ -312,6 +310,7 @@
         :ages-summary-mapped-results (a/<!! ages-summary-mapped-results)
         :ages-weekly-summary (a/<!! ages-weekly-summary)
         })))
+
 
 
   )
