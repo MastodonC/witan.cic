@@ -33,14 +33,14 @@
 
 (defn ages-summary [periods dates]
   (let [ages-zero (zipmap spec/ages (repeat 0))]
-    reduce (fn [output date]
-             (let [in-care (filter (periods/in-care? date) periods)
-                   by-age (->> (map #(periods/age-on % date) in-care)
-                               (frequencies))]
-               (assoc output date
-                      (merge-with + ages-zero by-age))))
-    {}
-    dates))
+    (reduce (fn [output date]
+              (let [in-care (filter (periods/in-care? date) periods)
+                    by-age (->> (map #(periods/age-on % date) in-care)
+                                (frequencies))]
+                (assoc output date
+                       (merge-with + ages-zero by-age))))
+            {}
+            dates)))
 
 (defn periods-summary
   "Takes inferred future periods and calculates the total CiC"
