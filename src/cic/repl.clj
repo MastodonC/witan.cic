@@ -226,7 +226,7 @@
   (def results
     (time
      (let [ ;; core.async setup
-           input-chan (a/chan 1024)
+           input-chan (a/chan 32)
            input-mult (a/mult input-chan)
 
            ;; simulation setup
@@ -243,18 +243,19 @@
            project-from (time/max-date (map :beginning periods))
            project-to (time/years-after project-from 3)
            project-dates (time/day-seq project-from project-to 7)
-           n-runs 100
+           n-runs 999
            learn-from (time/years-before project-from 4)
            projection-seed {:seed (filter :open? periods)
                             :date project-from}
            model-seed {:seed periods
                        :duration-model duration-model
                        :joiner-range [learn-from project-from]}
+           max-date (time/max-date project-dates)
            ;; n-projections (into [] (projection/project-n projection-seed model-seed project-dates seed n-runs))
 
            ;; reducing taps
-           single-projection (a/into [] (a/take 1 (a/tap input-mult (a/chan 32))))
-           all-projections (a/into [] (a/tap input-mult (a/chan 512)))
+           ;; single-projection (a/into [] (a/take 1 (a/tap input-mult (a/chan 32))))
+           all-projections (a/into [] (a/tap input-mult (a/chan 32)))
 
            ;; placements
            placement-summary-mult
@@ -301,11 +302,15 @@
 
        ;; put the projections on the channel
        ;; (a/pipe (a/to-chan n-projections) input-chan)
-       (a/pipe (a/to-chan (projection/project-n projection-seed model-seed project-dates seed n-runs)) input-chan)
-
-       {:placement-weekly-summary (a/<!! placement-weekly-summary)
-        :single-projection (a/<!! single-projection)
+       ;; (a/pipe (a/to-chan (projection/project-n projection-seed model-seed project-dates seed n-runs)) input-chan)
+       (a/pipeline-blocking 3
+                            input-chan
+                            (map #(projection/project-1 projection-seed model-seed max-date %))
+                            (a/to-chan (-> (rand/seed seed)
+                                           (rand/split-n n-runs))))
+       {;; :single-projection (a/<!! single-projection)
         :all-projections (a/<!! all-projections)
+        :placement-weekly-summary (a/<!! placement-weekly-summary)
         :placement-summary-mapped-results (a/<!! placement-summary-mapped-results)
         :ages-summary-mapped-results (a/<!! ages-summary-mapped-results)
         :ages-weekly-summary (a/<!! ages-weekly-summary)
