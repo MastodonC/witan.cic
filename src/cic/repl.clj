@@ -317,5 +317,21 @@
         })))
 
 
+  ;; starters
+  (into {}
+        (comp
+         (map :beginning)
+         (xf/by-key identity xf/count))
+        (-> results :single-projection first))
+
+  ;; ceasers
+  (into {}
+        (comp
+         (remove :open?)
+         (map :end)
+         (xf/by-key identity xf/count))
+        (-> results :single-projection first))
+
+
 
   )
