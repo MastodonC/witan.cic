@@ -254,7 +254,7 @@
            ;; n-projections (into [] (projection/project-n projection-seed model-seed project-dates seed n-runs))
 
            ;; reducing taps
-           ;; single-projection (a/into [] (a/take 1 (a/tap input-mult (a/chan 32))))
+           single-projection (a/into [] (a/take 1 (a/tap input-mult (a/chan (a/dropping-buffer 1)))))
            all-projections (a/into [] (a/tap input-mult (a/chan 32)))
 
            ;; placements
@@ -303,12 +303,12 @@
        ;; put the projections on the channel
        ;; (a/pipe (a/to-chan n-projections) input-chan)
        ;; (a/pipe (a/to-chan (projection/project-n projection-seed model-seed project-dates seed n-runs)) input-chan)
-       (a/pipeline-blocking 3
-                            input-chan
-                            (map #(projection/project-1 projection-seed model-seed max-date %))
-                            (a/to-chan (-> (rand/seed seed)
-                                           (rand/split-n n-runs))))
-       {;; :single-projection (a/<!! single-projection)
+       (a/pipeline 3
+                   input-chan
+                   (map #(projection/project-1 projection-seed model-seed max-date %))
+                   (a/to-chan (-> (rand/seed seed)
+                                  (rand/split-n n-runs))))
+       {:single-projection (a/<!! single-projection)
         :all-projections (a/<!! all-projections)
         :placement-weekly-summary (a/<!! placement-weekly-summary)
         :placement-summary-mapped-results (a/<!! placement-summary-mapped-results)
