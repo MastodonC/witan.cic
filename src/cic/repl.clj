@@ -314,17 +314,34 @@
         :placement-summary-mapped-results (a/<!! placement-summary-mapped-results)
         :ages-summary-mapped-results (a/<!! ages-summary-mapped-results)
         :ages-weekly-summary (a/<!! ages-weekly-summary)
+        :project-from project-from
+        :project-to project-to
+        :project-dates project-dates
         })))
 
 
-  ;; starters
+  ;; starters by day
   (into {}
         (comp
          (map :beginning)
          (xf/by-key identity xf/count))
         (-> results :single-projection first))
 
-  ;; ceasers
+  ;; starters by month
+  (reduce
+   (fn [acc [beginning end]]
+     (assoc acc beginning
+            (xf/count
+             (comp
+              (map :beginning)
+              (filter (fn [d] (cic.time/between? d beginning end))))
+             (-> results :single-projection first))))
+   {}
+   (partition 2 1 (clj-time.periodic/periodic-seq (clj-time.core/first-day-of-the-month (:project-from results))
+                                                  (clj-time.core/last-day-of-the-month (:project-to results))
+                                                  (clj-time.core/months 1))))
+
+  ;; ceasers by day
   (into {}
         (comp
          (remove :open?)
@@ -332,6 +349,23 @@
          (xf/by-key identity xf/count))
         (-> results :single-projection first))
 
+  (summary/in-care-population-summary (-> results :single-projection first) (-> results :project-dates))
+
+
+  ;; ceasers by month
+  (reduce
+   (fn [acc [beginning end]]
+     (assoc acc beginning
+            (xf/count
+             (comp
+              (remove :open?)
+              (map :end)
+              (filter (fn [d] (cic.time/between? d beginning end))))
+             (-> results :single-projection first))))
+   {}
+   (partition 2 1 (clj-time.periodic/periodic-seq (clj-time.core/first-day-of-the-month (:project-from results))
+                                                  (clj-time.core/last-day-of-the-month (:project-to results))
+                                                  (clj-time.core/months 1))))
 
 
   )
