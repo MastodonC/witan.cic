@@ -13,6 +13,8 @@
 
 (def latest t/latest)
 
+(def floor t/floor)
+
 (defn <=
   [a b]
   (or (< a b)
@@ -75,6 +77,8 @@
 
 (def make-date t/date-time)
 
+(def month t/month)
+
 (def year t/year)
 
 (def without-time t/with-time-at-start-of-day)
@@ -91,3 +95,10 @@
   [date]
   (p/periodic-seq (financial-year-end date)
                   (t/years 1)))
+
+(defn start-month
+  [{:keys [beginning]}] (floor beginning month))
+
+(defn start-age
+  [{:keys [birthday beginning]}]
+  (t/in-years (clj-time.core/interval birthday beginning)))

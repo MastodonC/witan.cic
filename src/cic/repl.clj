@@ -14,7 +14,8 @@
             [clojure.set :as cs]
             [net.cgrand.xforms :as xf]
             [net.cgrand.xforms.rfs :as xrf]
-            [kixi.stats.core :as k]))
+            [kixi.stats.core :as k]
+            [net.cgrand.xforms :as x]))
 
 (set! *warn-on-reflection* true)
 
@@ -190,36 +191,6 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; core.async prototype
 
-(defn map-of-counts->map-of-histograms
-  [counts]
-  (into {}
-        (map (fn [[k n]]
-               [k (-> (k/histogram)
-                      (k/histogram n))]))
-        counts))
-
-(defn merge-histograms [^com.tdunning.math.stats.AbstractTDigest h1
-                        ^com.tdunning.math.stats.AbstractTDigest h2]
-  (.add h1 h2)
-  h1)
-
-(defn summary-with-confidence-intervals [^com.tdunning.math.stats.TDigest t-digest]
-  (let [q1 (.quantile t-digest 0.25)
-        q3 (.quantile t-digest 0.75)]
-    {:min (.getMin t-digest)
-     :lower (.quantile t-digest 0.05)
-     :q1 q1
-     :median (.quantile t-digest 0.50)
-     :q3 q3
-     :higher (.quantile t-digest 0.95)
-     :max (.getMax t-digest)
-     :iqr (when (and q1 q3) (- q3 q1))}))
-
-(defn summarize-map-of-histograms [histograms]
-  (into {}
-        (map (fn [[k v]]
-               [k (summary-with-confidence-intervals v)]))
-        histograms))
 
 (comment
   ;; core.async flow
@@ -243,7 +214,7 @@
            project-from (time/max-date (map :beginning periods))
            project-to (time/years-after project-from 3)
            project-dates (time/day-seq project-from project-to 7)
-           n-runs 999
+           n-runs 10
            learn-from (time/years-before project-from 4)
            projection-seed {:seed (filter :open? periods)
                             :date project-from}
@@ -264,18 +235,8 @@
            placement-summary-mapped-results (a/into [] (a/tap placement-summary-mult (a/chan 32)))
            placement-weekly-summary (a/transduce
                                      (mapcat identity)
-                                     (fn
-                                       ([] {})
-                                       ([acc] (into {} (map (fn [[k v]] [k (summarize-map-of-histograms v)])) acc))
-                                       ([acc [time counts]]
-                                        (try
-                                          (assoc acc time (merge-with k/histogram
-                                                                      (get acc time (zipmap spec/placements (repeatedly k/histogram)))
-                                                                      (select-keys counts spec/placements)))
-                                          (catch Exception e
-                                            (println (format "%s %s %s" (get acc time) time counts))
-                                            (throw e)))))
-                                     {}
+                                     (summary/summarize-timeseries-rf spec/placements)
+                                     (sorted-map)
                                      (a/tap placement-summary-mult (a/chan 512)))
 
            ;; ages
@@ -285,19 +246,27 @@
            ages-summary-mapped-results (a/into [] (a/tap ages-summary-mult (a/chan 32)))
            ages-weekly-summary (a/transduce
                                 (mapcat identity)
-                                (fn
-                                  ([] {})
-                                  ([acc] (into {} (map (fn [[k v]] [k (summarize-map-of-histograms v)])) acc))
-                                  ([acc [time counts]]
-                                   (try
-                                     (assoc acc time (merge-with k/histogram
-                                                                 (get acc time (zipmap spec/ages (repeatedly k/histogram)))
-                                                                 (select-keys counts spec/ages)))
-                                     (catch Exception e
-                                       (println (format "%s %s %s" (get acc time) time counts))
-                                       (throw e)))))
-                                {}
+                                (summary/summarize-timeseries-rf spec/ages)
+                                (sorted-map)
                                 (a/tap ages-summary-mult (a/chan 512)))
+
+           ;; bed nights per month
+           bed-nights-chan (a/chan 512)
+           bed-nights-mult
+           (a/mult bed-nights-chan)
+           #_(a/mult
+              (a/tap input-mult (a/chan 512 (map summary/bed-nights-per-month))))
+           _ (a/mult
+              (a/pipeline 3
+                          bed-nights-chan
+                          (map summary/bed-nights-per-month)
+                          (a/tap input-mult (a/chan 512))))
+           bed-nights-mapped-results (a/into [] (a/tap bed-nights-mult (a/chan 32)))
+           bed-nights-per-month-summary (a/transduce
+                                         (mapcat identity)
+                                         (summary/summarize-timeseries-rf spec/placements)
+                                         (sorted-map)
+                                         (a/tap bed-nights-mult (a/chan 512)))
            ]
 
        ;; put the projections on the channel
@@ -314,58 +283,31 @@
         :placement-summary-mapped-results (a/<!! placement-summary-mapped-results)
         :ages-summary-mapped-results (a/<!! ages-summary-mapped-results)
         :ages-weekly-summary (a/<!! ages-weekly-summary)
+        :bed-nights-mapped-results (a/<!! bed-nights-mapped-results)
+        :bed-nights-per-month-summary (a/<!! bed-nights-per-month-summary)
         :project-from project-from
         :project-to project-to
         :project-dates project-dates
         })))
 
 
-  ;; starters by day
-  (into {}
-        (comp
-         (map :beginning)
-         (xf/by-key identity xf/count))
-        (-> results :single-projection first))
+  spec/placements
+  [:Q2 :K2 :Q1 :R2 :P2 :H5 :R5 :R1 :A6 :P1 :Z1 :S1 :K1 :A4 :T4 :M3 :A5 :A3 :R3 :M2 :T0 :NA]
 
-  ;; starters by month
-  (reduce
-   (fn [acc [beginning end]]
-     (assoc acc beginning
-            (xf/count
-             (comp
-              (map :beginning)
-              (filter (fn [d] (cic.time/between? d beginning end))))
-             (-> results :single-projection first))))
-   {}
-   (partition 2 1 (clj-time.periodic/periodic-seq (clj-time.core/first-day-of-the-month (:project-from results))
-                                                  (clj-time.core/last-day-of-the-month (:project-to results))
-                                                  (clj-time.core/months 1))))
+  (def bed-nights-report
+    (into [(into ["date"] (map name spec/placements))]
+          (comp
+           (map (fn [[date placements]]
+                  (into [(clj-time.format/unparse (clj-time.format/formatter "YYYY-MM") date)]
+                        (map (fn [p]
+                               (get-in placements [p :median])))
+                        spec/placements)))
+           (x/sort-by first))
+          (:bed-nights-per-month-summary results)))
 
-  ;; ceasers by day
-  (into {}
-        (comp
-         (remove :open?)
-         (map :end)
-         (xf/by-key identity xf/count))
-        (-> results :single-projection first))
+  (require '[dk.ative.docjure.spreadsheet :as xl])
 
-  (summary/in-care-population-summary (-> results :single-projection first) (-> results :project-dates))
-
-
-  ;; ceasers by month
-  (reduce
-   (fn [acc [beginning end]]
-     (assoc acc beginning
-            (xf/count
-             (comp
-              (remove :open?)
-              (map :end)
-              (filter (fn [d] (cic.time/between? d beginning end))))
-             (-> results :single-projection first))))
-   {}
-   (partition 2 1 (clj-time.periodic/periodic-seq (clj-time.core/first-day-of-the-month (:project-from results))
-                                                  (clj-time.core/last-day-of-the-month (:project-to results))
-                                                  (clj-time.core/months 1))))
-
+  (let [wb (xl/create-workbook "Bed Nights Per Month" bed-nights-report)]
+    (xl/save-workbook! "bed-nights-report.xls" wb))
 
   )
