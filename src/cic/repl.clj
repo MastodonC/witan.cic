@@ -18,7 +18,7 @@
 (defn load-model-inputs
   "A useful REPL function to load the data files and convert them to  model inputs"
   ([{:keys [episodes-csv placement-costs-csv duration-lower-csv duration-median-csv duration-upper-csv
-            joiner-placements-csv phase-durations-csv phase-transitions-csv]}]
+            joiner-placements-csv phase-durations-csv phase-transitions-csv phase-duration-quantiles-csv]}]
    (hash-map :periods (-> (read/episodes episodes-csv)
                           (periods/from-episodes))
              :placement-costs (read/costs-csv placement-costs-csv)
@@ -28,7 +28,8 @@
                                  (model/duration-model))
              :placements-model (-> (read/placement-csvs joiner-placements-csv
                                                         phase-durations-csv
-                                                        phase-transitions-csv)
+                                                        phase-transitions-csv
+                                                        phase-duration-quantiles-csv)
                                    (model/placements-model))))
   ([]
    (load-model-inputs {:episodes-csv "data/episodes.scrubbed.csv"
@@ -37,6 +38,7 @@
                        :duration-median-csv "data/duration-model-median.csv"
                        :duration-upper-csv "data/duration-model-upper.csv"
                        :phase-durations-csv "data/phase-durations.csv"
+                       :phase-duration-quantiles-csv "data/phase-duration-quantiles.csv"
                        :phase-transitions-csv "data/phase-transitions.csv"
                        :joiner-placements-csv "data/joiner-placements.csv"})))
 

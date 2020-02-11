@@ -125,6 +125,17 @@
                  (assoc m (-> label str/lower-case keyword) {:lambda (parse-double param)}))
                {})))
 
+(defn phase-duration-quantiles-csv
+  [filename]
+  (->> (load-csv filename)
+       (map (fn [row]
+              (-> row
+                  (update :quantile parse-int)
+                  (update :value parse-double))))
+       (reduce (fn [m {:keys [row label value]}]
+                 (update m (keyword label) (fnil conj []) value))
+               {})))
+
 (defn phase-transitions-csv
   [filename]
   (->> (load-csv filename)
@@ -155,7 +166,8 @@
                {})))
 
 (defn placement-csvs
-  [joiner-placements phase-durations phase-transitions]
+  [joiner-placements phase-durations phase-transitions phase-duration-quantiles]
   {:joiner-placements (joiner-placements-csv joiner-placements)
    :phase-durations (phase-durations-csv phase-durations)
-   :phase-transitions (phase-transitions-csv phase-transitions)})
+   :phase-transitions (phase-transitions-csv phase-transitions)
+   :phase-duration-quantiles (phase-duration-quantiles-csv phase-duration-quantiles)})

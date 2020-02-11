@@ -149,6 +149,14 @@
                    (-> coefs :rest :lambda))]
       (d/draw (d/poisson {:lambda lambda})))))
 
+(defn phase-duration-quantiles-model
+  [coefs]
+  (fn [first-phase?]
+    (let [quantiles (if first-phase?
+                      (:first coefs)
+                      (:rest coefs))]
+      (rand-nth quantiles))))
+
 (defn phase-transitions-model
   [coefs]
   (fn [first-transition? age placement]
@@ -173,9 +181,9 @@
         ))))
 
 (defn placements-model
-  [{:keys [joiner-placements phase-durations phase-transitions]}]
+  [{:keys [joiner-placements phase-durations phase-transitions phase-duration-quantiles]}]
   (let [joiner-placement (joiner-placements-model joiner-placements)
-        phase-duration (phase-durations-model phase-durations)
+        phase-duration (phase-duration-quantiles-model phase-duration-quantiles)
         phase-transition (phase-transitions-model phase-transitions)]
     (fn placements-model*
       ([age total-duration seed] ;; New joiner
