@@ -140,3 +140,23 @@
              (let [last-offset (-> episodes last :offset)]
                (concat episodes [{:offset (inc last-offset)
                                   :placement spec/unknown-placement}])))))))))
+
+(defn phase-durations-model
+  [coefs]
+  (fn [first-phase?]
+    (let [lambda (if first-phase?
+                   (-> coefs :first :lambda)
+                   (-> coefs :rest :lambda))]
+      (d/draw (d/poisson {:lambda lambda})))))
+
+(defn phase-transitions-model
+  [coefs]
+  (fn [first-transition? age placement]
+    (let [params  (get coefs {:first-transition first-transition?
+                              :transition-age age
+                              :transition-from placement})]
+      (if params
+        (let [[ks alphas] (apply map vector params)
+              category-probs (zipmap ks (d/draw (d/dirichlet {:alphas alphas})))]
+          (d/draw (d/categorical category-probs)))
+        placement))))

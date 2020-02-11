@@ -117,3 +117,25 @@
        (map #(-> %
                  (update :placement keyword)
                  (update :cost parse-double)))))
+
+(defn phase-durations-csv
+  [filename]
+  (->> (load-csv filename)
+       (reduce (fn [m {:keys [label param]}]
+                 (assoc m (-> label str/lower-case keyword) {:lambda (parse-double param)}))
+               {})))
+
+(defn phase-transitions-csv
+  [filename]
+  (->> (load-csv filename)
+       (map (fn [row]
+              (-> row
+                  (update :first-transition = "TRUE")
+                  (update :transition-age parse-int)
+                  (update :n parse-int)
+                  (update :m parse-int))))
+       (group-by #(select-keys % [:first-transition :transition-age :transition-from]))
+       (reduce (fn [m [k v]]
+                 (assoc m k (reduce (fn [m {:keys [transition-to n]}]
+                                      (assoc m transition-to n)) {} v)))
+               {})))

@@ -17,20 +17,27 @@
 
 (defn load-model-inputs
   "A useful REPL function to load the data files and convert them to  model inputs"
-  ([{:keys [episodes-csv placement-costs-csv duration-lower-csv duration-median-csv duration-upper-csv]}]
+  ([{:keys [episodes-csv placement-costs-csv duration-lower-csv duration-median-csv duration-upper-csv
+            phase-durations-csv phase-transitions-csv]}]
    (hash-map :periods (-> (read/episodes episodes-csv)
                           (periods/from-episodes))
              :placement-costs (read/costs-csv placement-costs-csv)
              :duration-model (-> (read/duration-csvs duration-lower-csv
                                                      duration-median-csv
                                                      duration-upper-csv)
-                                 (model/duration-model))))
+                                 (model/duration-model))
+             :phase-durations (-> (read/phase-durations-csv phase-durations-csv)
+                                  (model/phase-durations-model))
+             :phase-transitions (-> (read/phase-transitions-csv phase-transitions-csv)
+                                    (model/phase-transitions-model))))
   ([]
    (load-model-inputs {:episodes-csv "data/episodes.scrubbed.csv"
                        :placement-costs-csv "data/placement-costs.csv"
                        :duration-lower-csv "data/duration-model-lower.csv"
                        :duration-median-csv "data/duration-model-median.csv"
-                       :duration-upper-csv "data/duration-model-upper.csv"})))
+                       :duration-upper-csv "data/duration-model-upper.csv"
+                       :phase-durations-csv "data/phase-durations.csv"
+                       :phase-transitions-csv "data/phase-transitions.csv"})))
 
 (defn prepare-model-inputs
   [{:keys [periods] :as model-inputs}]
