@@ -181,7 +181,7 @@
       ([age total-duration seed] ;; New joiner
        (let [placement (joiner-placement age)
              placements [{:offset 0 :placement placement}]]
-         (placements-model* age total-duration {:episodes placements :duration 0})))
+         (placements-model* age total-duration {:episodes placements :duration 0} seed)))
       ([age total-duration {:keys [episodes duration] :as open-period} seed]
        (let [{:keys [placement offset]} (last episodes)]
          (loop [placement placement

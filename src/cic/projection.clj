@@ -12,7 +12,7 @@
   [{:keys [duration-model episodes-model placements-model] :as model}
    {:keys [duration birthday beginning admission-age episodes period-id] :as open-period} seed]
   (let [projected-duration (duration-model birthday beginning duration seed)
-        episodes (placements-model admission-age projected-duration open-period seed)]
+        episodes (:episodes open-period) #_(placements-model admission-age projected-duration open-period seed)] ;; TODO - fix this
     (-> (assoc open-period :duration projected-duration)
         (assoc :episodes episodes)
         (assoc :end (time/without-time (time/days-after beginning projected-duration)))
@@ -20,7 +20,7 @@
 
 (defn joiners-seq
   "Return a lazy sequence of projected joiners for a particular age of admission."
-  [joiners-model duration-model episodes-model age beginning end seed]
+  [joiners-model duration-model placements-model age beginning end seed]
   (let [[seed-1 seed-2 seed-3 seed-4 seed-5 seed-6] (rand/split-n seed 6)
         interval (joiners-model beginning seed-1)
         next-time (time/days-after beginning interval)
@@ -28,7 +28,7 @@
         birthday (-> (time/days-before start-time (p/sample-1 (d/uniform {:a 0 :b 364}) seed-6))
                      (time/years-before age))
         duration (duration-model birthday start-time seed-2)
-        episodes (episodes-model duration seed-3)]
+        episodes (placements-model duration seed-3)]
     (when (time/< next-time end)
       (let [period-end (time/days-after next-time duration)
             period {:beginning start-time
@@ -40,15 +40,15 @@
                     :episodes episodes}]
         (cons period
               (lazy-seq
-               (joiners-seq joiners-model duration-model episodes-model age next-time end seed-5)))))))
+               (joiners-seq joiners-model duration-model placements-model age next-time end seed-5)))))))
 
 (defn project-joiners
   "Return a lazy sequence of projected joiners for all ages of admission."
-  [{:keys [joiners-model duration-model episodes-model] :as model} beginning end seed]
+  [{:keys [joiners-model duration-model episodes-model placements-model] :as model} beginning end seed]
   (mapcat (fn [age seed]
             (joiners-seq (partial joiners-model age)
                          duration-model
-                         (partial episodes-model age) age beginning end seed))
+                         (partial placements-model age) age beginning end seed))
           spec/ages
           (rand/split-n seed (count spec/ages))))
 

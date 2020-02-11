@@ -132,6 +132,8 @@
               (-> row
                   (update :first-transition = "TRUE")
                   (update :transition-age parse-int)
+                  (update :transition-to keyword)
+                  (update :transition-from keyword)
                   (update :n parse-int)
                   (update :m parse-int))))
        (group-by #(select-keys % [:first-transition :transition-age :transition-from]))
@@ -146,6 +148,7 @@
        (map (fn [row]
               (-> row
                   (update :admission-age parse-int)
+                  (update :first-placement keyword)
                   (update :n parse-int))))
        (reduce (fn [m {:keys [admission-age first-placement n]}]
                  (assoc-in m [admission-age first-placement] n))
