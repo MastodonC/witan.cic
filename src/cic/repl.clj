@@ -48,11 +48,11 @@
 
 (defn generate-projection-csv!
   "Main REPL function for writing a projection CSV"
-  [output-file n-runs seed]
+  [output-file train-years n-runs seed]
   (let [{:keys [periods placement-costs duration-model]} (prepare-model-inputs (load-model-inputs))
         project-from (time/max-date (map :beginning periods))
         project-to (time/years-after project-from 3)
-        learn-from (time/years-before project-from 4)
+        learn-from (time/years-before project-from train-years)
         projection-seed {:seed (filter :open? periods)
                          :date project-from}
         model-seed {:seed periods
