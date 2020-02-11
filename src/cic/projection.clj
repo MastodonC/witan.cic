@@ -12,7 +12,7 @@
   [{:keys [duration-model episodes-model placements-model] :as model}
    {:keys [duration birthday beginning admission-age episodes period-id] :as open-period} seed]
   (let [projected-duration (duration-model birthday beginning duration seed)
-        episodes (placements-model admission-age projected-duration open-period seed)]
+        episodes #_(:episodes open-period) (placements-model admission-age projected-duration open-period seed)]
     (-> (assoc open-period :duration projected-duration)
         (assoc :episodes episodes)
         (assoc :end (time/without-time (time/days-after beginning projected-duration)))
@@ -28,7 +28,8 @@
         birthday (-> (time/days-before start-time (p/sample-1 (d/uniform {:a 0 :b 364}) seed-6))
                      (time/years-before age))
         duration (duration-model birthday start-time seed-2)
-        episodes (placements-model duration seed-3)]
+        episodes (placements-model duration {:beginning start-time :birthday birthday
+                                             :duration 0 :episodes []} seed-3)]
     (when (time/< next-time end)
       (let [period-end (time/days-after next-time duration)
             period {:beginning start-time

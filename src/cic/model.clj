@@ -166,8 +166,10 @@
       (if params
         (let [[ks alphas] (apply map vector params)
               category-probs (zipmap ks (d/draw (d/dirichlet {:alphas alphas})))]
+          #_(println "Found phase transition params for age" age "placement" placement "first transition" first-transition?)
           (d/draw (d/categorical category-probs)))
-        placement))))
+        (do #_(println "Didn't find phase transition params for age" age "placement" placement "first transition" first-transition?)
+            placement)))))
 
 (defn joiner-placements-model
   [coefs]
@@ -186,37 +188,26 @@
   (let [joiner-placement (joiner-placements-model joiner-placements)
         phase-duration (phase-duration-quantiles-model phase-duration-quantiles)
         phase-transition (phase-transitions-model phase-transitions)]
-    (fn placements-model*
-      ([age total-duration seed] ;; New joiner
-       (let [placement (joiner-placement age)
-             placements [{:offset 0 :placement placement}]
-             single-placement? (> (d/draw (d/beta (get phase-bernoulli-params age))) 0.5)]
-         (if single-placement?
-           placements
-           (loop [offset 0
-                  placement placement
-                  placements placements]
-             (let [next-offset (+ offset (m/ceil (* (d/draw (d/beta (get phase-beta-params age))) total-duration)))]
-               (if (> next-offset total-duration)
-                 placements
-                 (let [next-placement (phase-transition (zero? offset) age placement)]
-                   (recur next-offset next-placement (conj placements {:offset next-offset :placement next-placement})))))))))
-      ([age total-duration {:keys [episodes duration] :as open-period} seed]
-       (let [{:keys [placement offset]} (last episodes)]
-         (if (and (zero? offset)
-                  (> (d/draw (d/beta (get phase-bernoulli-params age))) 0.5))
-           (vec episodes)
-           (loop [offset offset
-                  placement placement
-                  placements (vec episodes)]
-             (let [next-offset (loop [retries 3]
-                                 (let [test-offset (+ offset (m/ceil (* (d/draw (d/beta (get phase-beta-params age))) total-duration)))]
-                                   (if (> test-offset duration)
-                                     test-offset
-                                     (if (<= retries 0)
-                                       (+ duration test-offset)
-                                       (recur (dec retries))))))]
-               (if (> next-offset total-duration)
-                 placements
-                 (let [next-placement (phase-transition (zero? offset) age placement)]
-                   (recur next-offset next-placement (conj placements {:offset next-offset :placement next-placement}))))))))))))
+    (fn [age total-duration {:keys [episodes duration beginning birthday]} seed]
+      (let [episodes (if (seq episodes)
+                       episodes
+                       (let [placement (joiner-placement age)]
+                         [{:offset 0 :placement placement}]))
+            {:keys [placement offset]} (last episodes)]
+        (if (and (zero? offset)
+                 (> (d/draw (d/beta (get phase-bernoulli-params age))) 0.5))
+          (vec episodes)
+          (loop [offset offset
+                 placement placement
+                 placements (vec episodes)]
+            (let [next-offset (loop [test-offset offset]
+                                (let [age (time/year-interval birthday (time/days-after beginning test-offset))
+                                      test-offset (+ test-offset (m/ceil (* (d/draw (d/beta (get phase-beta-params age))) total-duration)))]
+                                  (if (> test-offset duration)
+                                    test-offset
+                                    (recur test-offset))))
+                  age (time/year-interval birthday (time/days-after beginning next-offset))]
+              (if (> next-offset total-duration)
+                placements
+                (let [next-placement (phase-transition (zero? offset) age placement)]
+                  (recur next-offset next-placement (conj placements {:offset next-offset :placement next-placement})))))))))))
