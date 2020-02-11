@@ -165,9 +165,24 @@
                  (assoc-in m [admission-age first-placement] n))
                {})))
 
+(defn age-beta-params
+  [filename]
+  (->> (load-csv filename)
+       (map (fn [row]
+              (-> row
+                  (update :age parse-int)
+                  (update :alpha parse-double)
+                  (update :beta parse-double))))
+       (reduce (fn [m {:keys [age alpha beta]}]
+                 (assoc m age {:alpha alpha :beta beta}))
+               {})))
+
 (defn placement-csvs
-  [joiner-placements phase-durations phase-transitions phase-duration-quantiles]
+  [joiner-placements phase-durations phase-transitions phase-duration-quantiles
+   phase-bernoulli-params phase-beta-params]
   {:joiner-placements (joiner-placements-csv joiner-placements)
    :phase-durations (phase-durations-csv phase-durations)
    :phase-transitions (phase-transitions-csv phase-transitions)
-   :phase-duration-quantiles (phase-duration-quantiles-csv phase-duration-quantiles)})
+   :phase-duration-quantiles (phase-duration-quantiles-csv phase-duration-quantiles)
+   :phase-bernoulli-params (age-beta-params phase-bernoulli-params)
+   :phase-beta-params (age-beta-params phase-beta-params)})

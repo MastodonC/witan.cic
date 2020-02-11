@@ -12,7 +12,7 @@
   [{:keys [duration-model episodes-model placements-model] :as model}
    {:keys [duration birthday beginning admission-age episodes period-id] :as open-period} seed]
   (let [projected-duration (duration-model birthday beginning duration seed)
-        episodes (:episodes open-period)#_(placements-model admission-age projected-duration open-period seed)] ;; TODO - fix this
+        episodes (placements-model admission-age projected-duration open-period seed)]
     (-> (assoc open-period :duration projected-duration)
         (assoc :episodes episodes)
         (assoc :end (time/without-time (time/days-after beginning projected-duration)))

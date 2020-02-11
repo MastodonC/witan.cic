@@ -18,7 +18,8 @@
 (defn load-model-inputs
   "A useful REPL function to load the data files and convert them to  model inputs"
   ([{:keys [episodes-csv placement-costs-csv duration-lower-csv duration-median-csv duration-upper-csv
-            joiner-placements-csv phase-durations-csv phase-transitions-csv phase-duration-quantiles-csv]}]
+            joiner-placements-csv phase-durations-csv phase-transitions-csv phase-duration-quantiles-csv
+            phase-beta-params-csv phase-bernoulli-params-csv]}]
    (hash-map :periods (-> (read/episodes episodes-csv)
                           (periods/from-episodes))
              :placement-costs (read/costs-csv placement-costs-csv)
@@ -29,7 +30,9 @@
              :placements-model (-> (read/placement-csvs joiner-placements-csv
                                                         phase-durations-csv
                                                         phase-transitions-csv
-                                                        phase-duration-quantiles-csv)
+                                                        phase-duration-quantiles-csv
+                                                        phase-bernoulli-params-csv
+                                                        phase-beta-params-csv)
                                    (model/placements-model))))
   ([]
    (load-model-inputs {:episodes-csv "data/episodes.scrubbed.csv"
@@ -40,7 +43,9 @@
                        :phase-durations-csv "data/phase-durations.csv"
                        :phase-duration-quantiles-csv "data/phase-duration-quantiles.csv"
                        :phase-transitions-csv "data/phase-transitions.csv"
-                       :joiner-placements-csv "data/joiner-placements.csv"})))
+                       :joiner-placements-csv "data/joiner-placements.csv"
+                       :phase-bernoulli-params-csv "data/phase-bernoulli-params.csv"
+                       :phase-beta-params-csv "data/phase-beta-params.csv"})))
 
 (defn prepare-model-inputs
   [{:keys [periods] :as model-inputs}]
