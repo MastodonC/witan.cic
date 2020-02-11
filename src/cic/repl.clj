@@ -18,7 +18,7 @@
 (defn load-model-inputs
   "A useful REPL function to load the data files and convert them to  model inputs"
   ([{:keys [episodes-csv placement-costs-csv duration-lower-csv duration-median-csv duration-upper-csv
-            phase-durations-csv phase-transitions-csv]}]
+            joiner-placements-csv phase-durations-csv phase-transitions-csv]}]
    (hash-map :periods (-> (read/episodes episodes-csv)
                           (periods/from-episodes))
              :placement-costs (read/costs-csv placement-costs-csv)
@@ -26,10 +26,10 @@
                                                      duration-median-csv
                                                      duration-upper-csv)
                                  (model/duration-model))
-             :phase-durations (-> (read/phase-durations-csv phase-durations-csv)
-                                  (model/phase-durations-model))
-             :phase-transitions (-> (read/phase-transitions-csv phase-transitions-csv)
-                                    (model/phase-transitions-model))))
+             :placements-model (-> (read/placement-csvs joiner-placements-csv
+                                                        phase-durations-csv
+                                                        phase-transitions-csv)
+                                   (model/placements-model))))
   ([]
    (load-model-inputs {:episodes-csv "data/episodes.scrubbed.csv"
                        :placement-costs-csv "data/placement-costs.csv"
@@ -37,7 +37,8 @@
                        :duration-median-csv "data/duration-model-median.csv"
                        :duration-upper-csv "data/duration-model-upper.csv"
                        :phase-durations-csv "data/phase-durations.csv"
-                       :phase-transitions-csv "data/phase-transitions.csv"})))
+                       :phase-transitions-csv "data/phase-transitions.csv"
+                       :joiner-placements-csv "data/joiner-placements.csv"})))
 
 (defn prepare-model-inputs
   [{:keys [periods] :as model-inputs}]
@@ -56,7 +57,7 @@
 (defn generate-projection-csv!
   "Main REPL function for writing a projection CSV"
   [output-file train-years n-runs seed]
-  (let [{:keys [periods placement-costs duration-model]} (prepare-model-inputs (load-model-inputs))
+  (let [{:keys [periods placement-costs duration-model placements-model]} (prepare-model-inputs (load-model-inputs))
         project-from (time/max-date (map :beginning periods))
         project-to (time/years-after project-from 3)
         learn-from (time/years-before project-from train-years)
@@ -64,6 +65,7 @@
                          :date project-from}
         model-seed {:seed periods
                     :duration-model duration-model
+                    :placements-model placements-model
                     :joiner-range [learn-from project-from]
                     :episodes-range [learn-from project-from]}
         output-from (time/years-before learn-from 2)

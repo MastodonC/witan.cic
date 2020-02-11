@@ -160,3 +160,37 @@
               category-probs (zipmap ks (d/draw (d/dirichlet {:alphas alphas})))]
           (d/draw (d/categorical category-probs)))
         placement))))
+
+(defn joiner-placements-model
+  [coefs]
+  (fn [age]
+    (let [params (get coefs age)]
+      (if params
+        (let [[ks alphas] (apply map vector params)
+              category-probs (zipmap ks (d/draw (d/dirichlet {:alphas alphas})))]
+          (d/draw (d/categorical category-probs)))
+        spec/unknown-placement ;; Fallback - never seen a joiner of this age
+        ))))
+
+(defn placements-model
+  [{:keys [joiner-placements phase-durations phase-transitions]}]
+  (let [joiner-placement (joiner-placements-model joiner-placements)
+        phase-duration (phase-durations-model phase-durations)
+        phase-transition (phase-transitions-model phase-transitions)]
+    (fn placements-model*
+      ([age total-duration seed] ;; New joiner
+       (let [placement (joiner-placement age)
+             placements [{:offset 0 :placement placement}]]
+         (placements-model* age total-duration {:episodes placements :duration 0})))
+      ([age total-duration {:keys [episodes duration] :as open-period} seed]
+       (let [{:keys [placement offset]} (last episodes)]
+         (loop [placement placement
+                offset offset
+                placements (vec episodes)]
+           (let [placement-duration (+ duration (phase-duration (zero? offset))) ;; TODO: improve this
+                 next-offset (+ offset placement-duration)]
+             (if (> next-offset total-duration)
+               placements
+               (let [next-placement (phase-transition (zero? offset) age placement)] ;; TODO: update age of child
+                 (recur next-placement next-offset (conj placements {:offset next-offset
+                                                                     :placement next-placement})))))))))))

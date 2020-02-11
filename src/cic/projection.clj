@@ -9,10 +9,10 @@
 
 (defn project-period-close
   "Sample a possible duration in care which is greater than the existing duration"
-  [{:keys [duration-model episodes-model] :as model}
+  [{:keys [duration-model episodes-model placements-model] :as model}
    {:keys [duration birthday beginning admission-age episodes period-id] :as open-period} seed]
   (let [projected-duration (duration-model birthday beginning duration seed)
-        episodes (episodes-model admission-age projected-duration open-period seed)]
+        episodes (placements-model admission-age projected-duration open-period seed)]
     (-> (assoc open-period :duration projected-duration)
         (assoc :episodes episodes)
         (assoc :end (time/without-time (time/days-after beginning projected-duration)))
@@ -54,7 +54,7 @@
 
 (defn train-model
   "Build stochastic helper models using R. Random seed ensures determinism."
-  [{:keys [seed joiner-range episodes-range duration-model] :as model-seed} random-seed]
+  [{:keys [seed joiner-range episodes-range duration-model placements-model] :as model-seed} random-seed]
   (let [[s1 s2] (rand/split-n random-seed 2)
         [joiners-from joiners-to] joiner-range
         [episodes-from episodes-to] episodes-range
@@ -64,7 +64,8 @@
                         (model/joiners-model-gen s2))
      :episodes-model (-> (filter #(time/between? (:end %) episodes-from episodes-to) closed-periods)
                          (model/episodes-model))
-     :duration-model duration-model}))
+     :duration-model duration-model
+     :placements-model placements-model}))
 
 (defn project-1
   "Returns a single sequence of projected periods."

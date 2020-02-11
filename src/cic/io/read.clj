@@ -139,3 +139,20 @@
                  (assoc m k (reduce (fn [m {:keys [transition-to n]}]
                                       (assoc m transition-to n)) {} v)))
                {})))
+
+(defn joiner-placements-csv
+  [filename]
+  (->> (load-csv filename)
+       (map (fn [row]
+              (-> row
+                  (update :admission-age parse-int)
+                  (update :n parse-int))))
+       (reduce (fn [m {:keys [admission-age first-placement n]}]
+                 (assoc-in m [admission-age first-placement] n))
+               {})))
+
+(defn placement-csvs
+  [joiner-placements phase-durations phase-transitions]
+  {:joiner-placements (joiner-placements-csv joiner-placements)
+   :phase-durations (phase-durations-csv phase-durations)
+   :phase-transitions (phase-transitions-csv phase-transitions)})
