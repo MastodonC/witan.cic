@@ -15,7 +15,8 @@
             [net.cgrand.xforms :as xf]
             [net.cgrand.xforms.rfs :as xrf]
             [kixi.stats.core :as k]
-            [net.cgrand.xforms :as x]))
+            [net.cgrand.xforms :as x]
+            [kixi.stats.core :as kixi]))
 
 (set! *warn-on-reflection* true)
 
@@ -309,5 +310,13 @@
 
   (let [wb (xl/create-workbook "Bed Nights Per Month" bed-nights-report)]
     (xl/save-workbook! "bed-nights-report.xls" wb))
+
+  (kixi.stats.distribution/draw (kixi.stats.distribution/chi-squared {:k 1}))
+
+  (kixi.stats.distribution/sample-summary 100 (kixi.stats.distribution/chi-squared {:k 10}) {:seed 42})
+
+
+
+
 
   )
