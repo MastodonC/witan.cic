@@ -175,11 +175,11 @@
 (defn generate-validation-csv!
   "Outputs model projection and linear regression projection together with actuals for comparison."
   [out-file n-runs seed]
-  (let [{:keys [periods placement-costs duration-model]} (load-model-inputs)
+  (let [{:keys [periods placement-costs placements-model duration-model]} (prepare-model-inputs (load-model-inputs))
         validation (into []
-                         (map #(validate/compare-models-at % duration-model periods seed n-runs))
-                         (time/month-seq (time/make-date 2010 1 1)
-                                         (time/make-date 2010 3 1)))]
+                         (map #(validate/compare-models-at % duration-model placements-model periods seed n-runs))
+                         (time/month-seq (time/make-date 2017 4 1)
+                                         (time/make-date 2018 4 1)))]
     (->> (write/validation-table validation)
          (write/write-csv! out-file))))
 

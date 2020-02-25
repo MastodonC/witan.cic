@@ -50,11 +50,16 @@
                                                 (time/make-date dob 12 31))
                  ;; True birthday must be somewhere between earliest and latest birthdays inclusive.
                  ;; Assume uniform distribution between the two.
-                 birthday-offset (-> {:a 0 :b (time/day-interval earliest-birthday latest-birthday)}
-                                     (d/uniform)
-                                     (p/sample-1 rng))
+                 birthday-offset (try ;; FIXME
+                                   (-> {:a 0 :b (time/day-interval earliest-birthday latest-birthday)}
+                                       (d/uniform)
+                                       (p/sample-1 rng))
+                                   (catch Exception e
+                                     0))
                  birthday (time/days-after earliest-birthday birthday-offset)]
              (-> period
                  (assoc :birthday birthday)
-                 (assoc :admission-age (time/year-interval birthday beginning)))))
+                 (assoc :admission-age (try ;; FIXME
+                                         (time/year-interval birthday beginning)
+                                         (catch Exception e 0))))))
          periods rngs)))
