@@ -45,32 +45,38 @@
           (map fields)
           projection)))
 
-(defn period->episodes-rows
-  [project-to {:keys [period-id beginning dob episodes end]}]
+(defn period->episodes
+  [{:keys [period-id iteration beginning dob episodes end] :as period}]
   (->> (partition-all 2 1 episodes)
        (filter (fn [[a b]]
                  (or (nil? b) (> (:offset b) (:offset a)))))
        (map-indexed (fn [idx [{:keys [placement offset]} to]]
                       (hash-map :period-id period-id
+                                :iteration-number iteration
+                                :episode-number (inc idx)
                                 :dob dob
-                                :episode (inc idx)
                                 :start (time/days-after beginning offset)
                                 :end (or (some->> to :offset dec (time/days-after beginning)) end)
-                                :placement placement)))
-       (filter (fn [{:keys [period-id dob episode start end placement]}]
-                 (time/< start project-to)))
-       (map (fn [{:keys [period-id dob episode start end placement] :as period}]
-              (vector period-id dob episode
-                      (date->str start)
-                      (when (time/< end project-to) (date->str end))
-                      (name placement))))))
+                                :placement placement)))))
+
+(defn episodes->table-rows-xf
+  [project-to]
+  (comp (filter (fn [{:keys [period-id dob episode start end placement]}]
+                  (time/< start project-to)))
+        (map (fn [{:keys [period-id iteration-number dob episode-number start end placement] :as episode}]
+               (vector iteration-number period-id dob episode-number
+                       (date->str start)
+                       (when (time/< end project-to) (date->str end))
+                       (name placement))))))
 
 (defn episodes-table
-  [project-to projection]
-  (let [headers ["ID" "DOB" "Episode" "Start" "End" "Placement"]]
+  [project-to projections]
+  (let [headers ["Iteration" "ID" "DOB" "Episode" "Start" "End" "Placement"]]
     (into [headers]
-          (mapcat (partial period->episodes-rows project-to))
-          projection)))
+          (comp cat
+                (mapcat period->episodes)
+                (episodes->table-rows-xf project-to))
+          projections)))
 
 (defn validation-table
   [validation]

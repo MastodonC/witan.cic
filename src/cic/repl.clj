@@ -185,16 +185,18 @@
 
 (defn generate-episodes-csv!
   "Outputs a file showing a single projection in rowise episodes format."
-  [out-file seed]
-  (let [{:keys [periods duration-model]} (load-model-inputs)
+  [out-file train-years n-runs seed]
+  (let [{:keys [periods placement-costs duration-model placements-model] :as model-inputs} (prepare-model-inputs (load-model-inputs))
         project-from (time/max-date (map :beginning periods))
         project-to (time/years-after project-from 3)
-        learn-from (time/years-before project-from 4)
+        learn-from (time/years-before project-from train-years)
         projection-seed {:seed (filter :open? periods)
                          :date project-from}
         model-seed {:seed periods
                     :duration-model duration-model
-                    :joiner-range [learn-from project-from]}]
-    (->> (projection/project-1 projection-seed model-seed project-to (rand/seed seed))
+                    :placements-model placements-model
+                    :joiner-range [learn-from project-from]
+                    :episodes-range [learn-from project-from]}]
+    (->> (projection/project-n projection-seed model-seed [project-to] seed n-runs)
          (write/episodes-table project-to)
          (write/write-csv! out-file))))
