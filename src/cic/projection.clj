@@ -81,9 +81,11 @@
   "Returns n stochastic sequences of projected periods."
   [projection-seed model-seed project-dates seed n-runs]
   (let [max-date (time/max-date project-dates)]
-    (map #(project-1 projection-seed model-seed max-date %)
-         (-> (rand/seed seed)
-             (rand/split-n n-runs)))))
+    (map-indexed (fn [iteration seed]
+                   (->> (project-1 projection-seed model-seed max-date seed)
+                        (map #(assoc % :simulation-number (inc iteration)))))
+                 (-> (rand/seed seed)
+                     (rand/split-n n-runs)))))
 
 (defn projection
   "Calculates summary statistics over n sequences of projected periods."

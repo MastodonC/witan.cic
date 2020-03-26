@@ -45,32 +45,45 @@
           (map fields)
           projection)))
 
-(defn period->episodes-rows
-  [project-to {:keys [period-id beginning dob episodes end]}]
-  (->> (partition-all 2 1 episodes)
-       (filter (fn [[a b]]
-                 (or (nil? b) (> (:offset b) (:offset a)))))
-       (map-indexed (fn [idx [{:keys [placement offset]} to]]
-                      (hash-map :period-id period-id
-                                :dob dob
-                                :episode (inc idx)
-                                :start (time/days-after beginning offset)
-                                :end (or (some->> to :offset dec (time/days-after beginning)) end)
-                                :placement placement)))
-       (filter (fn [{:keys [period-id dob episode start end placement]}]
-                 (time/< start project-to)))
-       (map (fn [{:keys [period-id dob episode start end placement] :as period}]
-              (vector period-id dob episode
-                      (date->str start)
-                      (when (time/< end project-to) (date->str end))
-                      (name placement))))))
+(defn period->episodes
+  [{:keys [period-id simulation-number beginning dob birthday admission-age episodes end] :as period}]
+  (into []
+        (comp
+         (filter (fn [[a b]]
+                   (or (nil? b) (> (:offset b) (:offset a)))))
+         (map-indexed (fn [idx [{:keys [placement offset]} to]]
+                        (hash-map :period-id period-id
+                                  :simulation-number simulation-number
+                                  :episode-number (inc idx)
+                                  :dob dob
+                                  :admission-age admission-age
+                                  :birthday birthday
+                                  :start (time/days-after beginning offset)
+                                  :end (or (some->> to :offset dec (time/days-after beginning)) end)
+                                  :placement placement))))
+        (partition-all 2 1 episodes)))
+
+(defn episodes->table-rows-xf
+  [project-to]
+  (comp (filter (fn [{:keys [period-id dob episode start end placement]}]
+                  (time/< start project-to)))
+        (map (fn [{:keys [period-id simulation-number dob birthday admission-age
+                          episode-number start end placement] :as episode}]
+               (vector simulation-number period-id
+                       episode-number dob admission-age
+                       (date->str birthday)
+                       (date->str start)
+                       (when (time/< end project-to) (date->str end))
+                       (name placement))))))
 
 (defn episodes-table
-  [project-to projection]
-  (let [headers ["ID" "DOB" "Episode" "Start" "End" "Placement"]]
+  [project-to projections]
+  (let [headers ["Simulation" "ID" "Episode" "Birth Year" "Admission Age" "Birthday" "Start" "End" "Placement"]]
     (into [headers]
-          (mapcat (partial period->episodes-rows project-to))
-          projection)))
+          (comp cat
+                (mapcat period->episodes)
+                (episodes->table-rows-xf project-to))
+          projections)))
 
 (defn validation-table
   [validation]
