@@ -9,10 +9,10 @@
 
 (defn project-period-close
   "Sample a possible duration in care which is greater than the existing duration"
-  [{:keys [duration-model episodes-model] :as model}
+  [{:keys [duration-model episodes-model placements-model] :as model}
    {:keys [duration birthday beginning admission-age episodes period-id] :as open-period} seed]
   (let [projected-duration (duration-model birthday beginning duration seed)
-        episodes (episodes-model admission-age projected-duration open-period seed)]
+        episodes #_(:episodes open-period) (placements-model admission-age projected-duration open-period seed)]
     (-> (assoc open-period :duration projected-duration)
         (assoc :episodes episodes)
         (assoc :end (time/without-time (time/days-after beginning projected-duration)))
@@ -20,7 +20,7 @@
 
 (defn joiners-seq
   "Return a lazy sequence of projected joiners for a particular age of admission."
-  [joiners-model duration-model episodes-model age beginning end seed]
+  [joiners-model duration-model placements-model age beginning end seed]
   (let [[seed-1 seed-2 seed-3 seed-4 seed-5 seed-6] (rand/split-n seed 6)
         interval (joiners-model beginning seed-1)
         next-time (time/days-after beginning interval)
@@ -28,7 +28,8 @@
         birthday (-> (time/days-before start-time (p/sample-1 (d/uniform {:a 0 :b 364}) seed-6))
                      (time/years-before age))
         duration (duration-model birthday start-time seed-2)
-        episodes (episodes-model duration seed-3)]
+        episodes (placements-model duration {:beginning start-time :birthday birthday
+                                             :duration 0 :episodes []} seed-3)]
     (when (time/< next-time end)
       (let [period-end (time/days-after next-time duration)
             period {:beginning start-time
@@ -40,21 +41,21 @@
                     :episodes episodes}]
         (cons period
               (lazy-seq
-               (joiners-seq joiners-model duration-model episodes-model age next-time end seed-5)))))))
+               (joiners-seq joiners-model duration-model placements-model age next-time end seed-5)))))))
 
 (defn project-joiners
   "Return a lazy sequence of projected joiners for all ages of admission."
-  [{:keys [joiners-model duration-model episodes-model] :as model} beginning end seed]
+  [{:keys [joiners-model duration-model episodes-model placements-model] :as model} beginning end seed]
   (mapcat (fn [age seed]
             (joiners-seq (partial joiners-model age)
                          duration-model
-                         (partial episodes-model age) age beginning end seed))
+                         (partial placements-model age) age beginning end seed))
           spec/ages
           (rand/split-n seed (count spec/ages))))
 
 (defn train-model
   "Build stochastic helper models using R. Random seed ensures determinism."
-  [{:keys [seed joiner-range episodes-range duration-model] :as model-seed} random-seed]
+  [{:keys [seed joiner-range episodes-range duration-model placements-model] :as model-seed} random-seed]
   (let [[s1 s2] (rand/split-n random-seed 2)
         [joiners-from joiners-to] joiner-range
         [episodes-from episodes-to] episodes-range
@@ -64,7 +65,8 @@
                         (model/joiners-model-gen s2))
      :episodes-model (-> (filter #(time/between? (:end %) episodes-from episodes-to) closed-periods)
                          (model/episodes-model))
-     :duration-model duration-model}))
+     :duration-model duration-model
+     :placements-model placements-model}))
 
 (defn project-1
   "Returns a single sequence of projected periods."

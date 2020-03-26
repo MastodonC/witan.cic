@@ -73,7 +73,7 @@
           projection)))
 
 (defn validation-table
-  [out-file validation]
+  [validation]
   (let [headers ["Date" "Model" "Linear Regression" "Actual"]
         fields (juxt (comp date->str :date) :model :linear-regression :actual)]
     (into [headers]

@@ -35,7 +35,6 @@
 (defn format-episode
   [row]
   (-> (cs/rename-keys row {:id :child-id :care-status :CIN})
-      (update :child-id #(Long/parseLong %))
       (update :dob #(Long/parseLong %))
       (update :report-date parse-date)
       (update :ceased #(when-not (str/blank? %) (parse-date %)))
@@ -118,3 +117,72 @@
        (map #(-> %
                  (update :placement keyword)
                  (update :cost parse-double)))))
+
+(defn phase-durations-csv
+  [filename]
+  (->> (load-csv filename)
+       (reduce (fn [m {:keys [label param]}]
+                 (assoc m (-> label str/lower-case keyword) {:lambda (parse-double param)}))
+               {})))
+
+(defn phase-duration-quantiles-csv
+  [filename]
+  (->> (load-csv filename)
+       (map (fn [row]
+              (-> row
+                  (update :quantile parse-int)
+                  (update :value parse-double))))
+       (reduce (fn [m {:keys [row label value]}]
+                 (update m (keyword label) (fnil conj []) value))
+               {})))
+
+(defn phase-transitions-csv
+  [filename]
+  (->> (load-csv filename)
+       (map (fn [row]
+              (-> row
+                  (update :first-transition = "TRUE")
+                  (update :transition-age parse-int)
+                  (update :transition-to keyword)
+                  (update :transition-from keyword)
+                  (update :n parse-int)
+                  (update :m parse-int))))
+       (group-by #(select-keys % [:first-transition :transition-age :transition-from]))
+       (reduce (fn [m [k v]]
+                 (assoc m k (reduce (fn [m {:keys [transition-to n]}]
+                                      (assoc m transition-to n)) {} v)))
+               {})))
+
+(defn joiner-placements-csv
+  [filename]
+  (->> (load-csv filename)
+       (map (fn [row]
+              (-> row
+                  (update :admission-age parse-int)
+                  (update :first-placement keyword)
+                  (update :n parse-int))))
+       (reduce (fn [m {:keys [admission-age first-placement n]}]
+                 (assoc-in m [admission-age first-placement] n))
+               {})))
+
+(defn age-beta-params
+  [filename]
+  (->> (load-csv filename)
+       (map (fn [row]
+              (-> row
+                  (update :age parse-int)
+                  (update :alpha parse-double)
+                  (update :beta parse-double))))
+       (reduce (fn [m {:keys [age alpha beta]}]
+                 (assoc m age {:alpha alpha :beta beta}))
+               {})))
+
+(defn placement-csvs
+  [joiner-placements phase-durations phase-transitions phase-duration-quantiles
+   phase-bernoulli-params phase-beta-params]
+  {:joiner-placements (joiner-placements-csv joiner-placements)
+   :phase-durations (phase-durations-csv phase-durations)
+   :phase-transitions (phase-transitions-csv phase-transitions)
+   :phase-duration-quantiles (phase-duration-quantiles-csv phase-duration-quantiles)
+   :phase-bernoulli-params (age-beta-params phase-bernoulli-params)
+   :phase-beta-params (age-beta-params phase-beta-params)})

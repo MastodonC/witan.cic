@@ -17,20 +17,35 @@
 
 (defn load-model-inputs
   "A useful REPL function to load the data files and convert them to  model inputs"
-  ([{:keys [episodes-csv placement-costs-csv duration-lower-csv duration-median-csv duration-upper-csv]}]
+  ([{:keys [episodes-csv placement-costs-csv duration-lower-csv duration-median-csv duration-upper-csv
+            joiner-placements-csv phase-durations-csv phase-transitions-csv phase-duration-quantiles-csv
+            phase-beta-params-csv phase-bernoulli-params-csv]}]
    (hash-map :periods (-> (read/episodes episodes-csv)
                           (periods/from-episodes))
              :placement-costs (read/costs-csv placement-costs-csv)
              :duration-model (-> (read/duration-csvs duration-lower-csv
                                                      duration-median-csv
                                                      duration-upper-csv)
-                                 (model/duration-model))))
+                                 (model/duration-model))
+             :placements-model (-> (read/placement-csvs joiner-placements-csv
+                                                        phase-durations-csv
+                                                        phase-transitions-csv
+                                                        phase-duration-quantiles-csv
+                                                        phase-bernoulli-params-csv
+                                                        phase-beta-params-csv)
+                                   (model/placements-model))))
   ([]
    (load-model-inputs {:episodes-csv "data/episodes.scrubbed.csv"
                        :placement-costs-csv "data/placement-costs.csv"
                        :duration-lower-csv "data/duration-model-lower.csv"
                        :duration-median-csv "data/duration-model-median.csv"
-                       :duration-upper-csv "data/duration-model-upper.csv"})))
+                       :duration-upper-csv "data/duration-model-upper.csv"
+                       :phase-durations-csv "data/phase-durations.csv"
+                       :phase-duration-quantiles-csv "data/phase-duration-quantiles.csv"
+                       :phase-transitions-csv "data/phase-transitions.csv"
+                       :joiner-placements-csv "data/joiner-placements.csv"
+                       :phase-bernoulli-params-csv "data/phase-bernoulli-params.csv"
+                       :phase-beta-params-csv "data/phase-beta-params.csv"})))
 
 (defn prepare-model-inputs
   [{:keys [periods] :as model-inputs}]
@@ -48,15 +63,16 @@
 
 (defn generate-projection-csv!
   "Main REPL function for writing a projection CSV"
-  [output-file n-runs seed]
-  (let [{:keys [periods placement-costs duration-model]} (prepare-model-inputs (load-model-inputs))
+  [output-file train-years n-runs seed]
+  (let [{:keys [periods placement-costs duration-model placements-model]} (prepare-model-inputs (load-model-inputs))
         project-from (time/max-date (map :beginning periods))
         project-to (time/years-after project-from 3)
-        learn-from (time/years-before project-from 4)
+        learn-from (time/years-before project-from train-years)
         projection-seed {:seed (filter :open? periods)
                          :date project-from}
         model-seed {:seed periods
                     :duration-model duration-model
+                    :placements-model placements-model
                     :joiner-range [learn-from project-from]
                     :episodes-range [learn-from project-from]}
         output-from (time/years-before learn-from 2)
@@ -159,11 +175,11 @@
 (defn generate-validation-csv!
   "Outputs model projection and linear regression projection together with actuals for comparison."
   [out-file n-runs seed]
-  (let [{:keys [periods placement-costs duration-model]} (load-model-inputs)
+  (let [{:keys [periods placement-costs placements-model duration-model]} (prepare-model-inputs (load-model-inputs))
         validation (into []
-                         (map #(validate/compare-models-at % duration-model periods seed n-runs))
-                         (time/month-seq (time/make-date 2010 1 1)
-                                         (time/make-date 2010 3 1)))]
+                         (map #(validate/compare-models-at % duration-model placements-model periods seed n-runs))
+                         (time/month-seq (time/make-date 2017 4 1)
+                                         (time/make-date 2018 4 1)))]
     (->> (write/validation-table validation)
          (write/write-csv! out-file))))
 
