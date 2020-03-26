@@ -83,7 +83,7 @@
   (let [max-date (time/max-date project-dates)]
     (map-indexed (fn [iteration seed]
                    (->> (project-1 projection-seed model-seed max-date seed)
-                        (map #(assoc % :iteration (inc iteration)))))
+                        (map #(assoc % :simulation-number (inc iteration)))))
                  (-> (rand/seed seed)
                      (rand/split-n n-runs)))))
 
