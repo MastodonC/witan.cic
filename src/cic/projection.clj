@@ -59,7 +59,7 @@
   (let [[s1 s2] (rand/split-n random-seed 2)
         [joiners-from joiners-to] joiner-range
         [episodes-from episodes-to] episodes-range
-        periods (rand/prepare-ages seed s1)
+        periods (rand/sample-birthdays seed s1)
         closed-periods (filter :end periods)]
     {:joiners-model (-> (filter #(time/between? (:beginning %) joiners-from joiners-to) periods)
                         (model/joiners-model-gen s2))
@@ -73,7 +73,7 @@
   [projection-seed model-seed end seed]
   (let [[s1 s2 s3 s4] (rand/split-n seed 4)
         model (train-model model-seed s1)
-        projection-seed (update projection-seed :seed rand/prepare-ages s4)]
+        projection-seed (update projection-seed :seed rand/sample-birthdays s4)]
     (-> (map (partial project-period-close model) (:seed projection-seed) (rand/split-n s2 (count (:seed projection-seed))))
         (concat (project-joiners model (:date projection-seed) end s3)))))
 

@@ -57,7 +57,8 @@
   (let [report-date (->> (mapcat (juxt :beginning :end) periods)
                          (keep identity)
                          (time/max-date))
-        periods (map #(assoc % :reported report-date) periods)]
+        periods (->> (map #(assoc % :reported report-date) periods)
+                     (periods/assoc-birthday-bounds))]
     (assoc model-inputs :periods periods)))
 
 (defn format-actual-for-output
@@ -83,7 +84,7 @@
         output-from (time/years-before learn-from 2)
         summary-seq (into []
                           (map format-actual-for-output)
-                          (summary/periods-summary (rand/prepare-ages periods (rand/seed seed))
+                          (summary/periods-summary (rand/sample-birthdays periods (rand/seed seed))
                                                    (time/day-seq output-from project-from 7)
                                                    placement-costs))
         projection (projection/projection projection-seed
@@ -106,7 +107,7 @@
         actuals-by-year-age (into {} (comp (filter #(time/< (:beginning %) project-from))
                                            (xf/by-key (juxt (comp time/year time/financial-year-end :beginning) :admission-age)
                                                       (xf/reduce k/count)))
-                                  (rand/prepare-ages periods (rand/seed seed)))
+                                  (rand/sample-birthdays periods (rand/seed seed)))
         actuals-by-year (into {} (xf/by-key ffirst second (xf/reduce +)) actuals-by-year-age)
         actuals (->> (reduce (fn [coll [year joiners]]
                                (-> (assoc-in coll [year :actual-joiners] joiners)
@@ -168,7 +169,7 @@
                                            (freduce (projection/project-1 projection-seed model-seed project-to seed))))
                                    (apply concat)
                                    (into {} (xf/by-key (xf/reduce +))))
-          actual-age-sequence-totals (freduce (rand/prepare-ages closed-periods (rand/seed seed)))
+          actual-age-sequence-totals (freduce (rand/sample-birthdays closed-periods (rand/seed seed)))
           age-totals (age-summary age-sequence-totals)]
       (->> {:projected-age-sequence-totals age-sequence-totals
             :projected-age-totals age-totals
