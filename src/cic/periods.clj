@@ -26,7 +26,7 @@
   (let [first-episode (first episodes)
         beginning (:report-date first-episode)
         last-episode (last episodes)]
-    (-> (select-keys first-episode [:period-id :dob :report-date])
+    (-> (select-keys first-episode [:period-id :birth-month :report-date])
         (cs/rename-keys {:report-date :beginning})
         (assoc :end (:ceased last-episode))
         (assoc :episodes (mapv (fn [{:keys [placement report-date]}]

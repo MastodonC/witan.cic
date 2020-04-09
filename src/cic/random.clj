@@ -38,16 +38,16 @@
   A child must have left by the time they are 18"
   [periods seed]
   (let [rngs (split-n seed (count periods))]
-    (map (fn [{:keys [beginning reported dob end] :as period} rng]
+    (map (fn [{:keys [beginning reported birth-month end period-id] :as period} rng]
            (let [ ;; Earliest possible birthday is either January 1st in the year of their birth
                  ;; or 18 years prior to their final end date (or current report date if not yet ended),
                  ;; whichever is the later
                  earliest-birthday (time/latest (time/years-before (or end reported) 18)
-                                                (time/make-date dob 1 1))
+                                                (time/month-beginning birth-month))
                  ;; Latest possible birthday is either December 31st in the year of their birth
                  ;; or the date they were taken into care, whichever is the sooner
                  latest-birthday (time/earliest beginning
-                                                (time/make-date dob 12 31))
+                                                (time/month-end birth-month))
                  ;; True birthday must be somewhere between earliest and latest birthdays inclusive.
                  ;; Assume uniform distribution between the two.
                  birthday-offset (try ;; FIXME
@@ -55,6 +55,7 @@
                                        (d/uniform)
                                        (p/sample-1 rng))
                                    (catch Exception e
+                                     (println "Birthday exception" period-id)
                                      0))
                  birthday (time/days-after earliest-birthday birthday-offset)]
              (-> period
