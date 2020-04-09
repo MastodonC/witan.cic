@@ -16,6 +16,14 @@
   [s]
   (f/parse date-format s))
 
+;; FIXME: we'd like to standardise on YYYY-MM
+(def month-format
+  (f/formatter "M/YYYY"))
+
+(defn parse-month
+  [s]
+  (f/parse month-format s))
+
 (defn parse-double
   [d]
   (Double/parseDouble d))
@@ -34,8 +42,8 @@
 
 (defn format-episode
   [row]
-  (-> (cs/rename-keys row {:id :child-id :care-status :CIN})
-      (update :dob #(Long/parseLong %))
+  (-> (cs/rename-keys row {:id :child-id :care-status :CIN :dob :birth-month})
+      (update :birth-month parse-month)
       (update :report-date parse-date)
       (update :ceased #(when-not (str/blank? %) (parse-date %)))
       (update :report-year #(Long/parseLong %))

@@ -15,6 +15,11 @@
             [redux.core :as rx]
             [kixi.stats.core :as k]))
 
+(def input-format
+  "data/%s")
+
+(def input-file (partial format input-format))
+
 (defn load-model-inputs
   "A useful REPL function to load the data files and convert them to  model inputs"
   ([{:keys [episodes-csv placement-costs-csv duration-lower-csv duration-median-csv duration-upper-csv
@@ -35,24 +40,25 @@
                                                         phase-beta-params-csv)
                                    (model/placements-model))))
   ([]
-   (load-model-inputs {:episodes-csv "data/episodes.scrubbed.csv"
-                       :placement-costs-csv "data/placement-costs.csv"
-                       :duration-lower-csv "data/duration-model-lower.csv"
-                       :duration-median-csv "data/duration-model-median.csv"
-                       :duration-upper-csv "data/duration-model-upper.csv"
-                       :phase-durations-csv "data/phase-durations.csv"
-                       :phase-duration-quantiles-csv "data/phase-duration-quantiles.csv"
-                       :phase-transitions-csv "data/phase-transitions.csv"
-                       :joiner-placements-csv "data/joiner-placements.csv"
-                       :phase-bernoulli-params-csv "data/phase-bernoulli-params.csv"
-                       :phase-beta-params-csv "data/phase-beta-params.csv"})))
+   (load-model-inputs {:episodes-csv (format input-format "episodes.scrubbed.csv")
+                       :placement-costs-csv (input-file "placement-costs.csv")
+                       :duration-lower-csv (input-file "duration-model-lower.csv")
+                       :duration-median-csv (input-file "duration-model-median.csv")
+                       :duration-upper-csv (input-file "duration-model-upper.csv")
+                       :phase-durations-csv (input-file "phase-durations.csv")
+                       :phase-duration-quantiles-csv (input-file "phase-duration-quantiles.csv")
+                       :phase-transitions-csv (input-file "phase-transitions.csv")
+                       :joiner-placements-csv (input-file "joiner-placements.csv")
+                       :phase-bernoulli-params-csv (input-file "phase-bernoulli-params.csv")
+                       :phase-beta-params-csv (input-file "phase-beta-params.csv")})))
 
 (defn prepare-model-inputs
   [{:keys [periods] :as model-inputs}]
   (let [report-date (->> (mapcat (juxt :beginning :end) periods)
                          (keep identity)
                          (time/max-date))
-        periods (map #(assoc % :reported report-date) periods)]
+        periods (->> (map #(assoc % :reported report-date) periods)
+                     (periods/assoc-birthday-bounds))]
     (assoc model-inputs :periods periods)))
 
 (defn format-actual-for-output
@@ -78,7 +84,7 @@
         output-from (time/years-before learn-from 2)
         summary-seq (into []
                           (map format-actual-for-output)
-                          (summary/periods-summary (rand/prepare-ages periods (rand/seed seed))
+                          (summary/periods-summary (rand/sample-birthdays periods (rand/seed seed))
                                                    (time/day-seq output-from project-from 7)
                                                    placement-costs))
         projection (projection/projection projection-seed
@@ -101,7 +107,7 @@
         actuals-by-year-age (into {} (comp (filter #(time/< (:beginning %) project-from))
                                            (xf/by-key (juxt (comp time/year time/financial-year-end :beginning) :admission-age)
                                                       (xf/reduce k/count)))
-                                  (rand/prepare-ages periods (rand/seed seed)))
+                                  (rand/sample-birthdays periods (rand/seed seed)))
         actuals-by-year (into {} (xf/by-key ffirst second (xf/reduce +)) actuals-by-year-age)
         actuals (->> (reduce (fn [coll [year joiners]]
                                (-> (assoc-in coll [year :actual-joiners] joiners)
@@ -163,7 +169,7 @@
                                            (freduce (projection/project-1 projection-seed model-seed project-to seed))))
                                    (apply concat)
                                    (into {} (xf/by-key (xf/reduce +))))
-          actual-age-sequence-totals (freduce (rand/prepare-ages closed-periods (rand/seed seed)))
+          actual-age-sequence-totals (freduce (rand/sample-birthdays closed-periods (rand/seed seed)))
           age-totals (age-summary age-sequence-totals)]
       (->> {:projected-age-sequence-totals age-sequence-totals
             :projected-age-totals age-totals

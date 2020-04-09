@@ -1,6 +1,7 @@
 (ns cic.periods
   (:require [cic.time :as time]
-            [clojure.set :as cs]))
+            [clojure.set :as cs]
+            [taoensso.timbre :as timbre]))
 
 (defn period-id
   "Period ID is a composite key of the child's ID and a period number"
@@ -26,7 +27,7 @@
   (let [first-episode (first episodes)
         beginning (:report-date first-episode)
         last-episode (last episodes)]
-    (-> (select-keys first-episode [:period-id :dob :report-date])
+    (-> (select-keys first-episode [:period-id :birth-month :report-date])
         (cs/rename-keys {:report-date :beginning})
         (assoc :end (:ceased last-episode))
         (assoc :episodes (mapv (fn [{:keys [placement report-date]}]
@@ -87,3 +88,29 @@
     (and (time/<= beginning date)
          (or (nil? end)
              (time/>= end date)))))
+
+(defn assoc-birthday-bounds
+  "Impute birthday bounds for each child based on their month of birth and episodes.
+  Constraints:
+  - Month of birth must match the provided month
+  - A child can't be a negative age at admission
+  - A child must have left by the time they are 18
+  If these constraints can't be satisfied, a message is logged and the child is excluded."
+  [periods]
+  (into []
+        (comp (map (fn [{:keys [beginning reported birth-month end period-id] :as period}]
+                     (let [ ;; Earliest possible birthday is either the 1st day in the month of their birth
+                           ;; or 18 years prior to their final end date (or current report date if not yet ended),
+                           ;; whichever is the later.
+                           earliest-birthday (time/latest (time/years-before (or end reported) 18)
+                                                          (time/month-beginning birth-month))
+                           ;; Latest possible birthday is either the last day of the month of their birth
+                           ;; or the date they were taken into care, whichever is the earlier
+                           latest-birthday (time/earliest beginning
+                                                          (time/month-end birth-month))]
+                       (if (time/>= latest-birthday earliest-birthday)
+                         (assoc period :birthday-bounds [earliest-birthday latest-birthday])
+                         (do (timbre/info (format "Birthday for %s can't be inferred, removing" period-id))
+                             nil)))))
+              (keep identity))
+        periods))

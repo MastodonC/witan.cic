@@ -79,6 +79,16 @@
 
 (def without-time t/with-time-at-start-of-day)
 
+(defn month-beginning
+  [date]
+  (t/date-time (t/year date) (t/month date)))
+
+(defn month-end
+  [date]
+  (-> (month-beginning date)
+      (t/plus (t/months 1))
+      (t/minus (t/days 1))))
+
 (defn financial-year-end
   [date]
   (let [year-end (t/date-time (t/year date) 3 31)]

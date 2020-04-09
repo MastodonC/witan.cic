@@ -28,38 +28,19 @@
          (take n)
          (apply str))))
 
-(defn prepare-ages
-  "All we know about a child is their year of birth, so we impute an arbitrary birthday.
+(defn sample-birthdays
+  "We impute an arbitrary birthday for each child within their imputed 'birthday bounds'.
   Each projection will use randomly generated birthdays with corresponding random ages of admission.
-  This allows the output to account for uncertainty in the input.
-  Constraints:
-  Year of birth must match the provided year
-  A child can't be a negative age at admission
-  A child must have left by the time they are 18"
+  This allows the output to account for uncertainty in the input."
   [periods seed]
   (let [rngs (split-n seed (count periods))]
-    (map (fn [{:keys [beginning reported dob end] :as period} rng]
-           (let [ ;; Earliest possible birthday is either January 1st in the year of their birth
-                 ;; or 18 years prior to their final end date (or current report date if not yet ended),
-                 ;; whichever is the later
-                 earliest-birthday (time/latest (time/years-before (or end reported) 18)
-                                                (time/make-date dob 1 1))
-                 ;; Latest possible birthday is either December 31st in the year of their birth
-                 ;; or the date they were taken into care, whichever is the sooner
-                 latest-birthday (time/earliest beginning
-                                                (time/make-date dob 12 31))
-                 ;; True birthday must be somewhere between earliest and latest birthdays inclusive.
-                 ;; Assume uniform distribution between the two.
-                 birthday-offset (try ;; FIXME
-                                   (-> {:a 0 :b (time/day-interval earliest-birthday latest-birthday)}
-                                       (d/uniform)
-                                       (p/sample-1 rng))
-                                   (catch Exception e
-                                     0))
-                 birthday (time/days-after earliest-birthday birthday-offset)]
-             (-> period
-                 (assoc :birthday birthday)
-                 (assoc :admission-age (try ;; FIXME
-                                         (time/year-interval birthday beginning)
-                                         (catch Exception e 0))))))
-         periods rngs)))
+    (mapv (fn [{:keys [beginning reported birth-month end period-id birthday-bounds] :as period} rng]
+            (let [[earliest-birthday latest-birthday] birthday-bounds]
+              (let [birthday-offset (-> {:a 0 :b (time/day-interval earliest-birthday latest-birthday)}
+                                        (d/uniform)
+                                        (p/sample-1 rng))
+                    birthday (time/days-after earliest-birthday birthday-offset)]
+                (-> period
+                    (assoc :birthday birthday)
+                    (assoc :admission-age (time/year-interval birthday beginning))))))
+          periods rngs)))
