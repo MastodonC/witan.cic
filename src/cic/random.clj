@@ -29,13 +29,9 @@
          (apply str))))
 
 (defn sample-birthdays
-  "All we know about a child is their year of birth, so we impute an arbitrary birthday.
+  "We impute an arbitrary birthday for each child within their imputed 'birthday bounds'.
   Each projection will use randomly generated birthdays with corresponding random ages of admission.
-  This allows the output to account for uncertainty in the input.
-  Constraints:
-  Year of birth must match the provided year
-  A child can't be a negative age at admission
-  A child must have left by the time they are 18"
+  This allows the output to account for uncertainty in the input."
   [periods seed]
   (let [rngs (split-n seed (count periods))]
     (mapv (fn [{:keys [beginning reported birth-month end period-id birthday-bounds] :as period} rng]

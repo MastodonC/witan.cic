@@ -90,16 +90,22 @@
              (time/>= end date)))))
 
 (defn assoc-birthday-bounds
+  "Impute birthday bounds for each child based on their month of birth and episodes.
+  Constraints:
+  - Month of birth must match the provided month
+  - A child can't be a negative age at admission
+  - A child must have left by the time they are 18
+  If these constraints can't be satisfied, a message is logged and the child is excluded."
   [periods]
   (into []
         (comp (map (fn [{:keys [beginning reported birth-month end period-id] :as period}]
-                     (let [ ;; Earliest possible birthday is either January 1st in the year of their birth
+                     (let [ ;; Earliest possible birthday is either the 1st day in the month of their birth
                            ;; or 18 years prior to their final end date (or current report date if not yet ended),
-                           ;; whichever is the later
+                           ;; whichever is the later.
                            earliest-birthday (time/latest (time/years-before (or end reported) 18)
                                                           (time/month-beginning birth-month))
-                           ;; Latest possible birthday is either December 31st in the year of their birth
-                           ;; or the date they were taken into care, whichever is the sooner
+                           ;; Latest possible birthday is either the last day of the month of their birth
+                           ;; or the date they were taken into care, whichever is the earlier
                            latest-birthday (time/earliest beginning
                                                           (time/month-end birth-month))]
                        (if (time/>= latest-birthday earliest-birthday)
