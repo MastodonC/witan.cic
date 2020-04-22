@@ -13,6 +13,35 @@
             (+ total (* cost (get placement-counts placement 0))))
           0 placement-costs))
 
+(defn in-care-population-summary [periods dates]
+  (reduce (fn [output date]
+            (assoc output date
+                   (count (filter (periods/in-care? date) periods))))
+          {}
+          dates))
+
+(defn placements-summary [periods dates]
+  (let [placements-zero (zipmap spec/placements (repeat 0))]
+    (reduce (fn [output date]
+              (let [in-care (filter (periods/in-care? date) periods)
+                    by-placement (->> (map #(:placement (periods/episode-on % date)) in-care)
+                                      (frequencies))]
+                (assoc output date
+                       (merge-with + placements-zero by-placement))))
+            {}
+            dates)))
+
+(defn ages-summary [periods dates]
+  (let [ages-zero (zipmap spec/ages (repeat 0))]
+    (reduce (fn [output date]
+              (let [in-care (filter (periods/in-care? date) periods)
+                    by-age (->> (map #(periods/age-on % date) in-care)
+                                (frequencies))]
+                (assoc output date
+                       (merge-with + ages-zero by-age))))
+            {}
+            dates)))
+
 (defn periods-summary
   "Takes inferred future periods and calculates the total CiC"
   [periods dates placement-costs]
@@ -191,3 +220,62 @@
                 (redux/fuse))]
     (->> (transduce identity rf run-costs)
          (map (fn [[k v]] (assoc v :year k))))))
+
+(defn bed-nights-per-month-per-child [{:keys [beginning end] :as child-history}]
+  (reduce
+   (fn [acc date]
+     (let [month (time/floor date time/month)
+           placement-type (:placement (periods/episode-on child-history date))]
+       (if (get acc month)
+         (update-in acc [month placement-type] inc)
+         (-> acc
+             (assoc month (zipmap spec/placements (repeat 0)))
+             (update-in [month placement-type] inc)))))
+   (sorted-map)
+   (time/day-seq beginning end)))
+
+(defn bed-nights-per-month [simulation]
+  (transduce
+   (map bed-nights-per-month-per-child)
+   (fn
+     ([acc] acc)
+     ([acc r]
+      (merge-with (fn [a b] (merge-with + a b)) acc r)))
+   (sorted-map)
+   simulation))
+
+(defn summary-with-confidence-intervals [^com.tdunning.math.stats.TDigest t-digest]
+  (let [q1 (.quantile t-digest 0.25)
+        q3 (.quantile t-digest 0.75)]
+    {:min (.getMin t-digest)
+     :lower (.quantile t-digest 0.05)
+     :q1 q1
+     :median (.quantile t-digest 0.50)
+     :q3 q3
+     :higher (.quantile t-digest 0.95)
+     :max (.getMax t-digest)
+     :iqr (when (and q1 q3) (- q3 q1))}))
+
+(defn summarize-map-of-histograms [histograms]
+  (into {}
+        (map (fn [[k v]]
+               [k (summary-with-confidence-intervals v)]))
+        histograms))
+
+(defn summarize-timeseries-rf
+  "Produces a reducing function that ummarizes a time series of maps of
+  histograms produced by the simulations. Suitable for using as a step
+  function in transduce or reduce. The base-spec makes sure there is
+  an identity value for each key in the lowest level map."
+  [base-spec]
+  (fn
+    ([] {})
+    ([acc] (into {} (map (fn [[k v]] [k (summarize-map-of-histograms v)])) acc))
+    ([acc [time counts]]
+     (try
+       (assoc acc time (merge-with k/histogram
+                                   (get acc time (zipmap base-spec (repeatedly k/histogram)))
+                                   (select-keys counts base-spec)))
+       (catch Exception e
+         (println (format "Time: %s Acc value: %s New value: %s" time (get acc time) counts))
+         (throw e))))))
