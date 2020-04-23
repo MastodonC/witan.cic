@@ -196,7 +196,7 @@
         project-from (time/max-date (map :beginning periods))
         project-to (time/years-after project-from 3)
         learn-from (time/years-before project-from train-years)
-        projection-seed {:seed (filter :open? periods)
+        projection-seed {:seed periods
                          :date project-from}
         model-seed {:seed periods
                     :duration-model duration-model
