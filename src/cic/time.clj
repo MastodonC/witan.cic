@@ -1,7 +1,10 @@
 (ns cic.time
   (:refer-clojure :exclude [< <= = > >=])
   (:require [clj-time.core :as t]
-            [clj-time.periodic :as p]))
+            [clj-time.periodic :as p]
+            [clj-time.format :as f]))
+
+(def month-string (f/formatter "YYYY-MM"))
 
 (def < t/before?)
 
@@ -88,6 +91,10 @@
   (-> (month-beginning date)
       (t/plus (t/months 1))
       (t/minus (t/days 1))))
+
+(defn month-as-string
+  [date]
+  (f/unparse month-string date))
 
 (defn financial-year-end
   [date]

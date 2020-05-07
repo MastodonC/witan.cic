@@ -15,28 +15,28 @@
 (defn joiners-model
   "Given the date of a joiner at a particular age,
   returns the interval in days until the next joiner"
-  [{:keys [model-coefs gamma-params]}]
+  [{:keys [model-coefs]}]
   (fn [age date seed]
-    (let [{:keys [dispersion]} (get gamma-params age)
-          shape (/ 1 dispersion)
-          day (t/in-days (t/interval (t/epoch) date))
-          intercept (:intercept model-coefs)
-          a (get model-coefs (keyword (str "admission-age-" age)) 0.0)
-          b (get model-coefs :beginning)
-          c (get model-coefs (keyword (str "beginning:admission-age-" age)) 0.0)
-          mean (m/exp (+ intercept a (* b day) (* c day)))]
-      (p/sample-1 (d/gamma {:shape shape :scale (/ mean shape)}) seed))))
+    (let [day (t/in-days (t/interval (t/epoch) date))
+          intercept (get model-coefs "(Intercept)")
+          a (get model-coefs (str "admission_age" age) 0.0)
+          b (get model-coefs "quarter")
+          c (get model-coefs (str "quarter:admission_age" age) 0.0)
+          n-per-quarter (+ intercept a (* b day) (* c day))
+          n-per-day (/ n-per-quarter 91.3125) ;; Rate per day
+          ]
+      (p/sample-1 (d/exponential {:rate n-per-day}) seed))))
 
 (defn joiners-model-gen
   "Wraps R to trend joiner rates into the future."
   [periods seed]
   (let [script "src/joiners.R"
         input (str (rscript/write-periods! periods))
-        out1 (str (write/temp-file "file" ".csv"))
-        out2 (str (write/temp-file "file" ".csv"))
+        output (str (write/temp-file "file" ".csv"))
+        project-to "2030-01-01"
         seed-long (rand/rand-long seed)]
-    (rscript/exec script input out1 out2 (str (Math/abs seed-long)))
-    (-> (read/joiner-csvs out1 out2)
+    (rscript/exec script input output project-to (str (Math/abs seed-long)))
+    (-> (read/joiner-csv output)
         (joiners-model))))
 
 (defn sample-ci

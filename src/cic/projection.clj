@@ -22,10 +22,11 @@
 
 (defn joiners-seq
   "Return a lazy sequence of projected joiners for a particular age of admission."
-  [joiners-model duration-model placements-model age beginning end seed]
+  [joiners-model duration-model placements-model age beginning previous-offset end seed]
   (let [[seed-1 seed-2 seed-3 seed-4 seed-5 seed-6] (rand/split-n seed 6)
         interval (joiners-model beginning seed-1)
-        next-time (time/days-after beginning interval)
+        new-offset (+ previous-offset interval)
+        next-time (time/days-after beginning new-offset)
         start-time (time/without-time next-time)
         birthday (-> (time/days-before start-time (p/sample-1 (d/uniform {:a 0 :b 364}) seed-6))
                      (time/years-before age))
@@ -43,7 +44,7 @@
                     :episodes episodes}]
         (cons period
               (lazy-seq
-               (joiners-seq joiners-model duration-model placements-model age next-time end seed-5)))))))
+               (joiners-seq joiners-model duration-model placements-model age beginning new-offset end seed-5)))))))
 
 (defn project-joiners
   "Return a lazy sequence of projected joiners for all ages of admission."
@@ -51,7 +52,7 @@
   (mapcat (fn [age seed]
             (joiners-seq (partial joiners-model age)
                          duration-model
-                         (partial placements-model age) age beginning end seed))
+                         (partial placements-model age) age beginning 0 end seed))
           spec/ages
           (rand/split-n seed (count spec/ages))))
 
