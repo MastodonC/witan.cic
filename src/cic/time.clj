@@ -96,6 +96,13 @@
   [date]
   (f/unparse month-string date))
 
+(defn quarter-following
+  [date]
+  (let [test (t/minus date (t/days 1))
+        quarter (case (t/month test) 1 4 2 4 3 4 4 7 5 7 6 7 7 10 8 10 9 10 10 1 11 1 12 1)
+        year (if (== quarter 1) (inc (t/year test)) (t/year test))]
+    (t/date-time year quarter)))
+
 (defn financial-year-end
   [date]
   (let [year-end (t/date-time (t/year date) 3 31)]

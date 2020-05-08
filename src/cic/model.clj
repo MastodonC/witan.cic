@@ -22,8 +22,8 @@
           a (get model-coefs (str "admission_age" age) 0.0)
           b (get model-coefs "quarter")
           c (get model-coefs (str "quarter:admission_age" age) 0.0)
-          n-per-quarter (+ intercept a (* b day) (* c day))
-          n-per-day (/ n-per-quarter 91.3125) ;; Rate per day
+          n-per-quarter (m/exp (+ intercept a (* b day) (* c day)))
+          n-per-day (max (/ n-per-quarter 91.3125) (/ 1 365.25)) ;; Rate per day
           ]
       (p/sample-1 (d/exponential {:rate n-per-day}) seed))))
 

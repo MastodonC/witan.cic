@@ -40,8 +40,13 @@ dat <- defaults %>%
     left_join(dat) %>%
     mutate(n = coalesce(n, as.integer(0)))
 
-mod <- bayesglm(n ~ quarter * admission_age, data = dat)
+mod <- bayesglm(n ~ quarter * admission_age, data = dat, family = poisson(link = "log"))
 params <- mvrnorm(1, coef(mod), vcov(mod))
+params.df <- data.frame(name = names(params), param = params)
 
-write.csv(data.frame(name = names(params), param = params), output, row.names = FALSE)
+# rand <- as.integer(runif(1, 1000, 9999))
+# write.csv(df, sprintf("/Users/henry/Mastodon C/witan.cic/data/testing/input-%s.csv", rand), row.names = FALSE)
+# write.csv(params.df, sprintf("/Users/henry/Mastodon C/witan.cic/data/testing/params-%s.csv", rand), row.names = FALSE)
+
+write.csv(params.df, output, row.names = FALSE)
 

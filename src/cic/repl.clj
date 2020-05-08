@@ -72,7 +72,7 @@
   [output-file train-years n-runs seed]
   (let [{:keys [periods placement-costs duration-model placements-model]} (prepare-model-inputs (load-model-inputs))
         project-from (time/max-date (map :beginning periods))
-        project-to (time/years-after project-from 3)
+        project-to (time/years-after project-from 10)
         learn-from (time/years-before project-from train-years)
         projection-seed {:seed (filter :open? periods)
                          :date project-from}
@@ -194,8 +194,8 @@
   [out-file train-years n-runs seed]
   (let [{:keys [periods placement-costs duration-model placements-model] :as model-inputs} (prepare-model-inputs (load-model-inputs))
         project-from (time/max-date (map :beginning periods))
-        project-to (time/years-after project-from 3)
-        learn-from (time/years-before project-from train-years)
+        project-to (time/years-after project-from 10)
+        learn-from (time/quarter-following (time/years-before project-from train-years))
         projection-seed {:seed periods
                          :date project-from}
         model-seed {:seed periods
