@@ -212,3 +212,16 @@
                 placements
                 (let [next-placement (phase-transition (zero? offset) age placement)]
                   (recur next-offset next-placement (conj placements {:offset next-offset :placement next-placement})))))))))))
+
+(defn joiner-birthday-model
+  "Accepts quantiles for age zero joiner ages in days and returns a birthday-generating model"
+  [quantiles]
+  (let [q (vec quantiles)
+        n (count quantiles)
+        dist (d/uniform {:a 0 :b n})]
+    (fn [age join-date seed]
+      (if (zero? age)
+        (let [i (int (p/sample-1 dist seed))]
+          (time/days-before join-date (get q i)))
+        (-> (time/days-before join-date (int (p/sample-1 (d/uniform {:a 0 :b 366}) seed)))
+            (time/years-before age))))))

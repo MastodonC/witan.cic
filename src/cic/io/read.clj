@@ -185,3 +185,13 @@
    :phase-duration-quantiles (phase-duration-quantiles-csv phase-duration-quantiles)
    :phase-bernoulli-params (age-beta-params phase-bernoulli-params)
    :phase-beta-params (age-beta-params phase-beta-params)})
+
+(defn zero-joiner-day-ages
+  [filename]
+  (->> (load-csv filename)
+       (map (fn [row]
+              (-> row
+                  (update :n parse-int)
+                  (update :x parse-int))))
+       (sort-by :n)
+       (mapv :x)))

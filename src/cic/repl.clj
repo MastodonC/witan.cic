@@ -24,7 +24,8 @@
   "A useful REPL function to load the data files and convert them to  model inputs"
   ([{:keys [episodes-csv placement-costs-csv duration-lower-csv duration-median-csv duration-upper-csv
             joiner-placements-csv phase-durations-csv phase-transitions-csv phase-duration-quantiles-csv
-            phase-beta-params-csv phase-bernoulli-params-csv]}]
+            phase-beta-params-csv phase-bernoulli-params-csv
+            zero-joiner-day-ages-csv]}]
    (hash-map :periods (-> (read/episodes episodes-csv)
                           (periods/from-episodes))
              :placement-costs (read/costs-csv placement-costs-csv)
@@ -38,7 +39,9 @@
                                                         phase-duration-quantiles-csv
                                                         phase-bernoulli-params-csv
                                                         phase-beta-params-csv)
-                                   (model/placements-model))))
+                                   (model/placements-model))
+             :joiner-birthday-model (-> (read/zero-joiner-day-ages zero-joiner-day-ages-csv)
+                                        (model/joiner-birthday-model))))
   ([]
    (load-model-inputs {:episodes-csv (format input-format "episodes.scrubbed.csv")
                        :placement-costs-csv (input-file "placement-costs.csv")
@@ -50,7 +53,8 @@
                        :phase-transitions-csv (input-file "phase-transitions.csv")
                        :joiner-placements-csv (input-file "joiner-placements.csv")
                        :phase-bernoulli-params-csv (input-file "phase-bernoulli-params.csv")
-                       :phase-beta-params-csv (input-file "phase-beta-params.csv")})))
+                       :phase-beta-params-csv (input-file "phase-beta-params.csv")
+                       :zero-joiner-day-ages-csv (input-file "zero-joiner-day-ages.csv")})))
 
 (defn prepare-model-inputs
   [{:keys [periods] :as model-inputs}]
@@ -70,7 +74,7 @@
 (defn generate-projection-csv!
   "Main REPL function for writing a projection CSV"
   [output-file train-years project-years n-runs seed]
-  (let [{:keys [periods placement-costs duration-model placements-model]} (prepare-model-inputs (load-model-inputs))
+  (let [{:keys [periods placement-costs duration-model placements-model joiner-birthday-model]} (prepare-model-inputs (load-model-inputs))
         project-from (time/max-date (map :beginning periods))
         project-to (time/years-after project-from project-years)
         learn-from (time/years-before project-from train-years)
@@ -79,6 +83,7 @@
         model-seed {:seed periods
                     :duration-model duration-model
                     :placements-model placements-model
+                    :joiner-birthday-model joiner-birthday-model
                     :joiner-range [learn-from project-from]
                     :episodes-range [learn-from project-from]
                     :project-to project-to}
@@ -98,7 +103,7 @@
 
 (defn generate-annual-csv!
   [output-file train-years project-years n-runs seed]
-  (let [{:keys [periods placement-costs duration-model]} (load-model-inputs)
+  (let [{:keys [periods placement-costs duration-model joiner-birthday-model]} (load-model-inputs)
         project-from (time/days-after (time/financial-year-end (time/max-date (map :beginning periods))) 1)
         project-to (time/financial-year-end (time/years-after project-from project-years))
         learn-from (time/years-before project-from train-years)
@@ -120,6 +125,7 @@
                      (vals))
         model-seed {:seed periods
                     :duration-model duration-model
+                    :joiner-birthday-model joiner-birthday-model
                     :joiner-range [learn-from project-from]
                     :episodes-range [learn-from project-from]}
         output-from (time/years-before learn-from 2)
@@ -151,7 +157,7 @@
 
 (defn generate-placement-sequence-csv!
   [output-file train-years project-years n-runs seed]
-  (let [{:keys [periods placement-costs duration-model]} (load-model-inputs)
+  (let [{:keys [periods placement-costs duration-model joiner-birthday-model]} (load-model-inputs)
         project-from (time/max-date (map :beginning periods))
         project-to (time/financial-year-end (time/years-after project-from project-years))
         learn-from (time/years-before project-from train-years)
@@ -160,6 +166,7 @@
                          :date project-from}
         model-seed {:seed periods
                     :duration-model duration-model
+                    :joiner-birthday-model joiner-birthday-model
                     :joiner-range [learn-from project-from]
                     :episodes-range [learn-from project-from]}
         output-from (time/years-before learn-from 2)]
@@ -193,7 +200,7 @@
 (defn generate-episodes-csv!
   "Outputs a file showing a single projection in rowise episodes format."
   [out-file train-years project-years n-runs seed]
-  (let [{:keys [periods placement-costs duration-model placements-model] :as model-inputs} (prepare-model-inputs (load-model-inputs))
+  (let [{:keys [periods placement-costs duration-model placements-model joiner-birthday-model] :as model-inputs} (prepare-model-inputs (load-model-inputs))
         project-from (time/max-date (map :beginning periods))
         project-to (time/years-after project-from project-years)
         learn-from (time/quarter-following (time/years-before project-from train-years))
@@ -202,6 +209,7 @@
         model-seed {:seed periods
                     :duration-model duration-model
                     :placements-model placements-model
+                    :joiner-birthday-model joiner-birthday-model
                     :joiner-range [learn-from project-from]
                     :episodes-range [learn-from project-from]}]
     (->> (projection/project-n projection-seed model-seed [project-to] seed n-runs)
