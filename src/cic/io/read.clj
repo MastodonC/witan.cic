@@ -100,24 +100,15 @@
                            lower median upper))))
          (into {}))))
 
-(defn joiner-csvs
-  "Loads the two files required for projecting joiners.
-  The first is a sample of coefficients from the GLM (see coef.samples in joiners.R)
-  The second is an inference of the gamma dispersion by age (see gamma.rates in joiners.R)
-  although currently the same dispersion is reported for all ages."
-  [coefs-filename dispersion-filename]
-  (let [model-coefs (->> (load-csv coefs-filename)
-                         (first) ;; We're only interested in the first row
-                         (reduce-kv (fn [coll k v] (assoc coll k (parse-double v))) {}))
-        gamma-params (->> (load-csv dispersion-filename)
-                          (map #(-> %
-                                    (update :admission-age parse-int)
-                                    (update :shape parse-double)
-                                    (update :rate parse-double)
-                                    (update :dispersion parse-double)))
-                          (map (juxt :admission-age identity))
-                          (into {}))]
-    {:model-coefs model-coefs :gamma-params gamma-params}))
+(defn joiner-csv
+  "Loads the expected joiners numbers"
+  [joiners-csv]
+  (let [coefs (->> (load-csv joiners-csv)
+                   (map #(-> %
+                             (update :param parse-double)))
+                   (map (juxt :name :param))
+                   (into {}))]
+    {:model-coefs coefs}))
 
 (defn costs-csv
   [filename]
@@ -194,3 +185,13 @@
    :phase-duration-quantiles (phase-duration-quantiles-csv phase-duration-quantiles)
    :phase-bernoulli-params (age-beta-params phase-bernoulli-params)
    :phase-beta-params (age-beta-params phase-beta-params)})
+
+(defn zero-joiner-day-ages
+  [filename]
+  (->> (load-csv filename)
+       (map (fn [row]
+              (-> row
+                  (update :n parse-int)
+                  (update :x parse-int))))
+       (sort-by :n)
+       (mapv :x)))

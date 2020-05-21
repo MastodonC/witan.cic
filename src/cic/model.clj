@@ -15,28 +15,29 @@
 (defn joiners-model
   "Given the date of a joiner at a particular age,
   returns the interval in days until the next joiner"
-  [{:keys [model-coefs gamma-params]}]
+  [{:keys [model-coefs]}]
   (fn [age date seed]
-    (let [{:keys [dispersion]} (get gamma-params age)
-          shape (/ 1 dispersion)
-          day (t/in-days (t/interval (t/epoch) date))
-          intercept (:intercept model-coefs)
-          a (get model-coefs (keyword (str "admission-age-" age)) 0.0)
-          b (get model-coefs :beginning)
-          c (get model-coefs (keyword (str "beginning:admission-age-" age)) 0.0)
-          mean (m/exp (+ intercept a (* b day) (* c day)))]
-      (p/sample-1 (d/gamma {:shape shape :scale (/ mean shape)}) seed))))
+    (let [day (t/in-days (t/interval (t/epoch) date))
+          intercept (get model-coefs "(Intercept)")
+          a (get model-coefs (str "admission_age" age) 0.0)
+          b (get model-coefs "quarter")
+          c (get model-coefs (str "quarter:admission_age" age) 0.0)
+          n-per-quarter (m/exp (+ intercept a (* b day) (* c day)))
+          n-per-day (max (/ n-per-quarter 91.3125) (/ 1 365.25)) ;; Rate per day
+          ]
+      (p/sample-1 (d/exponential {:rate n-per-day}) seed))))
 
 (defn joiners-model-gen
   "Wraps R to trend joiner rates into the future."
-  [periods seed]
+  [periods project-to seed]
   (let [script "src/joiners.R"
         input (str (rscript/write-periods! periods))
-        out1 (str (write/temp-file "file" ".csv"))
-        out2 (str (write/temp-file "file" ".csv"))
+        output (str (write/temp-file "file" ".csv"))
         seed-long (rand/rand-long seed)]
-    (rscript/exec script input out1 out2 (str (Math/abs seed-long)))
-    (-> (read/joiner-csvs out1 out2)
+    (rscript/exec script input output
+                  (time/date-as-string project-to)
+                  (str (Math/abs seed-long)))
+    (-> (read/joiner-csv output)
         (joiners-model))))
 
 (defn sample-ci
@@ -211,3 +212,21 @@
                 placements
                 (let [next-placement (phase-transition (zero? offset) age placement)]
                   (recur next-offset next-placement (conj placements {:offset next-offset :placement next-placement})))))))))))
+
+(defn joiner-birthday-model
+  "Accepts quantiles for age zero joiner ages in days and returns a birthday-generating model
+  FIXME: Create a DSDR documenting the fact that age zero joiners have been observed to join
+  soon after birth. This means that age zero joiners tend disproportionately to be only days
+  old when joining. Without adjusting for this we will generate too many older joiners
+  which will manifest itself as an increase in age 1 year CiC, and so on. Those children
+  previously would have left the system before their first birthday."
+  [quantiles]
+  (let [q (vec quantiles)
+        n (count quantiles)
+        dist (d/uniform {:a 0 :b n})]
+    (fn [age join-date seed]
+      (if (zero? age)
+        (let [i (int (p/sample-1 dist seed))]
+          (time/days-before join-date (get q i)))
+        (-> (time/days-before join-date (int (p/sample-1 (d/uniform {:a 0 :b 366}) seed)))
+            (time/years-before age))))))

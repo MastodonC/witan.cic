@@ -1,7 +1,11 @@
 (ns cic.time
   (:refer-clojure :exclude [< <= = > >=])
   (:require [clj-time.core :as t]
-            [clj-time.periodic :as p]))
+            [clj-time.periodic :as p]
+            [clj-time.format :as f]))
+
+(def date-string (f/formatter "YYYY-MM-DD"))
+(def month-string (f/formatter "YYYY-MM"))
 
 (def < t/before?)
 
@@ -88,6 +92,26 @@
   (-> (month-beginning date)
       (t/plus (t/months 1))
       (t/minus (t/days 1))))
+
+(defn month-as-string
+  [date]
+  (f/unparse month-string date))
+
+(defn date-as-string
+  [date]
+  (f/unparse date-string date))
+
+(defn quarter-following
+  [date]
+  (let [test (t/minus date (t/days 1))
+        ;; Map months to quarters
+        ;; For all days in January except the first, the following quarter starts on 1st April
+        ;; For all days in April except the first, the following quarter starts on 1st July
+        ;; etc
+        quarter (inc (mod (+ (* (quot (dec (t/month test)) 3) 3) 3) 12))
+        ;; For any dates where the next quarter is January, increment the year
+        year (if (== quarter 1) (inc (t/year test)) (t/year test))]
+    (t/date-time year quarter)))
 
 (defn financial-year-end
   [date]

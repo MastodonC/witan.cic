@@ -22,13 +22,13 @@
 
 (defn joiners-seq
   "Return a lazy sequence of projected joiners for a particular age of admission."
-  [joiners-model duration-model placements-model age beginning end seed]
+  [joiners-model duration-model placements-model joiner-birthday-model age beginning previous-offset end seed]
   (let [[seed-1 seed-2 seed-3 seed-4 seed-5 seed-6] (rand/split-n seed 6)
         interval (joiners-model beginning seed-1)
-        next-time (time/days-after beginning interval)
+        new-offset (+ previous-offset interval)
+        next-time (time/days-after beginning new-offset)
         start-time (time/without-time next-time)
-        birthday (-> (time/days-before start-time (p/sample-1 (d/uniform {:a 0 :b 364}) seed-6))
-                     (time/years-before age))
+        birthday (joiner-birthday-model start-time seed-6)
         duration (duration-model birthday start-time seed-2)
         episodes (placements-model duration {:beginning start-time :birthday birthday
                                              :duration 0 :episodes []} seed-3)]
@@ -43,30 +43,33 @@
                     :episodes episodes}]
         (cons period
               (lazy-seq
-               (joiners-seq joiners-model duration-model placements-model age next-time end seed-5)))))))
+               (joiners-seq joiners-model duration-model placements-model joiner-birthday-model age beginning new-offset end seed-5)))))))
 
 (defn project-joiners
   "Return a lazy sequence of projected joiners for all ages of admission."
-  [{:keys [joiners-model duration-model episodes-model placements-model] :as model} beginning end seed]
+  [{:keys [joiners-model duration-model episodes-model placements-model joiner-birthday-model] :as model} beginning end seed]
   (mapcat (fn [age seed]
             (joiners-seq (partial joiners-model age)
                          duration-model
-                         (partial placements-model age) age beginning end seed))
+                         (partial placements-model age)
+                         (partial joiner-birthday-model age)
+                         age beginning 0 end seed))
           spec/ages
           (rand/split-n seed (count spec/ages))))
 
 (defn train-model
   "Build stochastic helper models using R. Random seed ensures determinism."
-  [{:keys [seed joiner-range episodes-range duration-model placements-model] :as model-seed} random-seed]
+  [{:keys [seed joiner-range episodes-range duration-model placements-model joiner-birthday-model project-to] :as model-seed} random-seed]
   (let [[s1 s2] (rand/split-n random-seed 2)
         [joiners-from joiners-to] joiner-range
         [episodes-from episodes-to] episodes-range
         periods (rand/sample-birthdays seed s1)
         closed-periods (filter :end periods)]
     {:joiners-model (-> (filter #(time/between? (:beginning %) joiners-from joiners-to) periods)
-                        (model/joiners-model-gen s2))
+                        (model/joiners-model-gen project-to s2))
      :episodes-model (-> (filter #(time/between? (:end %) episodes-from episodes-to) closed-periods)
                          (model/episodes-model))
+     :joiner-birthday-model joiner-birthday-model
      :duration-model duration-model
      :placements-model placements-model}))
 

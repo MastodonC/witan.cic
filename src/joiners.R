@@ -10,8 +10,8 @@ library(arm)
 
 args = commandArgs(trailingOnly=TRUE)
 input <- args[1]
-model.out <- args[2]
-rates.out <- args[3]
+output <- args[2]
+project.to <- as.Date(args[3])
 seed.long <- args[4]
 set.seed(seed.long)
 
@@ -19,30 +19,34 @@ df <- read.csv(input, header = TRUE, stringsAsFactors = FALSE, na.strings ='')
 df$beginning <- as.Date(parse_date_time(df$beginning, 'ymd HMS'))
 df$admission_age <- as.factor(as.character(df$admission_age))
 
-diffs <- df %>%
-    arrange(admission_age, beginning) %>%
-    group_by(admission_age) %>%
-    mutate(diff = interval(lag(beginning), beginning) / days(1), n = n()) %>%
-    ungroup %>%
-    filter(!is.na(diff) & n >= 3) %>% # We need at least 3 data points for each age to generate 2 diffs
-    dplyr::select(admission_age, diff, beginning) %>%
-    mutate(diff = diff + 0.01) %>% # Diff must always be greater than zero
-    mutate(admission_age = droplevels(admission_age)) %>%
-    as.data.frame
-
-joiners.model <- bayesglm(diff ~ beginning * admission_age, data = diffs, family=Gamma(link = log))
-mod.summary <- summary(joiners.model)
-
-coef.samples <- mvrnorm(n = 2, mu = coefficients(joiners.model), Sigma = vcov(joiners.model))
-colnames(coef.samples)[1] <- 'intercept'
-
-write.csv(coef.samples, model.out, row.names=FALSE)
-
-gamma.rates <- data.frame(admission_age = c(), shape = c(), rate = c())
-for (i in as.character(0:17)) {
-    interarrival <- (diffs %>% filter(admission_age == i))$diff
-    fit <- fitdist(interarrival, 'gamma', lower = c(0, 0), start = list(scale = 1, shape = 1), method = 'mme')
-    gamma.rates <- rbind(gamma.rates, data.frame(admission_age = i, shape = fit$estimate[1], rate = fit$estimate[2], dispersion = mod.summary$dispersion))
+quarters.between <- function(from, to) {
+    seq(floor_date(min(from), "3 months"),
+        floor_date(max(to), "3 months"),
+        "3 months")
 }
 
-write.csv(gamma.rates, rates.out, row.names=FALSE)
+# Ensure every age is represented every quarter
+defaults <- expand.grid(quarter = quarters.between(min(df$beginning), max(df$beginning)), admission_age = levels(df$admission_age))
+
+# Count the joiners per age and quarter
+dat <- df %>%
+    mutate(quarter = floor_date(beginning, "3 months")) %>%
+    group_by(admission_age, quarter) %>%
+    summarise(n = n()) %>%
+    as.data.frame
+
+# Data including zero counts
+dat <- defaults %>%
+    left_join(dat) %>%
+    mutate(n = coalesce(n, as.integer(0)))
+
+mod <- bayesglm(n ~ quarter * admission_age, data = dat, family = poisson(link = "log"))
+params <- mvrnorm(1, coef(mod), vcov(mod))
+params.df <- data.frame(name = names(params), param = params)
+
+# rand <- as.integer(runif(1, 1000, 9999))
+# write.csv(df, sprintf("/Users/henry/Mastodon C/witan.cic/data/testing/input-%s.csv", rand), row.names = FALSE)
+# write.csv(params.df, sprintf("/Users/henry/Mastodon C/witan.cic/data/testing/params-%s.csv", rand), row.names = FALSE)
+
+write.csv(params.df, output, row.names = FALSE)
+
