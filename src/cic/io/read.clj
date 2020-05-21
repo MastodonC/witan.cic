@@ -180,7 +180,6 @@
   [joiner-placements phase-durations phase-transitions phase-duration-quantiles
    phase-bernoulli-params phase-beta-params]
   {:joiner-placements (joiner-placements-csv joiner-placements)
-   :phase-durations (phase-durations-csv phase-durations)
    :phase-transitions (phase-transitions-csv phase-transitions)
    :phase-duration-quantiles (phase-duration-quantiles-csv phase-duration-quantiles)
    :phase-bernoulli-params (age-beta-params phase-bernoulli-params)

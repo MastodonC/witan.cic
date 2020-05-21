@@ -48,12 +48,13 @@
                        :duration-lower-csv (input-file "duration-model-lower.csv")
                        :duration-median-csv (input-file "duration-model-median.csv")
                        :duration-upper-csv (input-file "duration-model-upper.csv")
-                       :phase-durations-csv (input-file "phase-durations.csv")
+
                        :phase-duration-quantiles-csv (input-file "phase-duration-quantiles.csv")
                        :phase-transitions-csv (input-file "phase-transitions.csv")
                        :joiner-placements-csv (input-file "joiner-placements.csv")
                        :phase-bernoulli-params-csv (input-file "phase-bernoulli-params.csv")
                        :phase-beta-params-csv (input-file "phase-beta-params.csv")
+
                        :zero-joiner-day-ages-csv (input-file "zero-joiner-day-ages.csv")})))
 
 (defn prepare-model-inputs

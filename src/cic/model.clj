@@ -142,14 +142,6 @@
                (concat episodes [{:offset (inc last-offset)
                                   :placement spec/unknown-placement}])))))))))
 
-(defn phase-durations-model
-  [coefs]
-  (fn [first-phase?]
-    (let [lambda (if first-phase?
-                   (-> coefs :first :lambda)
-                   (-> coefs :rest :lambda))]
-      (d/draw (d/poisson {:lambda lambda})))))
-
 (defn phase-duration-quantiles-model
   [coefs]
   (fn [first-phase?]
@@ -184,7 +176,7 @@
         ))))
 
 (defn placements-model
-  [{:keys [joiner-placements phase-durations phase-transitions phase-duration-quantiles
+  [{:keys [joiner-placements phase-transitions phase-duration-quantiles
            phase-bernoulli-params phase-beta-params]}]
   (let [joiner-placement (joiner-placements-model joiner-placements)
         phase-duration (phase-duration-quantiles-model phase-duration-quantiles)

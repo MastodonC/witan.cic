@@ -11,12 +11,12 @@ library(arm)
 args = commandArgs(trailingOnly=TRUE)
 input <- args[1]
 output <- args[2]
-project.to <- as.Date(args[3])
+project.to <- as.Date(parse_date_time(args[3], "%Y-%m-%d"))
 seed.long <- args[4]
 set.seed(seed.long)
 
 df <- read.csv(input, header = TRUE, stringsAsFactors = FALSE, na.strings ='')
-df$beginning <- as.Date(parse_date_time(df$beginning, 'ymd HMS'))
+df$beginning <- as.Date(parse_date_time(df$beginning, '%Y-%m-%d %H:%M:%S'))
 df$admission_age <- as.factor(as.character(df$admission_age))
 
 quarters.between <- function(from, to) {
