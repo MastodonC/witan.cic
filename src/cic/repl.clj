@@ -69,10 +69,10 @@
 
 (defn generate-projection-csv!
   "Main REPL function for writing a projection CSV"
-  [output-file train-years n-runs seed]
+  [output-file train-years project-years n-runs seed]
   (let [{:keys [periods placement-costs duration-model placements-model]} (prepare-model-inputs (load-model-inputs))
         project-from (time/max-date (map :beginning periods))
-        project-to (time/years-after project-from 10)
+        project-to (time/years-after project-from project-years)
         learn-from (time/years-before project-from train-years)
         projection-seed {:seed (filter :open? periods)
                          :date project-from}
@@ -80,7 +80,8 @@
                     :duration-model duration-model
                     :placements-model placements-model
                     :joiner-range [learn-from project-from]
-                    :episodes-range [learn-from project-from]}
+                    :episodes-range [learn-from project-from]
+                    :project-to project-to}
         output-from (time/years-before learn-from 2)
         summary-seq (into []
                           (map format-actual-for-output)
@@ -96,11 +97,11 @@
          (write/write-csv! output-file))))
 
 (defn generate-annual-csv!
-  [output-file n-runs seed]
+  [output-file train-years project-years n-runs seed]
   (let [{:keys [periods placement-costs duration-model]} (load-model-inputs)
         project-from (time/days-after (time/financial-year-end (time/max-date (map :beginning periods))) 1)
-        project-to (time/financial-year-end (time/years-after project-from 5))
-        learn-from (time/years-before project-from 10)
+        project-to (time/financial-year-end (time/years-after project-from project-years))
+        learn-from (time/years-before project-from train-years)
         projection-seed {:seed (filter :open? periods)
                          :date project-from}
         costs-lookup (into {} (map (juxt :placement :cost) placement-costs))
@@ -149,11 +150,11 @@
    episodes))
 
 (defn generate-placement-sequence-csv!
-  [output-file n-runs seed]
+  [output-file train-years project-years n-runs seed]
   (let [{:keys [periods placement-costs duration-model]} (load-model-inputs)
         project-from (time/max-date (map :beginning periods))
-        project-to (time/financial-year-end (time/years-after project-from 3))
-        learn-from (time/years-before project-from 4)
+        project-to (time/financial-year-end (time/years-after project-from project-years))
+        learn-from (time/years-before project-from train-years)
         closed-periods (remove :open? periods)
         projection-seed {:seed (filter :open? periods)
                          :date project-from}
@@ -191,10 +192,10 @@
 
 (defn generate-episodes-csv!
   "Outputs a file showing a single projection in rowise episodes format."
-  [out-file train-years n-runs seed]
+  [out-file train-years project-years n-runs seed]
   (let [{:keys [periods placement-costs duration-model placements-model] :as model-inputs} (prepare-model-inputs (load-model-inputs))
         project-from (time/max-date (map :beginning periods))
-        project-to (time/years-after project-from 10)
+        project-to (time/years-after project-from project-years)
         learn-from (time/quarter-following (time/years-before project-from train-years))
         projection-seed {:seed periods
                          :date project-from}

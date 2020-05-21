@@ -29,13 +29,14 @@
 
 (defn joiners-model-gen
   "Wraps R to trend joiner rates into the future."
-  [periods seed]
+  [periods project-to seed]
   (let [script "src/joiners.R"
         input (str (rscript/write-periods! periods))
         output (str (write/temp-file "file" ".csv"))
-        project-to "2030-01-01"
         seed-long (rand/rand-long seed)]
-    (rscript/exec script input output project-to (str (Math/abs seed-long)))
+    (rscript/exec script input output
+                  (time/date-as-string project-to)
+                  (str (Math/abs seed-long)))
     (-> (read/joiner-csv output)
         (joiners-model))))
 

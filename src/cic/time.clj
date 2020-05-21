@@ -4,6 +4,7 @@
             [clj-time.periodic :as p]
             [clj-time.format :as f]))
 
+(def date-string (f/formatter "YYYY-MM-DD"))
 (def month-string (f/formatter "YYYY-MM"))
 
 (def < t/before?)
@@ -96,10 +97,19 @@
   [date]
   (f/unparse month-string date))
 
+(defn date-as-string
+  [date]
+  (f/unparse date-string date))
+
 (defn quarter-following
   [date]
   (let [test (t/minus date (t/days 1))
-        quarter (case (t/month test) 1 4 2 4 3 4 4 7 5 7 6 7 7 10 8 10 9 10 10 1 11 1 12 1)
+        ;; Map months to quarters
+        ;; For all days in January except the first, the following quarter starts on 1st April
+        ;; For all days in April except the first, the following quarter starts on 1st July
+        ;; etc
+        quarter (inc (mod (+ (* (quot (dec (t/month test)) 3) 3) 3) 12))
+        ;; For any dates where the next quarter is January, increment the year
         year (if (== quarter 1) (inc (t/year test)) (t/year test))]
     (t/date-time year quarter)))
 
