@@ -212,3 +212,21 @@
                 placements
                 (let [next-placement (phase-transition (zero? offset) age placement)]
                   (recur next-offset next-placement (conj placements {:offset next-offset :placement next-placement})))))))))))
+
+(defn joiner-birthday-model
+  "Accepts quantiles for age zero joiner ages in days and returns a birthday-generating model
+  FIXME: Create a DSDR documenting the fact that age zero joiners have been observed to join
+  soon after birth. This means that age zero joiners tend disproportionately to be only days
+  old when joining. Without adjusting for this we will generate too many older joiners
+  which will manifest itself as an increase in age 1 year CiC, and so on. Those children
+  previously would have left the system before their first birthday."
+  [quantiles]
+  (let [q (vec quantiles)
+        n (count quantiles)
+        dist (d/uniform {:a 0 :b n})]
+    (fn [age join-date seed]
+      (if (zero? age)
+        (let [i (int (p/sample-1 dist seed))]
+          (time/days-before join-date (get q i)))
+        (-> (time/days-before join-date (int (p/sample-1 (d/uniform {:a 0 :b 366}) seed)))
+            (time/years-before age))))))
