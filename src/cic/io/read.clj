@@ -18,7 +18,7 @@
 
 ;; FIXME: we'd like to standardise on YYYY-MM
 (def month-format
-  (f/formatter "M/YYYY"))
+  (f/formatter "YYYY-MM"))
 
 (defn parse-month
   [s]

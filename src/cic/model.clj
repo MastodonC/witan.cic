@@ -205,6 +205,56 @@
                 (let [next-placement (phase-transition (zero? offset) age placement)]
                   (recur next-offset next-placement (conj placements {:offset next-offset :placement next-placement})))))))))))
 
+(defn phase-durations
+  "Calculate the phase durations for all closed periods"
+  [periods]
+  (let [durations (mapcat (fn [{:keys [birthday beginning end episodes]}]
+                            (for [[{offset-a :offset from :placement} {offset-b :offset to :placement}] (partition-all 2 1 episodes)]
+                              (let [total-duration (time/day-interval beginning end)]
+                                {:total-duration total-duration
+                                 :phase-duration (if offset-b
+                                                   (- offset-b offset-a)
+                                                   (- (time/day-interval beginning end) offset-a))
+                                 :first-phase (zero? offset-a)
+                                 :age (time/year-interval birthday (time/days-after beginning offset-a))})))
+                          (remove :open? periods))
+        input (str (rscript/write-phase-durations! durations))
+        phase-duration-quantiles-out (str (write/temp-file "phase-duration-quantiles" ".csv"))
+        phase-beta-params-out (str (write/temp-file "phase-beta-params" ".csv"))
+        script "src/phase-durations.R"]
+    (rscript/exec script input
+                  phase-duration-quantiles-out
+                  phase-beta-params-out)
+    {:phase-duration-quantiles (read/phase-duration-quantiles-csv phase-duration-quantiles-out)
+     :phase-beta-params (read/age-beta-params phase-beta-params-out)}))
+
+(defn periods->placements-model
+  [periods]
+  (let [joiner-placements (frequencies (map (juxt :admission-age (comp :placement first :episodes)) periods))
+        transitions (->> (mapcat (fn [{:keys [birthday beginning episodes]}]
+                                   (for [[{offset-a :offset from :placement} {offset-b :offset to :placement}] (partition 2 1 episodes)]
+                                     {:first-transition (zero? offset-a)
+                                      :transition-age (time/year-interval birthday (time/days-after beginning offset-b))
+                                      :transition-from from
+                                      :transition-to to}))
+                                 periods)
+                         (reduce (fn [m {:keys [first-transition transition-age transition-from transition-to] :as row}]
+                                   (update-in m [(select-keys row [:first-transition :transition-age :transition-from]) transition-to] (fnil inc 0)))
+                                 {}))
+        bernoulli-params (reduce (fn [m {:keys [open? admission-age episodes]}]
+                                   (if open?
+                                     m
+                                     (if (> (count episodes) 1)
+                                       (update-in m [admission-age :beta] (fnil inc 0))
+                                       (update-in m [admission-age :alpha] (fnil inc 0)))))
+                                 {} periods)
+        {:keys [phase-duration-quantiles phase-beta-params]} (phase-durations periods)]
+    (placements-model {:joiner-placements joiner-placements
+                       :phase-transitions transitions
+                       :phase-duration-quantiles phase-duration-quantiles
+                       :phase-bernoulli-params bernoulli-params
+                       :phase-beta-params phase-beta-params})))
+
 (defn joiner-birthday-model
   "Accepts quantiles for age zero joiner ages in days and returns a birthday-generating model
   FIXME: Create a DSDR documenting the fact that age zero joiners have been observed to join
