@@ -57,7 +57,8 @@
       (cs/rename-keys {:count :actual
                        :cost :actual-cost})
       (update :placements #(into {} (map (fn [[k v]] (vector k {:median v}))) %))
-      (update :ages #(into {} (map (fn [[k v]] (vector k {:median v}))) %))))
+      (update :ages #(into {} (map (fn [[k v]] (vector k {:median v}))) %))
+      (update :placement-ages #(into {} (map (fn [[k v]] (vector k {:median v}))) %))))
 
 (defn generate-projection-csv!
   "Main REPL function for writing a projection CSV"

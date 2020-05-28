@@ -9,3 +9,8 @@
 
 (def ages
   (range 0 18))
+
+(def placement-ages
+  (for [placement placements
+        age ages]
+    (str (name placement) "-" age)))

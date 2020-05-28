@@ -60,12 +60,17 @@
 
 (defn compare-projected
   [projected actuals]
-  (let [{projected-placements :placements projected-ages :ages} projected
-        {actual-placements :placements actual-ages :ages} actuals]
+  (let [{projected-placements :placements
+         projected-ages :ages
+         projected-placement-ages :placement-ages} projected
+        {actual-placements :placements
+         actual-ages :ages
+         actual-placement-ages :placement-ages} actuals]
     {:total {:total
              {:actual (get actuals :actual 0)
               :projected (get-in projected [:projected :median] 0)
               :q1 (get-in projected [:projected :q1] 0)
               :q3 (get-in projected [:projected :q3] 0)}}
      :placements (compare-groups projected-placements actual-placements)
-     :ages (compare-groups projected-ages actual-ages)}))
+     :ages (compare-groups projected-ages actual-ages)
+     :placement-ages (compare-groups projected-placement-ages actual-placement-ages)}))
