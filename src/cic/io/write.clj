@@ -34,8 +34,8 @@
                       (comp :median :projected-cost)
                       (comp :q3 :projected-cost)
                       (comp :upper :projected-cost)
-                      (concat (map #(comp % :placements) spec/placements)
-                              (map (fn [age] #(get-in % [:ages age])) spec/ages)))
+                      (concat (map #(comp :median % :placements) spec/placements)
+                              (map (fn [age] #(get-in % [:ages age :median])) spec/ages)))
         headers (concat ["Date" "Actual" "Cost"]
                         ["CiC Lower CI" "CiC Lower Quartile" "CiC Median" "CiC Upper Quartile" "CiC Upper CI"]
                         ["Cost Lower CI" "Cost Lower Quartile" "Cost Median" "Cost Upper Quartile" "Cost Upper CI"]
