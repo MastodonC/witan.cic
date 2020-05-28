@@ -205,20 +205,25 @@
                 (let [next-placement (phase-transition (zero? offset) age placement)]
                   (recur next-offset next-placement (conj placements {:offset next-offset :placement next-placement})))))))))))
 
+(defn period->phases
+  [{:keys [birthday beginning end episodes] :as period}]
+  (for [[{offset-a :offset from :placement} {offset-b :offset to :placement}] (partition-all 2 1 episodes)]
+    (let [total-duration (time/day-interval beginning end)]
+      {:total-duration total-duration
+       :phase-duration (if offset-b
+                         (- offset-b offset-a)
+                         (- (time/day-interval beginning end) offset-a))
+       :first-phase (zero? offset-a)
+       :age (time/year-interval birthday (time/days-after beginning offset-a))})))
+
 (defn phase-durations
   "Calculate the phase durations for all closed periods"
   [periods]
-  (let [durations (mapcat (fn [{:keys [birthday beginning end episodes]}]
-                            (for [[{offset-a :offset from :placement} {offset-b :offset to :placement}] (partition-all 2 1 episodes)]
-                              (let [total-duration (time/day-interval beginning end)]
-                                {:total-duration total-duration
-                                 :phase-duration (if offset-b
-                                                   (- offset-b offset-a)
-                                                   (- (time/day-interval beginning end) offset-a))
-                                 :first-phase (zero? offset-a)
-                                 :age (time/year-interval birthday (time/days-after beginning offset-a))})))
-                          (remove :open? periods))
-        input (str (rscript/write-phase-durations! durations))
+  (let [phases (into []
+                     (comp (remove :open?)
+                           (mapcat period->phases))
+                     periods)
+        input (str (rscript/write-phase-durations! phases))
         phase-duration-quantiles-out (str (write/temp-file "phase-duration-quantiles" ".csv"))
         phase-beta-params-out (str (write/temp-file "phase-beta-params" ".csv"))
         script "src/phase-durations.R"]
@@ -232,13 +237,14 @@
   [periods]
   (let [joiner-placements (frequencies (map (juxt :admission-age (comp :placement first :episodes)) periods))
         transitions (->> (mapcat (fn [{:keys [birthday beginning episodes]}]
-                                   (for [[{offset-a :offset from :placement} {offset-b :offset to :placement}] (partition 2 1 episodes)]
-                                     {:first-transition (zero? offset-a)
-                                      :transition-age (time/year-interval birthday (time/days-after beginning offset-b))
-                                      :transition-from from
-                                      :transition-to to}))
+                                   (map (fn [[{offset-a :offset from :placement} {offset-b :offset to :placement}]]
+                                          {:first-transition (zero? offset-a)
+                                           :transition-age (time/year-interval birthday (time/days-after beginning offset-b))
+                                           :transition-from from
+                                           :transition-to to})
+                                        (partition 2 1 episodes)))
                                  periods)
-                         (reduce (fn [m {:keys [first-transition transition-age transition-from transition-to] :as row}]
+                         (reduce (fn [m {:keys [transition-to] :as row}]
                                    (update-in m [(select-keys row [:first-transition :transition-age :transition-from]) transition-to] (fnil inc 0)))
                                  {}))
         bernoulli-params (reduce (fn [m {:keys [open? admission-age episodes]}]
