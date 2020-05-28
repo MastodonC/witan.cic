@@ -61,14 +61,15 @@
 
 (defn generate-projection-csv!
   "Main REPL function for writing a projection CSV"
-  [output-file train-years project-years n-runs seed]
+  [output-file rewind-years train-years project-years n-runs seed]
   (let [{:keys [periods placement-costs duration-model joiner-birthday-model]} (prepare-model-inputs (load-model-inputs))
-        project-from (time/max-date (map :beginning periods))
+        project-from (time/years-before (time/max-date (map :beginning periods)) rewind-years)
         project-to (time/years-after project-from project-years)
         learn-from (time/years-before project-from train-years)
-        projection-seed {:seed (filter :open? periods)
+        projection-periods (periods/periods-as-at periods project-from)
+        projection-seed {:seed (filter :open? projection-periods)
                          :date project-from}
-        model-seed {:seed periods
+        model-seed {:seed projection-periods
                     :duration-model duration-model
                     :joiner-birthday-model joiner-birthday-model
                     :joiner-range [learn-from project-from]
@@ -77,7 +78,7 @@
         output-from (time/years-before learn-from 2)
         summary-seq (into []
                           (map format-actual-for-output)
-                          (summary/periods-summary (rand/sample-birthdays periods (rand/seed seed))
+                          (summary/periods-summary (rand/sample-birthdays projection-periods (rand/seed seed))
                                                    (time/day-seq output-from project-from 7)
                                                    placement-costs))
         projection (projection/projection projection-seed
@@ -89,9 +90,9 @@
          (write/write-csv! output-file))))
 
 (defn generate-annual-csv!
-  [output-file train-years project-years n-runs seed]
+  [output-file rewind-years train-years project-years n-runs seed]
   (let [{:keys [periods placement-costs duration-model joiner-birthday-model]} (load-model-inputs)
-        project-from (time/days-after (time/financial-year-end (time/max-date (map :beginning periods))) 1)
+        project-from (time/days-after (time/financial-year-end (time/max-date (map :beginning periods))) rewind-years)
         project-to (time/financial-year-end (time/years-after project-from project-years))
         learn-from (time/years-before project-from train-years)
         projection-seed {:seed (filter :open? periods)
@@ -173,24 +174,43 @@
            (write/placement-sequence-table)
            (write/write-csv! output-file)))))
 
-#_(defn generate-validation-csv!
+(defn generate-validation-csv!
   "Outputs model projection and linear regression projection together with actuals for comparison."
-  [out-file n-runs seed]
-  (let [{:keys [periods placement-costs placements-model duration-model]} (prepare-model-inputs (load-model-inputs))
-        validation (into []
-                         (map #(validate/compare-models-at % duration-model placements-model periods seed n-runs))
-                         (time/month-seq (time/make-date 2017 4 1)
-                                         (time/make-date 2018 4 1)))]
-    (->> (write/validation-table validation)
-         (write/write-csv! out-file))))
+  [output-file train-years n-runs seed]
+  (let [{:keys [periods placement-costs duration-model joiner-birthday-model]} (prepare-model-inputs (load-model-inputs))
+        project-from (time/years-before (time/max-date (map :beginning periods)) 1)
+        project-to (time/years-after project-from 1)
+        learn-from (time/years-before project-from train-years)
+        projection-periods (periods/periods-as-at periods project-from)
+        projection-seed {:seed (filter :open? projection-periods)
+                         :date project-from}
+        model-seed {:seed projection-periods
+                    :duration-model duration-model
+                    :joiner-birthday-model joiner-birthday-model
+                    :joiner-range [learn-from project-from]
+                    :episodes-range [learn-from project-from]
+                    :project-to project-to}
+        projection (->> (projection/project-n projection-seed model-seed [project-to] seed n-runs)
+                        (map #(summary/periods-summary % [project-to] placement-costs))
+                        (summary/grand-summary)
+                        (first))
+        actuals (-> (summary/periods-summary (rand/sample-birthdays periods (rand/seed seed))
+                                             [project-to]
+                                             placement-costs)
+                    (first)
+                    (format-actual-for-output))]
+    (->> (validate/compare-projected projection actuals)
+         (write/validation-table)
+         (write/write-csv! output-file))))
 
 (defn generate-episodes-csv!
   "Outputs a file showing a single projection in rowise episodes format."
-  [out-file train-years project-years n-runs seed]
+  [out-file rewind-years train-years project-years n-runs seed]
   (let [{:keys [periods placement-costs duration-model joiner-birthday-model] :as model-inputs} (prepare-model-inputs (load-model-inputs))
-        project-from (time/max-date (map :beginning periods))
+        project-from (time/years-before (time/max-date (map :beginning periods)) rewind-years)
         project-to (time/years-after project-from project-years)
         learn-from (time/quarter-following (time/years-before project-from train-years))
+        periods (periods/periods-as-at periods project-from)
         projection-seed {:seed periods
                          :date project-from}
         model-seed {:seed periods

@@ -47,3 +47,25 @@
               :model (model projection-seed model-seed project-to {:seed seed :n-runs n-runs})
               :linear-regression (linear-regression periods-as-at project-to)
               :actual (actual periods project-to))))
+
+(defn compare-groups
+  [projected actuals]
+  (->> (into (set (keys projected)) (keys actuals))
+       (reduce (fn [result key]
+                 (assoc result key {:actual (get-in actuals [key :median] 0)
+                                    :projected (get-in projected [key :median] 0)
+                                    :q1 (get-in projected [key :q1] 0)
+                                    :q3 (get-in projected [key :q3] 0)}))
+               {})))
+
+(defn compare-projected
+  [projected actuals]
+  (let [{projected-placements :placements projected-ages :ages} projected
+        {actual-placements :placements actual-ages :ages} actuals]
+    {:total {:total
+             {:actual (get actuals :actual 0)
+              :projected (get-in projected [:projected :median] 0)
+              :q1 (get-in projected [:projected :q1] 0)
+              :q3 (get-in projected [:projected :q3] 0)}}
+     :placements (compare-groups projected-placements actual-placements)
+     :ages (compare-groups projected-ages actual-ages)}))

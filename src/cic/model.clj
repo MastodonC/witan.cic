@@ -235,7 +235,10 @@
 
 (defn periods->placements-model
   [periods]
-  (let [joiner-placements (frequencies (map (juxt :admission-age (comp :placement first :episodes)) periods))
+  (let [joiner-placements (reduce (fn [acc {admission-age :admission-age [{first-placement :placement}] :episodes}]
+                                    (update-in acc [admission-age first-placement] (fnil inc 0)))
+                                  {}
+                                  periods)
         transitions (->> (mapcat (fn [{:keys [birthday beginning episodes]}]
                                    (map (fn [[{offset-a :offset from :placement} {offset-b :offset to :placement}]]
                                           {:first-transition (zero? offset-a)

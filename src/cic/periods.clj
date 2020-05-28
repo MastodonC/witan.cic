@@ -43,6 +43,10 @@
     (-> (assoc period :open? open?)
         (assoc :duration (time/day-interval beginning (or end date))))))
 
+(defn positive-duration?
+  [{:keys [report-date ceased] :as episode}]
+  (time/<= report-date (or ceased report-date)))
+
 (defn from-episodes
   "Takes episodes data and returns just the open periods ready for projection"
   [episodes]
@@ -51,6 +55,7 @@
                               (sort)
                               (last))]
     (->> episodes
+         (filter positive-duration?)
          (assoc-period-id)
          (group-by :period-id)
          (vals)
