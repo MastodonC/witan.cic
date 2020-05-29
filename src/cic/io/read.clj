@@ -16,9 +16,8 @@
   [s]
   (f/parse date-format s))
 
-;; FIXME: we'd like to standardise on YYYY-MM
 (def month-format
-  (f/formatter "M/YYYY"))
+  (f/formatter "YYYY-MM"))
 
 (defn parse-month
   [s]
@@ -180,7 +179,6 @@
   [joiner-placements phase-durations phase-transitions phase-duration-quantiles
    phase-bernoulli-params phase-beta-params]
   {:joiner-placements (joiner-placements-csv joiner-placements)
-   :phase-durations (phase-durations-csv phase-durations)
    :phase-transitions (phase-transitions-csv phase-transitions)
    :phase-duration-quantiles (phase-duration-quantiles-csv phase-duration-quantiles)
    :phase-bernoulli-params (age-beta-params phase-bernoulli-params)

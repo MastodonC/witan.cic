@@ -23,7 +23,12 @@
 (defn write-periods!
   [periods]
   (->> periods
-       (map #(-> (select-keys % [:admission-age :beginning])
+       (map #(-> %
+                 (select-keys [:admission-age :beginning])
                  (update :beginning date->str)
                  (cs/rename-keys {:admission-age :admission_age})))
        (write/mapseq->csv!)))
+
+(defn write-phase-durations!
+  [phase-durations]
+  (write/mapseq->csv! phase-durations))

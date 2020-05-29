@@ -34,8 +34,8 @@
                       (comp :median :projected-cost)
                       (comp :q3 :projected-cost)
                       (comp :upper :projected-cost)
-                      (concat (map #(comp % :placements) spec/placements)
-                              (map (fn [age] #(get-in % [:ages age])) spec/ages)))
+                      (concat (map #(comp :median % :placements) spec/placements)
+                              (map (fn [age] #(get-in % [:ages age :median])) spec/ages)))
         headers (concat ["Date" "Actual" "Cost"]
                         ["CiC Lower CI" "CiC Lower Quartile" "CiC Median" "CiC Upper Quartile" "CiC Upper CI"]
                         ["Cost Lower CI" "Cost Lower Quartile" "Cost Median" "Cost Upper Quartile" "Cost Upper CI"]
@@ -87,11 +87,12 @@
 
 (defn validation-table
   [validation]
-  (let [headers ["Date" "Model" "Linear Regression" "Actual"]
+  (let [headers ["Type" "Metric" "Actual" "Projected" "Lower Quartile" "Upper Quartile"]
         fields (juxt (comp date->str :date) :model :linear-regression :actual)]
-    (into [headers]
-          (map fields)
-          validation)))
+    (->> (for [[type comparison] validation
+               [value {:keys [actual projected q1 q3]}] comparison]
+           (vector (name type) value actual projected q1 q3))
+         (into [headers]))))
 
 (defn annual-report-table
   [cost-projection]
