@@ -16,16 +16,23 @@
   "Given the date of a joiner at a particular age,
   returns the interval in days until the next joiner"
   [{:keys [model-coefs]}]
-  (fn [age date seed]
-    (let [day (t/in-days (t/interval (t/epoch) date))
-          intercept (get model-coefs "(Intercept)")
-          a (get model-coefs (str "admission_age" age) 0.0)
-          b (get model-coefs "quarter")
-          c (get model-coefs (str "quarter:admission_age" age) 0.0)
-          n-per-quarter (m/exp (+ intercept a (* b day) (* c day)))
-          n-per-day (max (/ n-per-quarter 91.3125) (/ 1 365.25)) ;; Rate per day
-          ]
-      (p/sample-1 (d/exponential {:rate n-per-day}) seed))))
+  (fn [age join-after previous-joiner seed]
+    (loop [seed seed iter 1]
+      (let [day (t/in-days (t/interval (t/epoch) previous-joiner))
+            intercept (get model-coefs "(Intercept)")
+            a (get model-coefs (str "admission_age" age) 0.0)
+            b (get model-coefs "quarter")
+            c (get model-coefs (str "quarter:admission_age" age) 0.0)
+            n-per-quarter (m/exp (+ intercept a (* b day) (* c day)))
+            n-per-day (max (/ n-per-quarter 91.3125) (/ 1 365.25)) ;; Rate per day
+            sample (p/sample-1 (d/exponential {:rate n-per-day}) seed)
+            join-date (time/days-after previous-joiner sample)]
+        (if (>= iter 50)
+          (do (println (format "Exceeded iterations for joiner age %s" age))
+              sample)
+          (if (time/>= join-date join-after)
+            sample
+            (recur (second (rand/split seed)) (inc iter))))))))
 
 (defn joiners-model-gen
   "Wraps R to trend joiner rates into the future."

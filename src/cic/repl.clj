@@ -19,20 +19,25 @@
   "data/%s")
 
 (def input-file (partial format input-format))
+(def output-file (partial format input-format))
 
 (defn load-model-inputs
   "A useful REPL function to load the data files and convert them to  model inputs"
   ([{:keys [episodes-csv placement-costs-csv duration-lower-csv duration-median-csv duration-upper-csv
             zero-joiner-day-ages-csv]}]
-   (hash-map :periods (-> (read/episodes episodes-csv)
-                          (periods/from-episodes))
-             :placement-costs (read/costs-csv placement-costs-csv)
-             :duration-model (-> (read/duration-csvs duration-lower-csv
-                                                     duration-median-csv
-                                                     duration-upper-csv)
-                                 (model/duration-model))
-             :joiner-birthday-model (-> (read/zero-joiner-day-ages zero-joiner-day-ages-csv)
-                                        (model/joiner-birthday-model))))
+   (let [episodes (read/episodes episodes-csv)
+         project-from (->> (mapcat (juxt :report-date :ceased) episodes)
+                           (keep identity)
+                           (time/max-date))]
+     (hash-map :project-from project-from
+               :periods (periods/from-episodes episodes)
+               :placement-costs (read/costs-csv placement-costs-csv)
+               :duration-model (-> (read/duration-csvs duration-lower-csv
+                                                       duration-median-csv
+                                                       duration-upper-csv)
+                                   (model/duration-model))
+               :joiner-birthday-model (-> (read/zero-joiner-day-ages zero-joiner-day-ages-csv)
+                                          (model/joiner-birthday-model)))))
   ([]
    (load-model-inputs {:episodes-csv (format input-format "episodes.scrubbed.csv")
                        :placement-costs-csv (input-file "placement-costs.csv")
@@ -42,11 +47,8 @@
                        :zero-joiner-day-ages-csv (input-file "zero-joiner-day-ages.csv")})))
 
 (defn prepare-model-inputs
-  [{:keys [periods] :as model-inputs}]
-  (let [report-date (->> (mapcat (juxt :beginning :end) periods)
-                         (keep identity)
-                         (time/max-date))
-        periods (->> (map #(assoc % :reported report-date) periods)
+  [{:keys [project-from periods] :as model-inputs}]
+  (let [periods (->> (map #(assoc % :reported project-from) periods)
                      (periods/assoc-birthday-bounds))]
     (assoc model-inputs
            :periods periods)))
@@ -62,9 +64,10 @@
 
 (defn generate-projection-csv!
   "Main REPL function for writing a projection CSV"
-  [output-file rewind-years train-years project-years n-runs seed]
-  (let [{:keys [periods placement-costs duration-model joiner-birthday-model]} (prepare-model-inputs (load-model-inputs))
-        project-from (time/years-before (time/max-date (map :beginning periods)) rewind-years)
+  [rewind-years train-years project-years n-runs seed]
+  (let [output-file (output-file (format "%syr-rewind-%syr-train-%syr-project-%s-runs-%s-seed-testing.csv" rewind-years train-years project-years n-runs seed))
+        {:keys [project-from periods placement-costs duration-model joiner-birthday-model]} (prepare-model-inputs (load-model-inputs))
+        project-from (time/years-before project-from rewind-years)
         project-to (time/years-after project-from project-years)
         learn-from (time/years-before project-from train-years)
         projection-periods (periods/periods-as-at periods project-from)
@@ -206,9 +209,11 @@
 
 (defn generate-episodes-csv!
   "Outputs a file showing a single projection in rowise episodes format."
-  [out-file rewind-years train-years project-years n-runs seed]
-  (let [{:keys [periods placement-costs duration-model joiner-birthday-model] :as model-inputs} (prepare-model-inputs (load-model-inputs))
-        project-from (time/years-before (time/max-date (map :beginning periods)) rewind-years)
+  [rewind-years train-years project-years n-runs seed]
+  (let [output-file (output-file (format "episodes-%syr-rewind-%syr-train-%syr-project-%s-runs-%s-seed-testing.csv" rewind-years train-years project-years n-runs seed))
+        {:keys [project-from periods placement-costs duration-model joiner-birthday-model] :as model-inputs} (prepare-model-inputs (load-model-inputs))
+        project-from (time/years-before project-from rewind-years)
+        _ (println (str "Project from " project-from))
         project-to (time/years-after project-from project-years)
         learn-from (time/quarter-following (time/years-before project-from train-years))
         periods (periods/periods-as-at periods project-from)
@@ -221,4 +226,4 @@
                     :episodes-range [learn-from project-from]}]
     (->> (projection/project-n projection-seed model-seed [project-to] seed n-runs)
          (write/episodes-table project-to)
-         (write/write-csv! out-file))))
+         (write/write-csv! output-file))))
