@@ -110,45 +110,6 @@
             coll
             (apply c/cartesian-product ks))))
 
-(defn episodes-model
-  "Given an age of admission and duration,
-  sample likely placements from input data"
-  [closed-periods]
-  (let [age-duration-lookup (reduce (fn [lookup {:keys [admission-age duration episodes period-id]}]
-                                      (let [yrs (/ duration 365.0)]
-                                        (update-fuzzy lookup [admission-age yrs] conj (map #(assoc % :period-id period-id) episodes))))
-                                    {} closed-periods)
-        age-duration-placement-offset-lookup (reduce (fn [lookup {:keys [admission-age duration episodes period-id]}]
-                                                       (let [duration-yrs (/ duration 365.0)]
-                                                         (reduce (fn [lookup {:keys [offset placement]}]
-                                                                   (let [offset-yrs (/ offset 365)]
-                                                                     (update-fuzzy lookup [admission-age duration-yrs placement offset-yrs] conj (map #(assoc % :period-id period-id) episodes))))
-                                                                 lookup
-                                                                 episodes)))
-                                                     {} closed-periods)]
-    (fn
-      ([age duration seed]
-       (let [duration-yrs (Math/round (/ duration 365.0))
-             candidates (get age-duration-lookup [(min age 17) duration-yrs])
-             candidate (rand/rand-nth candidates seed)]
-         (if (seq candidate)
-           (take-while #(< (:offset %) duration) candidate)
-           [{:offset 0 :placement spec/unknown-placement}])))
-      ([age duration {:keys [episodes] :as open-period} seed]
-       (let [{:keys [placement offset]} (last episodes)]
-         (let [duration-yrs (Math/round (/ duration 365.0))
-               offset-yrs (Math/round (/ offset 365.0))
-               candidates (get age-duration-placement-offset-lookup [(min age 17) duration-yrs placement offset-yrs])
-               candidate (rand/rand-nth candidates seed)
-               future-episodes (->> candidate
-                                    (drop-while #(<= (:offset %) (:duration open-period)))
-                                    (take-while #(< (:offset %) duration)))]
-           (if (seq candidate)
-             (concat episodes future-episodes)
-             (let [last-offset (-> episodes last :offset)]
-               (concat episodes [{:offset (inc last-offset)
-                                  :placement spec/unknown-placement}])))))))))
-
 (defn phase-duration-quantiles-model
   [coefs]
   (fn [first-phase?]

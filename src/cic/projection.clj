@@ -9,7 +9,7 @@
 
 (defn project-period-close
   "Sample a possible duration in care which is greater than the existing duration"
-  [{:keys [duration-model episodes-model placements-model] :as model}
+  [{:keys [duration-model placements-model] :as model}
    {:keys [duration birthday beginning admission-age episodes period-id open?] :as period} seed]
   (if open?
     (let [projected-duration (duration-model birthday beginning duration seed)
@@ -47,7 +47,7 @@
 
 (defn project-joiners
   "Return a lazy sequence of projected joiners for all ages of admission."
-  [{:keys [joiners-model duration-model episodes-model placements-model joiner-birthday-model] :as model}
+  [{:keys [joiners-model duration-model placements-model joiner-birthday-model] :as model}
    projection-seed end seed]
   (let [previous-joiner-per-age (->> (group-by :admission-age (:seed projection-seed))
                                      (reduce (fn [m [k v]] (assoc m k (time/max-date (map :beginning v)))) {}))]
@@ -72,8 +72,6 @@
         closed-periods (filter :end periods)]
     {:joiners-model (-> (filter #(time/between? (:beginning %) joiners-from joiners-to) periods)
                         (model/joiners-model-gen project-to s2))
-     :episodes-model (-> (filter #(time/between? (:end %) episodes-from episodes-to) closed-periods)
-                         (model/episodes-model))
      :placements-model (model/periods->placements-model periods)
      :phase-durations phase-durations
      :joiner-birthday-model joiner-birthday-model

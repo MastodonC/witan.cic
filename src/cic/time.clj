@@ -113,6 +113,10 @@
         year (if (== quarter 1) (inc (t/year test)) (t/year test))]
     (t/date-time year quarter)))
 
+(defn quarter-preceding
+  [date]
+  (t/minus (quarter-following (t/plus date (t/days 1))) (t/months 3)))
+
 (defn financial-year-end
   [date]
   (let [year-end (t/date-time (t/year date) 3 31)]
