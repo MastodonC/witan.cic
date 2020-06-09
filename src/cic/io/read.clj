@@ -34,10 +34,14 @@
 (defn parse-placement
   [s]
   (let [placement (keyword s)]
-    (cond
-      (#{:U1 :U2 :U3} placement) :Q1
-      (#{:U4 :U5 :U6} placement) :Q2
-      :else placement)))
+    (-> (cond
+          (#{:U1 :U2 :U3} placement) :Q1
+          (#{:U4 :U5 :U6} placement) :Q2
+          :else placement)
+        name
+        first
+        str
+        keyword)))
 
 (defn format-episode
   [row]
