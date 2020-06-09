@@ -72,7 +72,7 @@
         closed-periods (filter :end periods)]
     {:joiners-model (-> (filter #(time/between? (:beginning %) joiners-from joiners-to) periods)
                         (model/joiners-model-gen project-to s2))
-     :placements-model (model/periods->placements-model periods)
+     :placements-model (model/periods->placements-model periods episodes-from episodes-to)
      :phase-durations phase-durations
      :joiner-birthday-model joiner-birthday-model
      :duration-model duration-model

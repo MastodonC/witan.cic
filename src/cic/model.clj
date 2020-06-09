@@ -174,8 +174,11 @@
                   (recur next-offset next-placement (conj placements {:offset next-offset :placement next-placement})))))))))))
 
 (defn period->phases
-  [{:keys [birthday beginning end episodes] :as period}]
-  (for [[{offset-a :offset from :placement} {offset-b :offset to :placement}] (partition-all 2 1 episodes)]
+  [{:keys [birthday beginning end episodes] :as period} episodes-from episodes-to]
+  (for [[{offset-a :offset from :placement} {offset-b :offset to :placement}] (partition-all 2 1 episodes)
+        ;; FIXME: model needs a default for when there aren't enough recent records
+        ;; :when (time/between? (time/days-after beginning offset-a) episodes-from episodes-to)
+        ]
     (let [total-duration (time/day-interval beginning end)]
       {:total-duration total-duration
        :phase-duration (if offset-b
@@ -186,10 +189,10 @@
 
 (defn phase-durations
   "Calculate the phase durations for all closed periods"
-  [periods]
+  [periods episodes-from episodes-to]
   (let [phases (into []
                      (comp (remove :open?)
-                           (mapcat period->phases))
+                           (mapcat #(period->phases % episodes-from episodes-to)))
                      periods)
         input (str (rscript/write-phase-durations! phases))
         phase-duration-quantiles-out (str (write/temp-file "phase-duration-quantiles" ".csv"))
@@ -202,18 +205,22 @@
      :phase-beta-params (read/age-beta-params phase-beta-params-out)}))
 
 (defn periods->placements-model
-  [periods]
+  [periods episodes-from episodes-to]
   (let [joiner-placements (reduce (fn [acc {admission-age :admission-age [{first-placement :placement}] :episodes}]
                                     (update-in acc [admission-age first-placement] (fnil inc 0)))
                                   {}
-                                  periods)
+                                  (filter #(time/between? (:beginning %) episodes-from episodes-to) periods))
         transitions (->> (mapcat (fn [{:keys [birthday beginning episodes]}]
-                                   (map (fn [[{offset-a :offset from :placement} {offset-b :offset to :placement}]]
-                                          {:first-transition (zero? offset-a)
-                                           :transition-age (time/year-interval birthday (time/days-after beginning offset-b))
-                                           :transition-from from
-                                           :transition-to to})
-                                        (partition 2 1 episodes)))
+                                   (into []
+                                         (comp (map (fn [[{offset-a :offset from :placement} {offset-b :offset to :placement}]]
+                                                      (let [transition-date (time/days-after beginning offset-b)]
+                                                        (when (time/between? transition-date episodes-from episodes-to)
+                                                          {:first-transition (zero? offset-a)
+                                                           :transition-age (time/year-interval birthday (time/days-after beginning offset-b))
+                                                           :transition-from from
+                                                           :transition-to to}))))
+                                               (keep identity))
+                                         (partition 2 1 episodes)))
                                  periods)
                          (reduce (fn [m {:keys [transition-to] :as row}]
                                    (update-in m [(select-keys row [:first-transition :transition-age :transition-from]) transition-to] (fnil inc 0)))
@@ -224,8 +231,9 @@
                                      (if (> (count episodes) 1)
                                        (update-in m [admission-age :beta] (fnil inc 0))
                                        (update-in m [admission-age :alpha] (fnil inc 0)))))
-                                 {} periods)
-        {:keys [phase-duration-quantiles phase-beta-params]} (phase-durations periods)]
+                                 {}
+                                 (filter #(time/between? (:beginning %) episodes-from episodes-to) periods))
+        {:keys [phase-duration-quantiles phase-beta-params]} (phase-durations periods episodes-from episodes-to)]
     (placements-model {:joiner-placements joiner-placements
                        :phase-transitions transitions
                        :phase-duration-quantiles phase-duration-quantiles
