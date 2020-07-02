@@ -85,7 +85,7 @@
         model (train-model model-seed s1)
         projection-seed (update projection-seed :seed rand/sample-birthdays s4)]
     (-> (map (partial project-period-close model) (:seed projection-seed) (rand/split-n s2 (count (:seed projection-seed))))
-        (concat (project-joiners model projection-seed end s3)))))
+        #_(concat (project-joiners model projection-seed end s3)))))
 
 (defn project-n
   "Returns n stochastic sequences of projected periods."

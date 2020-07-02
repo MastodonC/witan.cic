@@ -41,6 +41,7 @@
         input (str (rscript/write-periods! periods))
         output (str (write/temp-file "file" ".csv"))
         seed-long (rand/rand-long seed)]
+    (println script input output (time/date-as-string project-to) (str (Math/abs seed-long)))
     (rscript/exec script input output
                   (time/date-as-string project-to)
                   (str (Math/abs seed-long)))
@@ -206,39 +207,53 @@
 
 (defn periods->placements-model
   [periods episodes-from episodes-to]
-  (let [joiner-placements (reduce (fn [acc {admission-age :admission-age [{first-placement :placement}] :episodes}]
-                                    (update-in acc [admission-age first-placement] (fnil inc 0)))
-                                  {}
-                                  (filter #(time/between? (:beginning %) episodes-from episodes-to) periods))
-        transitions (->> (mapcat (fn [{:keys [birthday beginning episodes]}]
-                                   (into []
-                                         (comp (map (fn [[{offset-a :offset from :placement} {offset-b :offset to :placement}]]
-                                                      (let [transition-date (time/days-after beginning offset-b)]
-                                                        (when (time/between? transition-date episodes-from episodes-to)
-                                                          {:first-transition (zero? offset-a)
-                                                           :transition-age (time/year-interval birthday (time/days-after beginning offset-b))
-                                                           :transition-from from
-                                                           :transition-to to}))))
-                                               (keep identity))
-                                         (partition 2 1 episodes)))
-                                 periods)
-                         (reduce (fn [m {:keys [transition-to] :as row}]
-                                   (update-in m [(select-keys row [:first-transition :transition-age :transition-from]) transition-to] (fnil inc 0)))
-                                 {}))
-        bernoulli-params (reduce (fn [m {:keys [open? admission-age episodes]}]
-                                   (if open?
-                                     m
-                                     (if (> (count episodes) 1)
-                                       (update-in m [admission-age :beta] (fnil inc 0))
-                                       (update-in m [admission-age :alpha] (fnil inc 0)))))
-                                 {}
-                                 (filter #(time/between? (:beginning %) episodes-from episodes-to) periods))
-        {:keys [phase-duration-quantiles phase-beta-params]} (phase-durations periods episodes-from episodes-to)]
-    (placements-model {:joiner-placements joiner-placements
-                       :phase-transitions transitions
-                       :phase-duration-quantiles phase-duration-quantiles
-                       :phase-bernoulli-params bernoulli-params
-                       :phase-beta-params phase-beta-params})))
+  (let [joiner-placements (joiner-placements-model
+                           (reduce (fn [acc {admission-age :admission-age [{first-placement :placement}] :episodes}]
+                                     (update-in acc [admission-age first-placement] (fnil inc 0)))
+                                   {}
+                                   (filter #(time/between? (:beginning %) episodes-from episodes-to) periods)))
+        transitions (reduce (fn [acc {:keys [birthday beginning episodes open? end]}]
+                              (reduce (fn [acc [{offset-a :offset from :placement} {offset-b :offset to :placement}]]
+                                        (let [age (time/year-interval birthday (time/days-after beginning offset-a))]
+                                          (if offset-b
+                                            (-> (update-in acc [age from to :n] (fnil inc 0))
+                                                (update-in [age from to :durations] conj (- offset-b offset-a)))
+                                            (if (not open?)
+                                              (-> (update-in acc [age from :OUT :n] (fnil inc 0))
+                                                  (update-in [from :OUT :durations] conj (- (time/days-after beginning end) offset-a)))
+                                              acc))))
+                                      acc
+                                      (partition 2 1 episodes)))
+                            {}
+                            periods)]
+    (fn [age total-duration {:keys [episodes duration beginning birthday]} seed]
+      (let [episodes (if (seq episodes)
+                       episodes
+                       (let [placement (joiner-placements age)]
+                         [{:offset 0 :placement placement}]))
+            {:keys [placement offset]} (last episodes)]
+        (loop [offset offset
+               placement placement
+               placements (vec episodes)]
+          (let [age (time/year-interval birthday (time/days-after beginning offset))
+                [next-placement duration] (loop [iter 0]
+                                            (if (> iter 10)
+                                              [:OUT 10]
+                                              (let [transitions-summary (get-in transitions [age placement])
+                                                    [next-placements options] (apply map vector transitions-summary)
+                                                    placement-counts (map :n options)
+                                                    next-placement (d/draw (d/categorical (zipmap next-placements (d/draw (d/dirichlet {:alphas placement-counts})))))
+                                                    placement-duration (first (shuffle (get-in options [next-placement :durations])))]
+                                                )))
+                transitions-summary (get-in transitions [age placement])
+                [next-placements options] (apply map vector transitions-summary)
+                placement-counts (map :n options)
+                next-placement (d/draw (d/categorical (zipmap next-placements (d/draw (d/dirichlet {:alphas placement-counts})))))
+                duration (first (shuffle (get-in options [next-placement :durations])))]
+            (if (= next-placement :OUT)
+              placements
+              (let [next-offset (+ offset duration)]
+                (recur next-offset next-placement (conj placements {:offset next-offset :placement next-placement}))))))))))
 
 (defn joiner-birthday-model
   "Accepts quantiles for age zero joiner ages in days and returns a birthday-generating model

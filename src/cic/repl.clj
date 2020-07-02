@@ -15,8 +15,12 @@
             [redux.core :as rx]
             [kixi.stats.core :as k]))
 
+  (def ccc "data/ccc/2020-06-09/%s")
+  (def ncc "data/ncc/2020-06-09/%s")
+  (def scc "data/scc/2020-06-09/%s")
+
 (def input-format
-  "data/%s")
+  scc)
 
 (def input-file (partial format input-format))
 (def output-file (partial format input-format))
@@ -65,9 +69,10 @@
 (defn generate-projection-csv!
   "Main REPL function for writing a projection CSV"
   [rewind-years train-years project-years n-runs seed]
-  (let [output-file (output-file (format "projection-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-episodes-filter.csv" rewind-years train-years project-years n-runs seed))
+  (let [output-file (output-file (format "projection-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-episodes-no-joiners.csv" rewind-years train-years project-years n-runs seed))
         {:keys [project-from periods placement-costs duration-model joiner-birthday-model]} (prepare-model-inputs (load-model-inputs))
-        project-from (time/quarter-preceding (time/years-before project-from rewind-years))
+        ;; project-from (time/quarter-preceding (time/years-before project-from rewind-years))
+        project-from (time/years-before project-from rewind-years)
         _ (println (str "Project from " project-from))
         project-to (time/years-after project-from project-years)
         learn-from (time/years-before project-from train-years)
