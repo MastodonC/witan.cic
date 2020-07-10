@@ -39,7 +39,7 @@
                :duration-model (-> (read/duration-csvs duration-lower-csv
                                                        duration-median-csv
                                                        duration-upper-csv)
-                                   (model/duration-model))
+                                   (model/cease-model))
                :joiner-birthday-model (-> (read/zero-joiner-day-ages zero-joiner-day-ages-csv)
                                           (model/joiner-birthday-model)))))
   ([]
@@ -69,9 +69,10 @@
 (defn generate-projection-csv!
   "Main REPL function for writing a projection CSV"
   [rewind-years train-years project-years n-runs seed]
-  (let [output-file (output-file (format "projection-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-episodes-no-joiners.csv" rewind-years train-years project-years n-runs seed))
+  (let [output-file (output-file (format "projection-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-cease-model-tweaked.csv" rewind-years train-years project-years n-runs seed))
         {:keys [project-from periods placement-costs duration-model joiner-birthday-model]} (prepare-model-inputs (load-model-inputs))
         ;; project-from (time/quarter-preceding (time/years-before project-from rewind-years))
+        ;; _ (println (take 10 periods))
         project-from (time/years-before project-from rewind-years)
         _ (println (str "Project from " project-from))
         project-to (time/years-after project-from project-years)
@@ -220,7 +221,7 @@
 (defn generate-episodes-csv!
   "Outputs a file showing a single projection in rowise episodes format."
   [rewind-years train-years project-years n-runs seed]
-  (let [output-file (output-file (format "episodes-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-episodes-filter.csv" rewind-years train-years project-years n-runs seed))
+  (let [output-file (output-file (format "episodes-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-v4-ceased-model.csv" rewind-years train-years project-years n-runs seed))
         _ (println output-file)
         {:keys [project-from periods placement-costs duration-model joiner-birthday-model] :as model-inputs} (prepare-model-inputs (load-model-inputs))
         project-from (time/quarter-preceding (time/years-before project-from rewind-years))

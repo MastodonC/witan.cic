@@ -12,11 +12,11 @@
   [{:keys [duration-model placements-model] :as model}
    {:keys [duration birthday beginning admission-age episodes period-id open?] :as period} seed]
   (if open?
-    (let [projected-duration (duration-model birthday beginning duration seed)
-          episodes (placements-model admission-age projected-duration period seed)]
-      (-> (assoc period :duration projected-duration)
+    (let [;; projected-duration (duration-model birthday beginning duration seed)
+          {:keys [episodes duration]} (placements-model period seed)]
+      (-> (assoc period :duration duration)
           (assoc :episodes episodes)
-          (assoc :end (time/without-time (time/days-after beginning projected-duration)))
+          (assoc :end (time/without-time (time/days-after beginning duration)))
           (assoc :open? false)))
     period))
 
@@ -29,9 +29,8 @@
         next-time (time/days-after last-joiner new-offset)
         start-time (time/without-time next-time)
         birthday (joiner-birthday-model start-time seed-6)
-        duration (duration-model birthday start-time seed-2)
-        episodes (placements-model duration {:beginning start-time :birthday birthday
-                                             :duration 0 :episodes []} seed-3)]
+        ;; duration (duration-model birthday start-time seed-2)
+        {:keys [duration episodes]} (placements-model {:beginning start-time :birthday birthday :episodes []} seed-3)]
     (when (time/< next-time end)
       (let [period-end (time/without-time (time/days-after start-time duration))
             period {:beginning start-time
@@ -55,7 +54,7 @@
               (let [previous-joiner-at-age (get previous-joiner-per-age age (:date projection-seed))]
                 (joiners-seq (partial joiners-model age (:date projection-seed))
                              duration-model
-                             (partial placements-model age)
+                             placements-model
                              (partial joiner-birthday-model age)
                              previous-joiner-at-age 0
                              age end seed)))
@@ -72,7 +71,7 @@
         closed-periods (filter :end periods)]
     {:joiners-model (-> (filter #(time/between? (:beginning %) joiners-from joiners-to) periods)
                         (model/joiners-model-gen project-to s2))
-     :placements-model (model/periods->placements-model periods episodes-from episodes-to)
+     :placements-model (model/periods->placements-model duration-model periods episodes-from episodes-to)
      :phase-durations phase-durations
      :joiner-birthday-model joiner-birthday-model
      :duration-model duration-model
@@ -85,7 +84,7 @@
         model (train-model model-seed s1)
         projection-seed (update projection-seed :seed rand/sample-birthdays s4)]
     (-> (map (partial project-period-close model) (:seed projection-seed) (rand/split-n s2 (count (:seed projection-seed))))
-        #_(concat (project-joiners model projection-seed end s3)))))
+        (concat (project-joiners model projection-seed end s3)))))
 
 (defn project-n
   "Returns n stochastic sequences of projected periods."
