@@ -88,11 +88,14 @@
 (defn cease-model
   [coefs]
   (fn cease-model*
-    [birthday beginning duration seed]
+    [birthday beginning elapsed-duration seed]
     (let [age-entry (max 0 (min (time/year-interval birthday beginning) 17))
-          cdf (get coefs age-entry)
-          n (transduce (take-while (fn [[_ m _]] (<= m duration))) k/count cdf)]
-      (p/sample-1 (d/bernoulli {:p (float (/ n 101.0))}) seed))))
+          hazard (or (some (fn [{:keys [duration hazard]}]
+                             (when (>= duration elapsed-duration)
+                               hazard))
+                           (get coefs age-entry []))
+                     1.0)]
+      (p/sample-1 (d/bernoulli {:p hazard}) seed))))
 
 (defn update-fuzzy
   "Like `update`, but the key is expected to be a vector of values.

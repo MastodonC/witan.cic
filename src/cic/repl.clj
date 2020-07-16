@@ -17,7 +17,7 @@
 
   (def ccc "data/ccc/2020-06-09/%s")
   (def ncc "data/ncc/2020-06-09/%s")
-  (def scc "data/scc/2020-06-09/%s")
+  (def scc "data/scc/2020-07-16/%s")
 
 (def input-format
   scc)
@@ -28,7 +28,7 @@
 (defn load-model-inputs
   "A useful REPL function to load the data files and convert them to  model inputs"
   ([{:keys [episodes-csv placement-costs-csv duration-lower-csv duration-median-csv duration-upper-csv
-            zero-joiner-day-ages-csv]}]
+            zero-joiner-day-ages-csv survival-hazard-csv]}]
    (let [episodes (read/episodes episodes-csv)
          project-from (->> (mapcat (juxt :report-date :ceased) episodes)
                            (keep identity)
@@ -36,10 +36,8 @@
      (hash-map :project-from project-from
                :periods (periods/from-episodes episodes)
                :placement-costs (read/costs-csv placement-costs-csv)
-               :duration-model (-> (read/duration-csvs duration-lower-csv
-                                                       duration-median-csv
-                                                       duration-upper-csv)
-                                   (model/cease-model))
+               :duration-model (-> (read/survival-hazard survival-hazard-csv)
+                                   (model/cease-model ))
                :joiner-birthday-model (-> (read/zero-joiner-day-ages zero-joiner-day-ages-csv)
                                           (model/joiner-birthday-model)))))
   ([]
@@ -48,7 +46,8 @@
                        :duration-lower-csv (input-file "duration-model-lower.csv")
                        :duration-median-csv (input-file "duration-model-median.csv")
                        :duration-upper-csv (input-file "duration-model-upper.csv")
-                       :zero-joiner-day-ages-csv (input-file "zero-joiner-day-ages.csv")})))
+                       :zero-joiner-day-ages-csv (input-file "zero-joiner-day-ages.csv")
+                       :survival-hazard-csv (input-file "survival-hazard.csv")})))
 
 (defn prepare-model-inputs
   [{:keys [project-from periods] :as model-inputs}]
@@ -221,7 +220,7 @@
 (defn generate-episodes-csv!
   "Outputs a file showing a single projection in rowise episodes format."
   [rewind-years train-years project-years n-runs seed]
-  (let [output-file (output-file (format "episodes-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-v4-ceased-model.csv" rewind-years train-years project-years n-runs seed))
+  (let [output-file (output-file (format "episodes-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-placements-model-2.2-nojoiners.csv" rewind-years train-years project-years n-runs seed))
         _ (println output-file)
         {:keys [project-from periods placement-costs duration-model joiner-birthday-model] :as model-inputs} (prepare-model-inputs (load-model-inputs))
         project-from (time/quarter-preceding (time/years-before project-from rewind-years))
