@@ -204,6 +204,11 @@
           {}
           transitions))
 
+(defn dirichlet-categorical
+  [category-alphas]
+  (let [[categories alphas] (apply map vector category-alphas)]
+    (d/draw (d/categorical (zipmap categories (d/draw (d/dirichlet {:alphas alphas})))))))
+
 (defn periods->placements-model
   [cease-model periods episodes-from episodes-to]
   (let [joiner-placements (joiner-placements-model
@@ -211,6 +216,11 @@
                                      (update-in acc [admission-age first-placement] (fnil inc 0)))
                                    {}
                                    (filter #(time/between? (:beginning %) episodes-from episodes-to) periods)))
+        joiner-clusters (reduce (fn [acc {admission-age :admission-age [{first-placement :placement}] :episodes cluster :cluster}]
+                                  (update-in acc [admission-age cluster] (fnil inc 0)))
+                                {}
+                                (filter #(time/between? (:beginning %) episodes-from episodes-to) periods))
+
         transitions (reduce (fn [acc {:keys [birthday beginning episodes open? end]}]
                               (reduce (fn [acc [{offset-a :offset from :placement} {offset-b :offset to :placement}]]
                                         (let [age (time/year-interval birthday (time/days-after beginning offset-a))]
@@ -232,8 +242,10 @@
                                       (partition 2 1 episodes)))
                             {}
                             periods)]
-    (fn [{:keys [episodes duration beginning birthday]} seed]
-      (let [episodes (if (seq episodes)
+    (fn [{:keys [episodes duration beginning birthday cluster]} seed]
+      (let [age (time/year-interval birthday beginning)
+            cluster (if cluster cluster (dirichlet-categorical (get joiner-clusters age)))
+            episodes (if (seq episodes)
                        episodes
                        (let [age (time/year-interval birthday beginning)
                              placement (joiner-placements age)]
@@ -259,7 +271,7 @@
                                                             (recur (inc iter) (dec age)))
                                                           (let [[next-placements options] (apply map vector transitions-summary)
                                                                 placement-counts (map :n options)
-                                                                next-placement (try (d/draw (d/categorical (zipmap next-placements (d/draw (d/dirichlet {:alphas placement-counts})))))
+                                                                next-placement (try (dirichlet-categorical (zipmap next-placements placement-counts))
                                                                                     (catch Exception e
                                                                                       (println "Exception" age current-placement current-open-duration next-placements placement-counts)
                                                                                       (first next-placements)))
