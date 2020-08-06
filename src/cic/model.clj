@@ -210,81 +210,15 @@
     (d/draw (d/categorical (zipmap categories (d/draw (d/dirichlet {:alphas alphas})))))))
 
 (defn periods->placements-model
-  [cease-model periods episodes-from episodes-to]
-  (let [joiner-placements (joiner-placements-model
-                           (reduce (fn [acc {admission-age :admission-age [{first-placement :placement}] :episodes}]
-                                     (update-in acc [admission-age first-placement] (fnil inc 0)))
-                                   {}
-                                   (filter #(time/between? (:beginning %) episodes-from episodes-to) periods)))
-        joiner-clusters (reduce (fn [acc {admission-age :admission-age [{first-placement :placement}] :episodes cluster :cluster}]
-                                  (update-in acc [admission-age cluster] (fnil inc 0)))
-                                {}
-                                (filter #(time/between? (:beginning %) episodes-from episodes-to) periods))
-
-        transitions (reduce (fn [acc {:keys [birthday beginning episodes open? end]}]
-                              (reduce (fn [acc [{offset-a :offset from :placement} {offset-b :offset to :placement}]]
-                                        (let [age (time/year-interval birthday (time/days-after beginning offset-a))]
-                                          (if offset-b
-                                            (-> (update-in acc [:age-from-to [age from] to :n] (fnil inc 0))
-                                                (update-in [:age-from-to [age from] to :durations] (fnil conj []) (- offset-b offset-a))
-                                                (update-in [:age-to age to :n] (fnil inc 0))
-                                                (update-in [:age-to age to :durations] (fnil conj []) (- offset-b offset-a)))
-                                            #_(if (not open?)
-                                                (-> (update-in acc [:age-from-to age from :OUT :n] (fnil inc 0))
-                                                    (update-in [:age-from-to age from :OUT :durations] conj (- (time/days-after beginning end) offset-a))
-                                                    (update-in [:age-to age :OUT :n] (fnil inc 0))
-                                                    (update-in [:age-to age :OUT :durations] conj (- (time/days-after beginning end) offset-a))
-                                                    (update-in [:from-to from :OUT :n] (fnil inc 0))
-                                                    (update-in [:from-to from :OUT :durations] conj (- (time/days-after beginning end) offset-a)))
-                                                acc)
-                                            acc)))
-                                      acc
-                                      (partition 2 1 episodes)))
-                            {}
-                            periods)]
-    (fn [{:keys [episodes duration beginning birthday cluster]} seed]
-      (let [age (time/year-interval birthday beginning)
-            cluster (if cluster cluster (dirichlet-categorical (get joiner-clusters age)))
-            episodes (if (seq episodes)
-                       episodes
-                       (let [age (time/year-interval birthday beginning)
-                             placement (joiner-placements age)]
-                         [{:offset 0 :placement placement}]))
-            {current-placement :placement start-offset :offset} (last episodes)
-            current-open-duration (if duration (- duration start-offset) 0)
-            max-total-duration (dec (time/day-interval beginning (time/years-after birthday 18)))]
-        (loop [current-offset start-offset
-               placement current-placement
-               episodes (vec episodes)]
-          (let [age (time/year-interval birthday (time/days-after beginning current-offset))
-                [next-placement placement-duration] (loop [iter 0 age age]
-                                                      (let [transitions (if (pos? current-open-duration)
-                                                                          (filter-transitions transitions current-open-duration)
-                                                                          transitions)
-                                                            transitions-summary (or (get-in transitions [:age-from-to [age current-placement]])
-                                                                                    (get-in transitions [:age-to age])
-                                                                                    (get-in transitions [:age-to (dec age)]))]
-                                                        
-                                                        (if (empty? transitions-summary)
-                                                          (if (zero? age)
-                                                            [:OUT current-open-duration]
-                                                            (recur (inc iter) (dec age)))
-                                                          (let [[next-placements options] (apply map vector transitions-summary)
-                                                                placement-counts (map :n options)
-                                                                next-placement (try (dirichlet-categorical (zipmap next-placements placement-counts))
-                                                                                    (catch Exception e
-                                                                                      (println "Exception" age current-placement current-open-duration next-placements placement-counts)
-                                                                                      (first next-placements)))
-                                                                placement-duration (some-> (get-in transitions-summary [next-placement :durations]) shuffle first)]
-                                                            (if placement-duration
-                                                              [next-placement placement-duration]
-                                                              (recur (inc iter) age))))))
-                next-offset (+ current-offset placement-duration)]
-            (if (or (= next-placement :OUT)
-                    (>= next-offset max-total-duration)
-                    (cease-model birthday beginning next-offset seed))
-              {:episodes episodes :duration (min next-offset max-total-duration)}
-              (recur next-offset next-placement (conj episodes {:offset next-offset :placement next-placement})))))))))
+  [periods episodes-from episodes-to]
+  (let [age-groups (group-by :admission-age periods)]
+    (fn [{:keys [beginning birthday]} seed]
+      (let [age (min (time/year-interval birthday beginning) 17)
+            period (-> (get age-groups age)
+                       (rand-nth)
+                       (select-keys [:duration :episodes]))]
+        (assert (:duration period) (format "Period %s has no duration, %s %s" period beginning birthday))
+        period))))
 
 (defn joiner-birthday-model
   "Accepts quantiles for age zero joiner ages in days and returns a birthday-generating model
@@ -301,5 +235,5 @@
       (if (zero? age)
         (let [i (int (p/sample-1 dist seed))]
           (time/days-before join-date (get q i)))
-        (-> (time/days-before join-date (int (p/sample-1 (d/uniform {:a 0 :b 366}) seed)))
+        (-> (time/days-before join-date (int (p/sample-1 (d/uniform {:a 0 :b 364}) seed)))
             (time/years-before age))))))

@@ -11,14 +11,15 @@
   "Sample a possible duration in care which is greater than the existing duration"
   [{:keys [duration-model placements-model] :as model}
    {:keys [duration birthday beginning admission-age episodes period-id open?] :as period} seed]
-  (if open?
+  #_(if open?
     (let [;; projected-duration (duration-model birthday beginning duration seed)
           {:keys [episodes duration]} (placements-model period seed)]
       (-> (assoc period :duration duration)
           (assoc :episodes episodes)
           (assoc :end (time/without-time (time/days-after beginning duration)))
           (assoc :open? false)))
-    period))
+    period)
+  period)
 
 (defn joiners-seq
   "Return a lazy sequence of projected joiners for a particular age of admission."
@@ -30,7 +31,7 @@
         start-time (time/without-time next-time)
         birthday (joiner-birthday-model start-time seed-6)
         ;; duration (duration-model birthday start-time seed-2)
-        {:keys [duration episodes]} (placements-model {:beginning start-time :birthday birthday :episodes []} seed-3)]
+        {:keys [duration episodes]} (placements-model {:beginning start-time :birthday birthday} seed-3)]
     (when (time/< next-time end)
       (let [period-end (time/without-time (time/days-after start-time duration))
             period {:beginning start-time
@@ -71,7 +72,7 @@
         periods (rand/close-open-periods periods knn-closed-cases)]
     {:joiners-model (-> (filter #(time/between? (:beginning %) joiners-from joiners-to) periods)
                         (model/joiners-model-gen project-to s2))
-     :placements-model (model/periods->placements-model duration-model periods episodes-from episodes-to)
+     :placements-model (model/periods->placements-model periods episodes-from episodes-to)
      :phase-durations phase-durations
      :joiner-birthday-model joiner-birthday-model
      :duration-model duration-model
