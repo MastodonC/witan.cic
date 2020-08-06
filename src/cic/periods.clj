@@ -14,10 +14,10 @@
   [data]
   (let [timelines (sort-by (juxt :child-id :report-date) data)
         period-ids (reductions (fn [period [one next]]
-                                 (cond (not= (:child-id one) (:child-id next)) 0
+                                 (cond (not= (:child-id one) (:child-id next)) 1
                                        (not= (:ceased one) (:report-date next)) (inc period)
                                        :else period))
-                               0
+                               1
                                (partition 2 1 timelines))]
     (map #(assoc %1 :period-id (period-id %1 %2)) timelines period-ids)))
 

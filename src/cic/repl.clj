@@ -28,7 +28,7 @@
 (defn load-model-inputs
   "A useful REPL function to load the data files and convert them to  model inputs"
   ([{:keys [episodes-csv placement-costs-csv duration-lower-csv duration-median-csv duration-upper-csv
-            zero-joiner-day-ages-csv survival-hazard-csv]}]
+            zero-joiner-day-ages-csv survival-hazard-csv knn-closed-cases-csv]}]
    (let [episodes (read/episodes episodes-csv)
          project-from (->> (mapcat (juxt :report-date :ceased) episodes)
                            (keep identity)
@@ -36,8 +36,7 @@
      (hash-map :project-from project-from
                :periods (periods/from-episodes episodes)
                :placement-costs (read/costs-csv placement-costs-csv)
-               :duration-model (-> (read/survival-hazard survival-hazard-csv)
-                                   (model/cease-model ))
+               :knn-closed-cases (read/knn-closed-cases knn-closed-cases-csv)
                :joiner-birthday-model (-> (read/zero-joiner-day-ages zero-joiner-day-ages-csv)
                                           (model/joiner-birthday-model)))))
   ([]
@@ -47,7 +46,8 @@
                        :duration-median-csv (input-file "duration-model-median.csv")
                        :duration-upper-csv (input-file "duration-model-upper.csv")
                        :zero-joiner-day-ages-csv (input-file "zero-joiner-day-ages.csv")
-                       :survival-hazard-csv (input-file "survival-hazard.csv")})))
+                       :survival-hazard-csv (input-file "survival-hazard.csv")
+                       :knn-closed-cases-csv (input-file "knn-closed-cases.csv")})))
 
 (defn prepare-model-inputs
   [{:keys [project-from periods] :as model-inputs}]
@@ -69,7 +69,7 @@
   "Main REPL function for writing a projection CSV"
   [rewind-years train-years project-years n-runs seed]
   (let [output-file (output-file (format "projection-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-cease-model-out.csv" rewind-years train-years project-years n-runs seed))
-        {:keys [project-from periods placement-costs duration-model joiner-birthday-model]} (prepare-model-inputs (load-model-inputs))
+        {:keys [project-from periods placement-costs duration-model joiner-birthday-model knn-closed-cases]} (prepare-model-inputs (load-model-inputs))
         ;; project-from (time/quarter-preceding (time/years-before project-from rewind-years))
         project-from (time/years-before project-from rewind-years)
         _ (println (str "Project from " project-from))
@@ -80,6 +80,7 @@
                          :date project-from}
         model-seed {:seed projection-periods
                     :duration-model duration-model
+                    :knn-closed-cases knn-closed-cases
                     :joiner-birthday-model joiner-birthday-model
                     :joiner-range [learn-from project-from]
                     :episodes-range [learn-from project-from]

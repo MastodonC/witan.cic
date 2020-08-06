@@ -204,3 +204,12 @@
                   (update :duration parse-double)
                   (update :hazard parse-double))))
        (group-by :admission-age)))
+
+(defn knn-closed-cases
+  [filename]
+  (->> (load-csv filename)
+       (remove (fn [{:keys [closed]}] (= closed "NULL")))
+       (map (fn [row]
+              (-> row
+                  (update :offset parse-int))))
+       (group-by :open)))
