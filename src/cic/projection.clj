@@ -68,15 +68,15 @@
   (let [[s1 s2] (rand/split-n random-seed 2)
         [joiners-from joiners-to] joiner-range
         [episodes-from episodes-to] episodes-range
-        periods (rand/sample-birthdays seed s1)
-        periods (rand/close-open-periods periods knn-closed-cases)]
-    {:joiners-model (-> (filter #(time/between? (:beginning %) joiners-from joiners-to) periods)
+        all-periods (rand/sample-birthdays seed s1)
+        closed-periods (rand/close-open-periods all-periods knn-closed-cases)]
+    {:joiners-model (-> (filter #(time/between? (:beginning %) joiners-from joiners-to) closed-periods)
                         (model/joiners-model-gen project-to s2))
-     :placements-model (model/periods->placements-model periods episodes-from episodes-to)
+     :placements-model (model/periods->placements-model closed-periods episodes-from episodes-to)
      :phase-durations phase-durations
      :joiner-birthday-model joiner-birthday-model
      :duration-model duration-model
-     :periods periods}))
+     :periods closed-periods}))
 
 (defn project-1
   "Returns a single sequence of projected periods."

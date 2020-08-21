@@ -68,7 +68,7 @@
 (defn generate-projection-csv!
   "Main REPL function for writing a projection CSV"
   [rewind-years train-years project-years n-runs seed]
-  (let [output-file (output-file (format "projection-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-cease-model-out.csv" rewind-years train-years project-years n-runs seed))
+  (let [output-file (output-file (format "projection-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-period-clustering-care-entry-normalised.csv" rewind-years train-years project-years n-runs seed))
         {:keys [project-from periods placement-costs duration-model joiner-birthday-model knn-closed-cases]} (prepare-model-inputs (load-model-inputs))
         ;; project-from (time/quarter-preceding (time/years-before project-from rewind-years))
         project-from (time/years-before project-from rewind-years)
