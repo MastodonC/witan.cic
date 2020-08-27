@@ -7,11 +7,13 @@
 
 (defn exec
   [script-path & args]
+  (println (format "Executing %s" script-path))
   (let [return-val (apply shell/sh "Rscript" "--vanilla" script-path args)]
     ;; rscript is quite chatty, so only pass on err text if exit was abnormal
     (when (not= 0 (:exit return-val))
       (apply println script-path args)
-      (println (:err return-val)))))
+      (println (:err return-val)))
+    (println (format "Executed %s" script-path))))
 
 (def date-format
   (f/formatter :date-hour-minute-second))

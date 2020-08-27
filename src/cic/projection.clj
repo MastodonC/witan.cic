@@ -62,6 +62,13 @@
             spec/ages
             (rand/split-n seed (count spec/ages)))))
 
+(defn init-model
+  [{:keys [seed joiner-range episodes-range duration-model joiner-birthday-model phase-durations project-to] :as model-seed} random-seed]
+  (let [[s1 s2] (rand/split-n random-seed 2)
+        all-periods (rand/sample-birthdays seed s1)
+        knn-closed-cases (model/knn-closed-cases all-periods s2)]
+    (assoc model-seed :knn-closed-cases knn-closed-cases)))
+
 (defn train-model
   "Build stochastic helper models using R. Random seed ensures determinism."
   [{:keys [seed joiner-range episodes-range duration-model joiner-birthday-model phase-durations project-to knn-closed-cases] :as model-seed} random-seed]
@@ -90,12 +97,13 @@
 (defn project-n
   "Returns n stochastic sequences of projected periods."
   [projection-seed model-seed project-dates seed n-runs]
-  (let [max-date (time/max-date project-dates)]
+  (let [max-date (time/max-date project-dates)
+        [s1 s2] (rand/split-n (rand/seed seed) 2)
+        model-seed (init-model model-seed s1)]
     (map-indexed (fn [iteration seed]
                    (->> (project-1 projection-seed model-seed max-date seed)
                         (map #(assoc % :simulation-number (inc iteration)))))
-                 (-> (rand/seed seed)
-                     (rand/split-n n-runs)))))
+                 (rand/split-n s2 n-runs))))
 
 (defn projection
   "Calculates summary statistics over n sequences of projected periods."

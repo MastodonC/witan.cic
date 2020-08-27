@@ -119,3 +119,17 @@
                              nil)))))
               (keep identity))
         periods))
+
+(defn to-mapseq
+  [periods]
+  (mapcat (fn [{:keys [beginning end period-id open? episodes birthday]}]
+            (map (fn [{:keys [offset placement]}]
+                   {:period-id period-id
+                    :beginning beginning
+                    :birthday birthday
+                    :end end
+                    :open open?
+                    :placement placement
+                    :report-date (time/days-after beginning offset)})
+                 episodes))
+          periods))

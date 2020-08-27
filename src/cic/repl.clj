@@ -36,7 +36,7 @@
      (hash-map :project-from project-from
                :periods (periods/from-episodes episodes)
                :placement-costs (read/costs-csv placement-costs-csv)
-               :knn-closed-cases (read/knn-closed-cases knn-closed-cases-csv)
+               ;; :knn-closed-cases (read/knn-closed-cases knn-closed-cases-csv)
                :joiner-birthday-model (-> (read/zero-joiner-day-ages zero-joiner-day-ages-csv)
                                           (model/joiner-birthday-model)))))
   ([]
@@ -80,7 +80,7 @@
                          :date project-from}
         model-seed {:seed projection-periods
                     :duration-model duration-model
-                    :knn-closed-cases knn-closed-cases
+                    ;; :knn-closed-cases knn-closed-cases
                     :joiner-birthday-model joiner-birthday-model
                     :joiner-range [learn-from project-from]
                     :episodes-range [learn-from project-from]
@@ -232,7 +232,6 @@
                          :date project-from}
         model-seed {:seed periods
                     :duration-model duration-model
-                    :knn-closed-cases knn-closed-cases
                     :joiner-birthday-model joiner-birthday-model
                     :joiner-range [learn-from project-from]
                     :episodes-range [learn-from project-from]

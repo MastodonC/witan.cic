@@ -4,8 +4,8 @@
             [clj-time.periodic :as p]
             [clj-time.format :as f]))
 
-(def date-string (f/formatter "YYYY-MM-DD"))
-(def month-string (f/formatter "YYYY-MM"))
+(def date-string (f/formatter "yyyy-MM-dd"))
+(def month-string (f/formatter "yyyy-MM"))
 
 (def < t/before?)
 

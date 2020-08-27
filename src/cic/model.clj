@@ -1,12 +1,14 @@
 (ns cic.model
   (:require [cic.io.read :as read]
             [cic.io.write :as write]
+            [cic.periods :as periods]
             [cic.random :as rand]
             [cic.rscript :as rscript]
             [cic.spec :as spec]
             [cic.time :as time]
             [clj-time.core :as t]
             [clojure.math.combinatorics :as c]
+            [clojure.set :as set]
             [kixi.stats.core :as k]
             [kixi.stats.distribution :as d]
             [kixi.stats.math :as m]
@@ -237,3 +239,21 @@
           (time/days-before join-date (get q i)))
         (-> (time/days-before join-date (int (p/sample-1 (d/uniform {:a 0 :b 364}) seed)))
             (time/years-before age))))))
+
+(defn knn-closed-cases
+  [periods seed]
+  (let [clusters-out (str (write/temp-file "file" ".csv"))
+        periods-in (->> (periods/to-mapseq periods)
+                        (map #(-> %
+                                  (update :placement name)
+                                  (update :beginning time/date-as-string)
+                                  (update :end (fn [end] (when end (time/date-as-string end))))
+                                  (update :report-date time/date-as-string)
+                                  (update :birthday time/date-as-string)
+                                  (set/rename-keys {:report-date :report_date :period-id :period_id})))
+                        (write/mapseq->csv!)
+                        (str))
+        script "src/close-open-cases.R"
+        seed-long (rand/rand-long seed)]
+    (rscript/exec script periods-in clusters-out (str (Math/abs seed-long)))
+    (read/knn-closed-cases clusters-out)))
