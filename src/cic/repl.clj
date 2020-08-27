@@ -40,13 +40,13 @@
                :joiner-birthday-model (-> (read/zero-joiner-day-ages zero-joiner-day-ages-csv)
                                           (model/joiner-birthday-model)))))
   ([]
-   (load-model-inputs {:episodes-csv (format input-format "episodes.scrubbed.clustered.csv")
+   (load-model-inputs {:episodes-csv (input-file "episodes.scrubbed.csv")
                        :placement-costs-csv (input-file "placement-costs.csv")
-                       :duration-lower-csv (input-file "duration-model-lower.csv")
-                       :duration-median-csv (input-file "duration-model-median.csv")
-                       :duration-upper-csv (input-file "duration-model-upper.csv")
+                       ;; :duration-lower-csv (input-file "duration-model-lower.csv")
+                       ;; :duration-median-csv (input-file "duration-model-median.csv")
+                       ;; :duration-upper-csv (input-file "duration-model-upper.csv")
                        :zero-joiner-day-ages-csv (input-file "zero-joiner-day-ages.csv")
-                       :survival-hazard-csv (input-file "survival-hazard.csv")
+                       ;; :survival-hazard-csv (input-file "survival-hazard.csv")
                        :knn-closed-cases-csv (input-file "knn-closed-cases.csv")})))
 
 (defn prepare-model-inputs
@@ -68,7 +68,7 @@
 (defn generate-projection-csv!
   "Main REPL function for writing a projection CSV"
   [rewind-years train-years project-years n-runs seed]
-  (let [output-file (output-file (format "projection-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-period-clustering-care-entry-normalised.csv" rewind-years train-years project-years n-runs seed))
+  (let [output-file (output-file (format "projection-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-use-offset.csv" rewind-years train-years project-years n-runs seed))
         {:keys [project-from periods placement-costs duration-model joiner-birthday-model knn-closed-cases]} (prepare-model-inputs (load-model-inputs))
         ;; project-from (time/quarter-preceding (time/years-before project-from rewind-years))
         project-from (time/years-before project-from rewind-years)
@@ -220,10 +220,10 @@
 (defn generate-episodes-csv!
   "Outputs a file showing a single projection in rowise episodes format."
   [rewind-years train-years project-years n-runs seed]
-  (let [output-file (output-file (format "episodes-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-cease-model-out.csv" rewind-years train-years project-years n-runs seed))
+  (let [output-file (output-file (format "episodes-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-period-clustering-care-entry-normalised.csv" rewind-years train-years project-years n-runs seed))
         _ (println output-file)
-        {:keys [project-from periods placement-costs duration-model joiner-birthday-model] :as model-inputs} (prepare-model-inputs (load-model-inputs))
-        project-from (time/quarter-preceding (time/years-before project-from rewind-years))
+        {:keys [project-from periods placement-costs duration-model joiner-birthday-model knn-closed-cases] :as model-inputs} (prepare-model-inputs (load-model-inputs))
+        project-from (time/years-before project-from rewind-years)
         _ (println (str "Project from " project-from))
         project-to (time/years-after project-from project-years)
         learn-from (time/years-before project-from train-years)
@@ -232,9 +232,11 @@
                          :date project-from}
         model-seed {:seed periods
                     :duration-model duration-model
+                    :knn-closed-cases knn-closed-cases
                     :joiner-birthday-model joiner-birthday-model
                     :joiner-range [learn-from project-from]
-                    :episodes-range [learn-from project-from]}]
+                    :episodes-range [learn-from project-from]
+                    :project-to project-to}]
     (->> (projection/project-n projection-seed model-seed [project-to] seed n-runs)
          (write/episodes-table project-to)
          (write/write-csv! output-file))))

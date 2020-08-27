@@ -65,11 +65,11 @@
 (defn train-model
   "Build stochastic helper models using R. Random seed ensures determinism."
   [{:keys [seed joiner-range episodes-range duration-model joiner-birthday-model phase-durations project-to knn-closed-cases] :as model-seed} random-seed]
-  (let [[s1 s2] (rand/split-n random-seed 2)
+  (let [[s1 s2 s3] (rand/split-n random-seed 3)
         [joiners-from joiners-to] joiner-range
         [episodes-from episodes-to] episodes-range
         all-periods (rand/sample-birthdays seed s1)
-        closed-periods (rand/close-open-periods all-periods knn-closed-cases)]
+        closed-periods (rand/close-open-periods all-periods knn-closed-cases s3)]
     {:joiners-model (-> (filter #(time/between? (:beginning %) joiners-from joiners-to) closed-periods)
                         (model/joiners-model-gen project-to s2))
      :placements-model (model/periods->placements-model closed-periods episodes-from episodes-to)

@@ -50,7 +50,7 @@
       (update :CIN keyword)
       (update :legal-status keyword)
       (update :uasc (comp boolean #{"True"}))
-      (update :cluster #(Long/parseLong %))))
+      #_(update :cluster #(Long/parseLong %))))
 
 (defn load-csv
   "Loads csv file with each row as a vector.

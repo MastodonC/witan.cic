@@ -73,7 +73,7 @@
                        episode-number dob admission-age
                        (date->str birthday)
                        (date->str start)
-                       (when (time/< end project-to) (date->str end))
+                       (when (and end (time/< end project-to)) (date->str end)) ;; TODO - why would a period have no end date?
                        (name placement))))))
 
 (defn episodes-table

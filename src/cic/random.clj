@@ -46,25 +46,26 @@
           periods rngs)))
 
 (defn close-open-periods
-  [periods knn-closed-cases]
+  [periods knn-closed-cases seed]
   (let [closed-periods (remove :open? periods)
         closed-periods (zipmap (map :period-id closed-periods)
                                closed-periods)]
     (->> (for [period periods]
            (if (:open? period)
-             (let [knn-closed-period (first (get knn-closed-cases (:period-id period)))
+             (let [knn-closed-period (rand-nth (get knn-closed-cases (:period-id period)) (r/make-random)) ;; TODO use seed
                    closed-period (get closed-periods (:closed knn-closed-period))]
                (if closed-period
                  (let [closed-offset (:offset knn-closed-period)
+                       closed-duration (:duration closed-period)
                        future-episodes (drop-while #(< (:offset %) closed-offset) (:episodes closed-period))
                        future-offset (- (:duration closed-period) closed-offset)
-                       end (time/earliest (time/days-after (:beginning period) (+ (:duration period) future-offset))
+                       end (time/earliest (time/days-after (:beginning period) closed-duration #_(+ (:duration period) future-offset))
                                           (time/years-after (:birthday period) 18))]
                    (-> period
                        (update :episodes concat future-episodes)
                        (assoc :duration (time/day-interval (:birthday period) end))
                        (assoc :end end))
                    )
-                 (do (println (str "Can't close open case " (:period-id period) ", ignoring")))))
+                 (do (println (str "Can't close open period " (:period-id period) ", ignoring")))))
              period))
          (keep identity))))
