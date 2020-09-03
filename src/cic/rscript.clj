@@ -3,11 +3,12 @@
   (:require [cic.io.write :as write]
             [clj-time.format :as f]
             [clojure.java.shell :as shell]
-            [clojure.set :as cs]))
+            [clojure.set :as cs]
+            [clojure.string :as str]))
 
 (defn exec
   [script-path & args]
-  (println (format "Executing %s" script-path))
+  (println (format "Executing %s %s" script-path (str/join " " args)))
   (let [return-val (apply shell/sh "Rscript" "--vanilla" script-path args)]
     ;; rscript is quite chatty, so only pass on err text if exit was abnormal
     (when (not= 0 (:exit return-val))

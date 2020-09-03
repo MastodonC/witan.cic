@@ -57,15 +57,21 @@
                (if closed-period
                  (let [closed-offset (:offset knn-closed-period)
                        closed-duration (:duration closed-period)
+                       ;; Let's make sure the placements match up as they should
+                       _ (when (not=
+                                (:placement (last (:episodes period)))
+                                (:placement (last (take-while #(< (:offset %) closed-offset) (:episodes closed-period)))))
+                           (print period closed-period closed-offset (last (:episodes period)) (last (take-while #(< (:offset %) closed-offset) (:episodes closed-period)))))
                        future-episodes (drop-while #(< (:offset %) closed-offset) (:episodes closed-period))
                        future-offset (- (:duration closed-period) closed-offset)
-                       end (time/earliest (time/days-after (:beginning period) closed-duration #_(+ (:duration period) future-offset))
-                                          (time/years-after (:birthday period) 18))]
-                   (-> period
-                       (update :episodes concat future-episodes)
-                       (assoc :duration (time/day-interval (:birthday period) end))
-                       (assoc :end end))
-                   )
+                       end (time/earliest (time/days-after (:beginning period) (+ (:duration period) future-offset))
+                                          (time/years-after (:birthday period) 18))
+                       period (-> period
+                                  (assoc :open? false)
+                                  (update :episodes concat future-episodes)
+                                  (assoc :duration (time/day-interval (:beginning period) end))
+                                  (assoc :end end))]
+                   period)
                  (do (println (str "Can't close open period " (:period-id period) ", ignoring")))))
              period))
          (keep identity))))

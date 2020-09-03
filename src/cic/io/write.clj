@@ -65,15 +65,15 @@
 
 (defn episodes->table-rows-xf
   [project-to]
-  (comp (filter (fn [{:keys [period-id dob episode start end placement]}]
-                  (time/< start project-to)))
+  (comp #_(filter (fn [{:keys [period-id dob episode start end placement]}]
+                    (time/< start project-to)))
         (map (fn [{:keys [period-id simulation-number dob birthday admission-age
                           episode-number start end placement] :as episode}]
                (vector simulation-number period-id
                        episode-number dob admission-age
                        (date->str birthday)
                        (date->str start)
-                       (when (and end (time/< end project-to)) (date->str end)) ;; TODO - why would a period have no end date?
+                       (when end (date->str end)) ;; TODO - why would a period have no end date?
                        (name placement))))))
 
 (defn episodes-table

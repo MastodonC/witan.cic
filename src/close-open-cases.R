@@ -132,7 +132,8 @@ cluster_cases <- function(episodes) {
   M$entry <- (as.numeric(M$entry) - means["entry"]) / stddev["entry"]
   M$care_days <- (as.numeric(M$care_days) - means["care_days"]) / stddev["care_days"]
   
-  res <- data.frame(open = c(), closed = c())
+  res <- data.frame(open = c(), closed = c(), k = c(), placement = c())
+  file.remove("clusters.log")
   for (i in 1:nrow(X)) {
     v <- X[i,]
     placement <- v[["current"]]
@@ -148,14 +149,19 @@ cluster_cases <- function(episodes) {
     m <- length(d)
     if (m > 0) {
       d <- sort(d)
-      n <- names(d)[1:min(m,10)]
-      res <- rbind(res, data.frame(open = rep(rownames(v), length(n)), closed = as.vector(n)))
+      n <- names(d)[1:min(m,100)]
+      res <- rbind(res, data.frame(open = rep(rownames(v), length(n)), closed = as.vector(n), k = 1:length(n), placement = placement))
     }
   }
   clusters <- res %>%
     mutate(offset =  as.numeric(sub(".*:", "", closed)),
            closed = sub(":.*", "", closed))
-  return(clusters[!duplicated(clusters[,c("closed", "open")]),])
+  dedup <- clusters[!duplicated(clusters[,c("closed", "open")]),] %>%
+    group_by(open) %>%
+    top_n(10, -k) %>%
+    ungroup
+  write.table(dedup %>% mutate(seed = seed.long), "clusters.log", sep = ",", col.names = !file.exists("clusters.log"), append = T)
+  dedup
 }
 
 episodes <- read.csv(input, na.strings = "") %>%

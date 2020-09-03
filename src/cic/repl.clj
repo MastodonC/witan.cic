@@ -76,14 +76,13 @@
         project-to (time/years-after project-from project-years)
         learn-from (time/years-before project-from train-years)
         projection-periods (periods/periods-as-at periods project-from)
-        projection-seed {:seed (filter :open? projection-periods)
-                         :date project-from}
-        model-seed {:seed projection-periods
+        model-seed {:periods projection-periods
                     :duration-model duration-model
                     ;; :knn-closed-cases knn-closed-cases
                     :joiner-birthday-model joiner-birthday-model
                     :joiner-range [learn-from project-from]
                     :episodes-range [learn-from project-from]
+                    :project-from project-from
                     :project-to project-to}
         output-from (time/years-before learn-from 2)
         summary-seq (into []
@@ -91,8 +90,7 @@
                           (summary/periods-summary (rand/sample-birthdays projection-periods (rand/seed seed))
                                                    (time/day-seq output-from project-from 7)
                                                    placement-costs))
-        projection (projection/projection projection-seed
-                                          model-seed
+        projection (projection/projection model-seed
                                           (time/day-seq project-from project-to 7)
                                           placement-costs
                                           seed n-runs)]

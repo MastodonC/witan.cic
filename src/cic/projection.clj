@@ -47,13 +47,13 @@
 
 (defn project-joiners
   "Return a lazy sequence of projected joiners for all ages of admission."
-  [{:keys [joiners-model duration-model placements-model joiner-birthday-model] :as model}
-   projection-seed end seed]
-  (let [previous-joiner-per-age (->> (group-by :admission-age (:seed projection-seed))
+  [{:keys [joiners-model duration-model placements-model joiner-birthday-model periods project-from] :as model}
+   end seed]
+  (let [previous-joiner-per-age (->> (group-by :admission-age periods)
                                      (reduce (fn [m [k v]] (assoc m k (time/max-date (map :beginning v)))) {}))]
     (mapcat (fn [age seed]
-              (let [previous-joiner-at-age (get previous-joiner-per-age age (:date projection-seed))]
-                (joiners-seq (partial joiners-model age (:date projection-seed))
+              (let [previous-joiner-at-age (get previous-joiner-per-age age project-from)]
+                (joiners-seq (partial joiners-model age project-from)
                              duration-model
                              placements-model
                              (partial joiner-birthday-model age)
@@ -63,52 +63,49 @@
             (rand/split-n seed (count spec/ages)))))
 
 (defn init-model
-  [{:keys [seed joiner-range episodes-range duration-model joiner-birthday-model phase-durations project-to] :as model-seed} random-seed]
+  [{:keys [periods joiner-range episodes-range duration-model joiner-birthday-model project-to] :as model-seed} random-seed]
   (let [[s1 s2] (rand/split-n random-seed 2)
-        all-periods (rand/sample-birthdays seed s1)
+        all-periods (rand/sample-birthdays periods s1)
         knn-closed-cases (model/knn-closed-cases all-periods s2)]
     (assoc model-seed :knn-closed-cases knn-closed-cases)))
 
 (defn train-model
   "Build stochastic helper models using R. Random seed ensures determinism."
-  [{:keys [seed joiner-range episodes-range duration-model joiner-birthday-model phase-durations project-to knn-closed-cases] :as model-seed} random-seed]
+  [{:keys [periods joiner-range episodes-range duration-model joiner-birthday-model project-to knn-closed-cases] :as model-seed} random-seed]
   (let [[s1 s2 s3] (rand/split-n random-seed 3)
         [joiners-from joiners-to] joiner-range
         [episodes-from episodes-to] episodes-range
-        all-periods (rand/sample-birthdays seed s1)
+        all-periods (rand/sample-birthdays periods s1)
         closed-periods (rand/close-open-periods all-periods knn-closed-cases s3)]
     {:joiners-model (-> (filter #(time/between? (:beginning %) joiners-from joiners-to) closed-periods)
                         (model/joiners-model-gen project-to s2))
-     :placements-model (model/periods->placements-model closed-periods episodes-from episodes-to)
-     :phase-durations phase-durations
      :joiner-birthday-model joiner-birthday-model
-     :duration-model duration-model
+     :placements-model (model/periods->placements-model closed-periods episodes-from episodes-to)
      :periods closed-periods}))
 
 (defn project-1
   "Returns a single sequence of projected periods."
-  [projection-seed model-seed end seed]
+  [model-seed end seed]
   (let [[s1 s2 s3 s4] (rand/split-n seed 4)
         model (train-model model-seed s1)
-        projection-seed (update projection-seed :seed rand/sample-birthdays s4)]
-    (-> (map (partial project-period-close model) (:seed projection-seed) (rand/split-n s2 (count (:seed projection-seed))))
-        (concat (project-joiners model projection-seed end s3)))))
+        model (update model :periods rand/sample-birthdays s4)]
+    (concat (:periods model) (project-joiners model end s3))))
 
 (defn project-n
   "Returns n stochastic sequences of projected periods."
-  [projection-seed model-seed project-dates seed n-runs]
+  [model-seed project-dates seed n-runs]
   (let [max-date (time/max-date project-dates)
         [s1 s2] (rand/split-n (rand/seed seed) 2)
         model-seed (init-model model-seed s1)]
     (map-indexed (fn [iteration seed]
-                   (->> (project-1 projection-seed model-seed max-date seed)
+                   (->> (project-1 model-seed max-date seed)
                         (map #(assoc % :simulation-number (inc iteration)))))
                  (rand/split-n s2 n-runs))))
 
 (defn projection
   "Calculates summary statistics over n sequences of projected periods."
-  [projection-seed model-seed project-dates placement-costs seed n-runs]
-  (->> (project-n projection-seed model-seed project-dates seed n-runs)
+  [model-seed project-dates placement-costs seed n-runs]
+  (->> (project-n model-seed project-dates seed n-runs)
        (map #(summary/periods-summary % project-dates placement-costs))
        (summary/grand-summary)))
 
