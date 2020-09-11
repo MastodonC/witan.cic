@@ -17,8 +17,9 @@
 
 (defn rand-nth
   [coll seed]
-  (let [i (int (p/sample-1 (d/uniform {:a 0 :b (count coll)}) seed))]
-    (nth coll i)))
+  (when (seq coll)
+    (let [i (int (p/sample-1 (d/uniform {:a 0 :b (count coll)}) seed))]
+      (nth coll i))))
 
 (let [letters (map char (range 65 90))]
   (defn rand-id
@@ -50,10 +51,19 @@
   (let [closed-periods (remove :open? periods)
         closed-periods (zipmap (map :period-id closed-periods)
                                closed-periods)]
-    (->> (for [period periods]
+    (->> (for [period periods
+               :let [open-offset (time/day-interval (:beginning period) (:reported period))]]
            (if (:open? period)
-             (let [knn-closed-period (rand-nth (get knn-closed-cases (:period-id period)) (r/make-random)) ;; TODO use seed
-                   closed-period (get closed-periods (:closed knn-closed-period))]
+             (let [knn-closed-periods (map (fn [{:keys [closed offset]}]
+                                             {:period (get closed-periods closed)
+                                              :offset offset})
+                                           (get knn-closed-cases (:period-id period))) ;; TODO use
+                   knn-closed-period (or (some #(when (and (> (-> % :period :duration) open-offset))
+                                                  %)
+                                               (shuffle knn-closed-periods))
+                                         (do (println (format "Didn't find period within offset: %s in placement %s" (:period-id period) (-> period :episodes last :placement)))
+                                             (first (sort-by (comp :duration :period) > knn-closed-periods)))) ;; Take longest available duration
+                   closed-period (:period knn-closed-period)]
                (if closed-period
                  (let [closed-offset (:offset knn-closed-period)
                        closed-duration (:duration closed-period)
@@ -62,10 +72,14 @@
                                 (:placement (last (:episodes period)))
                                 (:placement (last (take-while #(< (:offset %) closed-offset) (:episodes closed-period)))))
                            (print period closed-period closed-offset (last (:episodes period)) (last (take-while #(< (:offset %) closed-offset) (:episodes closed-period)))))
-                       future-episodes (drop-while #(< (:offset %) closed-offset) (:episodes closed-period))
+                       future-episodes (->> (drop-while #(< (:offset %) closed-offset) (:episodes closed-period))
+                                            (map (fn [{:keys [offset] :as episode}]
+                                                   (-> episode
+                                                       (update :offset - closed-offset)
+                                                       (update :offset + open-offset)))))
                        future-offset (- (:duration closed-period) closed-offset)
                        end (time/earliest (time/days-after (:beginning period) (+ (:duration period) future-offset))
-                                          (time/years-after (:birthday period) 18))
+                                          (time/days-before (time/years-after (:birthday period) 18) 1))
                        period (-> period
                                   (assoc :open? false)
                                   (update :episodes concat future-episodes)

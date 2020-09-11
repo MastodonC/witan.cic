@@ -17,10 +17,10 @@
 
   (def ccc "data/ccc/2020-06-09/%s")
   (def ncc "data/ncc/2020-06-09/%s")
-  (def scc "data/scc/2020-07-16/%s")
+  (def scc "data/scc/2020-08-27/%s")
 
 (def input-format
-  scc)
+  ccc)
 
 (def input-file (partial format input-format))
 (def output-file (partial format input-format))
@@ -218,7 +218,7 @@
 (defn generate-episodes-csv!
   "Outputs a file showing a single projection in rowise episodes format."
   [rewind-years train-years project-years n-runs seed]
-  (let [output-file (output-file (format "episodes-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-period-clustering-care-entry-normalised.csv" rewind-years train-years project-years n-runs seed))
+  (let [output-file (output-file (format "episodes-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-no-ageout.csv" rewind-years train-years project-years n-runs seed))
         _ (println output-file)
         {:keys [project-from periods placement-costs duration-model joiner-birthday-model knn-closed-cases] :as model-inputs} (prepare-model-inputs (load-model-inputs))
         project-from (time/years-before project-from rewind-years)
@@ -226,14 +226,30 @@
         project-to (time/years-after project-from project-years)
         learn-from (time/years-before project-from train-years)
         periods (periods/periods-as-at periods project-from)
-        projection-seed {:seed periods
-                         :date project-from}
-        model-seed {:seed periods
-                    :duration-model duration-model
+        model-seed {:periods periods
                     :joiner-birthday-model joiner-birthday-model
                     :joiner-range [learn-from project-from]
                     :episodes-range [learn-from project-from]
-                    :project-to project-to}]
-    (->> (projection/project-n projection-seed model-seed [project-to] seed n-runs)
+                    :project-to project-to
+                    :project-from project-from}]
+    (->> (projection/project-n model-seed [project-to] seed n-runs)
          (write/episodes-table project-to)
          (write/write-csv! output-file))))
+
+
+(def episodes (read/episodes (input-file "episodes.scrubbed.csv")))
+(def periods (periods/from-episodes episodes))
+(def project-from (->> (mapcat (juxt :report-date :ceased) episodes)
+                       (keep identity)
+                       (time/max-date)))
+(def periods (periods/assoc-birthday-bounds (map #(assoc % :reported project-from ) periods)))
+(def periods (periods/periods-as-at periods project-from))
+
+(def knn-closed-cases (read/knn-closed-cases (input-file "knn-closed-cases.csv")))
+
+(filter #(= (:period-id %) "861-3") periods)
+(filter #(= (:period-id %) "2526-1") periods)
+
+(filter #(= (:open %) "861-3") knn-closed-cases)
+
+

@@ -3,16 +3,24 @@ library(lubridate)
 library(reshape2)
 
 args = commandArgs(trailingOnly=TRUE)
+
 input <- args[1]
 output <- args[2]
-seed.long <- args[3]
+project_from <- as.Date(args[3])
+seed.long <- args[4]
 set.seed(seed.long)
+
+# input <- "/var/folders/tw/tzkjfqd11md5hdjcyjxgmf740000gn/T/file6894966216222891812.csv"
+# output <- "/var/folders/tw/tzkjfqd11md5hdjcyjxgmf740000gn/T/file3575231491298047884.csv"
+# project_from <- as.Date("2019-03-30")
+# seed.long <- 1416938423
+# set.seed(seed.long)
 
 day_diff <- function(start, stop) {
   as.numeric(difftime(stop, start, units = "days"))
 }
 
-learner.features.closed <- function(closed_episodes, max_date) {
+learner.features.closed <- function(closed_episodes) {
   # We want to create a feature vector for each month of a closed case
   # We express the offset in days using an interval of 28
   # We start 1 month after their first report date, and keep going until their last cease date
@@ -24,7 +32,7 @@ learner.features.closed <- function(closed_episodes, max_date) {
   
   feature_episodes <- closed_episodes %>%
     group_by(period_id) %>%
-    mutate(period_duration = day_diff(min(report_date), coalesce(max(ceased), max_date))) %>% ungroup %>%
+    mutate(period_duration = day_diff(min(report_date), max(ceased))) %>% ungroup %>%
     inner_join(data.frame(day_offset = c(1,2,4,6,8,10,12,14,16,18,20,24, seq(28, 18 * 365, by = 14))),by = character(0)) %>%
     mutate(feature_date = beginning + days(day_offset)) %>%
     filter(report_date < feature_date & feature_date < end) %>%
@@ -63,8 +71,7 @@ learner.features.closed <- function(closed_episodes, max_date) {
   features
 }
 
-learner.features.open <- function(open_episodes) {
-  feature_date <- max(max(open_episodes$report_date), max(open_episodes$ceased, na.rm = TRUE))
+learner.features.open <- function(open_episodes, feature_date) {
   feature_episodes <- open_episodes %>%
     mutate(episode_days = day_diff(report_date, coalesce(ceased, feature_date)))
   
@@ -115,10 +122,9 @@ normalise_cols <- function(df, denominator) {
   res
 }
 
-cluster_cases <- function(episodes) {
-  max_date <- max(max(episodes$report_date), max(episodes$ceased, na.rm = TRUE))
-  closed.features <- learner.features.closed(episodes %>% filter(!is.na(end)), max_date)
-  open.features <- learner.features.open(episodes %>% filter(is.na(end)))
+cluster_cases <- function(episodes, project_from) {
+  closed.features <- learner.features.closed(episodes %>% filter(!open))
+  open.features <- learner.features.open(episodes %>% filter(open), project_from)
   closed.features <- add.zero.features(closed.features, open.features)
   open.features <- add.zero.features(open.features, closed.features)
   
@@ -168,7 +174,7 @@ episodes <- read.csv(input, na.strings = "") %>%
   mutate(open = open == "true") %>%
   group_by(period_id) %>%
   arrange(period_id, report_date) %>%
-  mutate(ceased = lead(report_date)) %>%
+  mutate(ceased = ifelse(is.na(lead(report_date)) & !open, end, lead(report_date))) %>%
   ungroup %>%
   as.data.frame
 episodes$beginning <- ymd(episodes$beginning)
@@ -176,5 +182,5 @@ episodes$birthday <- ymd(episodes$birthday)
 episodes$end <- ymd(episodes$end)
 episodes$report_date <- ymd(episodes$report_date)
 episodes$ceased <- ymd(episodes$ceased)
-clusters <- cluster_cases(episodes)
+clusters <- cluster_cases(episodes, project_from)
 write.csv(clusters, output, row.names = FALSE)

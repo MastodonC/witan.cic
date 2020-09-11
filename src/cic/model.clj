@@ -241,7 +241,7 @@
             (time/years-before age))))))
 
 (defn knn-closed-cases
-  [periods seed]
+  [periods project-from seed]
   (let [clusters-out (str (write/temp-file "file" ".csv"))
         periods-in (->> (periods/to-mapseq periods)
                         (map #(-> %
@@ -255,5 +255,5 @@
                         (str))
         script "src/close-open-cases.R"
         seed-long (rand/rand-long seed)]
-    (rscript/exec script periods-in clusters-out (str (Math/abs seed-long)))
+    (rscript/exec script periods-in clusters-out (time/date-as-string project-from) (str (Math/abs seed-long)))
     (read/knn-closed-cases clusters-out)))

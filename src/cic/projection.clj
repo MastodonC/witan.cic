@@ -63,10 +63,10 @@
             (rand/split-n seed (count spec/ages)))))
 
 (defn init-model
-  [{:keys [periods joiner-range episodes-range duration-model joiner-birthday-model project-to] :as model-seed} random-seed]
+  [{:keys [periods joiner-range episodes-range duration-model joiner-birthday-model project-from project-to] :as model-seed} random-seed]
   (let [[s1 s2] (rand/split-n random-seed 2)
         all-periods (rand/sample-birthdays periods s1)
-        knn-closed-cases (model/knn-closed-cases all-periods s2)]
+        knn-closed-cases (model/knn-closed-cases all-periods project-from s2)]
     (assoc model-seed :knn-closed-cases knn-closed-cases)))
 
 (defn train-model
