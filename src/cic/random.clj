@@ -67,23 +67,26 @@
                (if closed-period
                  (let [closed-offset (:offset knn-closed-period)
                        closed-duration (:duration closed-period)
+                       future-duration (- closed-duration closed-offset)
+                       end (time/earliest (time/days-after (:beginning period) (+ (:duration period) future-duration))
+                                          (time/days-before (time/years-after (:birthday period) 18) 1))
+                       simulated-duration (time/day-interval (:beginning period) end)
                        ;; Let's make sure the placements match up as they should
                        _ (when (not=
                                 (:placement (last (:episodes period)))
                                 (:placement (last (take-while #(< (:offset %) closed-offset) (:episodes closed-period)))))
                            (print period closed-period closed-offset (last (:episodes period)) (last (take-while #(< (:offset %) closed-offset) (:episodes closed-period)))))
-                       future-episodes (->> (drop-while #(< (:offset %) closed-offset) (:episodes closed-period))
+                       future-episodes (->> (:episodes closed-period)
+                                            (drop-while #(< (:offset %) closed-offset))
                                             (map (fn [{:keys [offset] :as episode}]
                                                    (-> episode
                                                        (update :offset - closed-offset)
-                                                       (update :offset + open-offset)))))
-                       future-offset (- (:duration closed-period) closed-offset)
-                       end (time/earliest (time/days-after (:beginning period) (+ (:duration period) future-offset))
-                                          (time/days-before (time/years-after (:birthday period) 18) 1))
+                                                       (update :offset + open-offset))))
+                                            (take-while #(< (:offset %) simulated-duration)))
                        period (-> period
                                   (assoc :open? false)
                                   (update :episodes concat future-episodes)
-                                  (assoc :duration (time/day-interval (:beginning period) end))
+                                  (assoc :duration simulated-duration)
                                   (assoc :end end))]
                    period)
                  (do (println (str "Can't close open period " (:period-id period) ", ignoring")))))
