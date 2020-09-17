@@ -68,7 +68,7 @@
                  (let [closed-offset (:offset knn-closed-period)
                        closed-duration (:duration closed-period)
                        future-duration (- closed-duration closed-offset)
-                       end (time/earliest (time/days-after (:beginning period) (+ (:duration period) future-duration))
+                       end (time/earliest (time/days-after (:beginning period) (+ open-offset future-duration))
                                           (time/days-before (time/years-after (:birthday period) 18) 1))
                        simulated-duration (time/day-interval (:beginning period) end)
                        ;; Let's make sure the placements match up as they should
