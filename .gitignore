@@ -11,7 +11,11 @@ pom.xml.asc
 .lein-plugins/
 .lein-failures
 .nrepl-port
+.nrepl-history
 .cpcache/
 .DS_Store
 /data/
+*.png
+*.csv
+*.log
 
