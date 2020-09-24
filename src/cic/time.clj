@@ -77,6 +77,10 @@
   [dates]
   (apply t/max-date dates))
 
+(defn min-date
+  [dates]
+  (apply t/min-date dates))
+
 (def make-date t/date-time)
 
 (def year t/year)

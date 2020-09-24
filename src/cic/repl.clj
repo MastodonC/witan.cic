@@ -70,10 +70,10 @@
 (defn generate-projection-csv!
   "Main REPL function for writing a projection CSV"
   [rewind-years train-years project-years n-runs seed]
-  (let [project-from (time/years-before project-from rewind-years)
+  (let [{:keys [project-from periods placement-costs duration-model joiner-birthday-model knn-closed-cases]} (prepare-model-inputs (load-model-inputs))
+        project-from (time/years-before project-from rewind-years)
         _ (println (str "Project from " project-from))
-        output-file (output-file (format "%s-projection-%s-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s.csv" (la-label) (time/date-string project-from) rewind-years train-years project-years n-runs seed))
-        {:keys [project-from periods placement-costs duration-model joiner-birthday-model knn-closed-cases]} (prepare-model-inputs (load-model-inputs))
+        output-file (output-file (format "%s-projection-%s-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s.csv" (la-label) (time/date-as-string project-from) rewind-years train-years project-years n-runs seed))
         ;; project-from (time/quarter-preceding (time/years-before project-from rewind-years))
         project-to (time/years-after project-from project-years)
         learn-from (time/years-before project-from train-years)
@@ -220,14 +220,15 @@
 (defn generate-episodes-csv!
   "Outputs a file showing a single projection in rowise episodes format."
   [rewind-years train-years project-years n-runs seed]
-  (let [project-from (time/years-before project-from rewind-years)
+  (let [{:keys [project-from periods placement-costs duration-model joiner-birthday-model knn-closed-cases] :as model-inputs} (prepare-model-inputs (load-model-inputs))
+        project-from (time/years-before project-from rewind-years)
         _ (println (str "Project from " project-from))
-        output-file (output-file (format "%s-episodes-%s-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-no-ageout.csv" (la-label) (time/date-string project-from) rewind-years train-years project-years n-runs seed))
+        output-file (output-file (format "%s-episodes-%s-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s.csv" (la-label) (time/date-as-string project-from) rewind-years train-years project-years n-runs seed))
         _ (println output-file)
-        {:keys [project-from periods placement-costs duration-model joiner-birthday-model knn-closed-cases] :as model-inputs} (prepare-model-inputs (load-model-inputs))
         project-to (time/years-after project-from project-years)
         learn-from (time/years-before project-from train-years)
         periods (periods/periods-as-at periods project-from)
+        t0 (time/min-date (map :beginning periods))
         model-seed {:periods periods
                     :joiner-birthday-model joiner-birthday-model
                     :joiner-range [learn-from project-from]
@@ -235,7 +236,7 @@
                     :project-to project-to
                     :project-from project-from}]
     (->> (projection/project-n model-seed [project-to] seed n-runs)
-         (write/episodes-table project-to)
+         (write/episodes-table t0 project-to)
          (write/write-csv! output-file))))
 
 

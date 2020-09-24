@@ -87,8 +87,12 @@
                                   (assoc :open? false)
                                   (update :episodes concat future-episodes)
                                   (assoc :duration simulated-duration)
-                                  (assoc :end end))]
+                                  (assoc :end end)
+                                  (assoc :provenance "P")
+                                  (assoc :match-offset open-offset)
+                                  (assoc :matched-id (:period-id closed-period))
+                                  (assoc :matched-offset closed-offset))]
                    period)
                  (do (println (str "Can't close open period " (:period-id period) ", ignoring")))))
-             period))
+             (assoc period :provenance "H")))
          (keep identity))))

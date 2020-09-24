@@ -40,7 +40,8 @@
                     :birthday birthday
                     :admission-age age
                     :dob (time/year birthday)
-                    :episodes episodes}]
+                    :episodes episodes
+                    :provenance "S"}]
         (cons period
               (lazy-seq
                (joiners-seq joiners-model duration-model placements-model joiner-birthday-model last-joiner new-offset age end seed-5)))))))
@@ -53,6 +54,7 @@
                                      (reduce (fn [m [k v]] (assoc m k (time/max-date (map :beginning v)))) {}))]
     (mapcat (fn [age seed]
               (let [previous-joiner-at-age (get previous-joiner-per-age age project-from)]
+                (println (str "Previous joiner at age " age " " previous-joiner-at-age " " project-from))
                 (joiners-seq (partial joiners-model age project-from)
                              duration-model
                              placements-model

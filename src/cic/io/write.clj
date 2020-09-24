@@ -46,42 +46,81 @@
           projection)))
 
 (defn period->episodes
-  [{:keys [period-id simulation-number beginning dob birthday admission-age episodes end] :as period}]
-  (into []
-        (comp
-         (filter (fn [[a b]]
-                   (or (nil? b) (> (:offset b) (:offset a)))))
-         (map-indexed (fn [idx [{:keys [placement offset]} to]]
-                        (hash-map :period-id period-id
-                                  :simulation-number simulation-number
-                                  :episode-number (inc idx)
-                                  :dob dob
-                                  :admission-age admission-age
-                                  :birthday birthday
-                                  :start (time/days-after beginning offset)
-                                  :end (or (some->> to :offset dec (time/days-after beginning)) end)
-                                  :placement placement))))
-        (partition-all 2 1 episodes)))
+  [t0 {:keys [period-id simulation-number beginning dob birthday admission-age episodes end provenance
+              match-offset matched-id matched-offset] :as period}]
+  (let [placement-sequence (transduce (comp (map (comp name :placement))
+                                            (interpose "-"))
+                                      str
+                                      episodes)
+        placement-pathway (transduce (comp (map (comp name :placement))
+                                           (dedupe)
+                                           (interpose "-"))
+                                     str
+                                     episodes)
+        period-duration (time/day-interval beginning end)
+        t (time/day-interval t0 beginning)]
+    (into []
+          (comp
+           #_(filter (fn [[a b]]
+                       (or (nil? b) (> (:offset b) (:offset a)))))
+           (map-indexed (fn [idx [{:keys [placement offset]} to]]
+                          (hash-map :period-id period-id
+                                    :simulation-number simulation-number
+                                    :episode-number (inc idx)
+                                    :dob dob
+                                    :admission-age admission-age
+                                    :birthday birthday
+                                    :start (time/days-after beginning offset)
+                                    :end (or (some->> to :offset dec (time/days-after beginning)) end)
+                                    :placement placement
+                                    :offset offset
+                                    :provenance provenance
+                                    :placement-sequence placement-sequence
+                                    :placement-pathway placement-pathway
+                                    :period-start beginning
+                                    :period-duration period-duration
+                                    :period-end end
+                                    :period-offset t
+                                    :match-offset match-offset
+                                    :matched-id matched-id
+                                    :matched-offset matched-offset))))
+          (partition-all 2 1 episodes))))
 
 (defn episodes->table-rows-xf
   [project-to]
   (comp #_(filter (fn [{:keys [period-id dob episode start end placement]}]
                     (time/< start project-to)))
         (map (fn [{:keys [period-id simulation-number dob birthday admission-age
-                          episode-number start end placement] :as episode}]
+                          episode-number start end placement offset
+                          provenance placement-sequence placement-pathway
+                          period-start period-duration period-end period-offset
+                          match-offset matched-id matched-offset] :as episode}]
                (vector simulation-number period-id
                        episode-number dob admission-age
                        (date->str birthday)
                        (date->str start)
                        (when end (date->str end)) ;; TODO - why would a period have no end date?
-                       (name placement))))))
+                       (name placement)
+                       offset
+                       provenance
+                       placement-sequence
+                       placement-pathway
+                       (date->str period-start)
+                       period-duration
+                       (date->str period-end)
+                       period-offset
+                       match-offset
+                       matched-id
+                       matched-offset)))))
 
 (defn episodes-table
-  [project-to projections]
-  (let [headers ["Simulation" "ID" "Episode" "Birth Year" "Admission Age" "Birthday" "Start" "End" "Placement"]]
+  [t0 project-to projections]
+  (let [headers ["Simulation" "ID" "Episode" "Birth Year" "Admission Age" "Birthday" "Start" "End" "Placement" "Offset" "Provenance"
+                 "Placement Sequence" "Placement Pathway" "Period Start" "Period Duration" "Period End" "Period Offset"
+                 "Match Offset" "Matched ID" "Matched Offset"]]
     (into [headers]
           (comp cat
-                (mapcat period->episodes)
+                (mapcat (partial period->episodes t0))
                 (episodes->table-rows-xf project-to))
           projections)))
 
