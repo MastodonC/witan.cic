@@ -58,11 +58,7 @@
                                              {:period (get closed-periods closed)
                                               :offset offset})
                                            (get knn-closed-cases (:period-id period))) ;; TODO use
-                   knn-closed-period (or (some #(when (and (> (-> % :period :duration) open-offset))
-                                                  %)
-                                               (shuffle knn-closed-periods))
-                                         (do (println (format "Didn't find period within offset: %s in placement %s" (:period-id period) (-> period :episodes last :placement)))
-                                             (first (sort-by (comp :duration :period) > knn-closed-periods)))) ;; Take longest available duration
+                   knn-closed-period (first (shuffle knn-closed-periods))
                    closed-period (:period knn-closed-period)]
                (if closed-period
                  (let [closed-offset (:offset knn-closed-period)

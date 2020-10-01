@@ -10,8 +10,8 @@ project_from <- as.Date(args[3])
 seed.long <- args[4]
 set.seed(seed.long)
 
-# input <- "/var/folders/tw/tzkjfqd11md5hdjcyjxgmf740000gn/T/file6894966216222891812.csv"
-# output <- "/var/folders/tw/tzkjfqd11md5hdjcyjxgmf740000gn/T/file3575231491298047884.csv"
+# input <- "/var/folders/tw/tzkjfqd11md5hdjcyjxgmf740000gn/T/file2084928121704628186.csv"
+# output <- "/var/folders/tw/tzkjfqd11md5hdjcyjxgmf740000gn/T/file5499741138263074201.csv"
 # project_from <- as.Date("2019-03-30")
 # seed.long <- 1416938423
 # set.seed(seed.long)
@@ -48,7 +48,8 @@ learner.features.closed <- function(closed_episodes) {
               care_days = day_diff(beginning[1], feature_date[1]),
               current = last(placement),
               period_duration = last(period_duration)) %>%
-    reshape2::melt(id.vars = c("period_id", "day_offset"))
+      reshape2::melt(id.vars = c("period_id", "day_offset"))
+
   features_2 <- feature_episodes %>%
     group_by(period_id, day_offset, placement) %>%
     summarise(value = sum(episode_days)) %>%
@@ -60,8 +61,8 @@ learner.features.closed <- function(closed_episodes) {
   #   summarise(value = sum(episode_days)) %>%
   #   dplyr::rename(variable = placement_seq)
   
-  features <- rbind(features_1,
-                    features_2
+  features <- rbind(features_1
+                   #  , features_2
   ) %>%
     dcast(period_id + day_offset ~ variable, value.var = 'value', fill = 0)
   
@@ -72,6 +73,8 @@ learner.features.closed <- function(closed_episodes) {
 }
 
 learner.features.open <- function(open_episodes, feature_date) {
+  open_episodes <- episodes %>% filter(open)
+  feature_date <- as.Date("2020-03-30")
   feature_episodes <- open_episodes %>%
     mutate(episode_days = day_diff(report_date, coalesce(ceased, feature_date)))
   
@@ -94,8 +97,8 @@ learner.features.open <- function(open_episodes, feature_date) {
   #   summarise(value = sum(episode_days)) %>%
   #   dplyr::rename(variable = placement_seq)
   
-  features <- rbind(features_1,
-                    features_2
+  features <- rbind(features_1
+                    # , features_2
   ) %>%
     dcast(period_id ~ variable, value.var = 'value', fill = 0)
   
@@ -128,35 +131,37 @@ cluster_cases <- function(episodes, project_from) {
   closed.features <- add.zero.features(closed.features, open.features)
   open.features <- add.zero.features(open.features, closed.features)
   
-  stddev <- apply(rbind(closed.features, open.features), 2, function(x) sd(as.numeric(x)))
-  means <- apply(rbind(closed.features, open.features), 2, function(x) mean(as.numeric(x)))
+  features <- rbind(open.features %>% mutate(case = "Open"),
+                    closed.features %>% mutate(case = "Closed")) %>%
+    select(current, case, care_days, entry)
   
-  M <- closed.features[,c("current", "period_duration", "care_days", "entry")]
-  X <- open.features[1:nrow(open.features),c("current", "care_days", "entry")]
-  X$entry <- (as.numeric(X$entry) - means["entry"]) / stddev["entry"]
-  X$care_days <- (as.numeric(X$care_days) - means["care_days"]) / stddev["care_days"]
-  M$entry <- (as.numeric(M$entry) - means["entry"]) / stddev["entry"]
-  M$care_days <- (as.numeric(M$care_days) - means["care_days"]) / stddev["care_days"]
-  
+  features.txt <- features %>% select(current, case)
+  features.num <- sapply(features %>% select(-current, -case), as.numeric)
+  features.num <- scale(features.num) # Remove this for no scale
+
+  M <- features.num[features.txt$case == "Closed",]
+  X <- features.num[features.txt$case == "Open",]
   res <- data.frame(open = c(), closed = c(), k = c(), placement = c())
   file.remove("clusters.log")
   for (i in 1:nrow(X)) {
     v <- X[i,]
-    placement <- v[["current"]]
-    vxx <- as.numeric(v[!v == placement])
-    vx <- vxx
-    Mxx <- M[M$current == placement & as.numeric(M$period_duration) > as.numeric(v["care_days"]), !(names(M) %in% c("current", "period_duration"))]
-    Mx <- Mxx
-    Mx[] <- lapply(Mxx, as.numeric)
-    Mx <- as.matrix(Mx)
-    # sim <- ( Mx %*% vx ) / sqrt( sum(vx*vx) * rowSums(Mx*Mx) )
-    # names(sim[which.max(sim),])
-    d <- rowSums((Mx - vx) ^ 2)
+    open_id <- rownames(open.features[i,])
+    placement <- open.features[i,]$current
+    
+    m <- M[closed.features$current == placement,]
+    Mx <- as.matrix(m)
+    # d <- ( Mx %*% v ) / sqrt( sum(v*v) * rowSums(Mx*Mx)) # Cosine
+    d <- rowSums((Mx - v) ^ 2) # Euclidean
+    
     m <- length(d)
+    names(d) <- rownames(closed.features %>% filter(closed.features$current == placement))
     if (m > 0) {
-      d <- sort(d)
+      d <- sort(d, decreasing = FALSE)
       n <- names(d)[1:min(m,100)]
-      res <- rbind(res, data.frame(open = rep(rownames(v), length(n)), closed = as.vector(n), k = 1:length(n), placement = placement))
+      res <- rbind(res, data.frame(open = rep(open_id, length(n)),
+                                   closed = as.vector(n),
+                                   k = 1:length(n),
+                                   placement = placement))
     }
   }
   clusters <- res %>%

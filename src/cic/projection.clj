@@ -52,9 +52,9 @@
    end seed]
   (let [previous-joiner-per-age (->> (group-by :admission-age periods)
                                      (reduce (fn [m [k v]] (assoc m k (time/max-date (map :beginning v)))) {}))]
+    (println "Previous joiner dates per age: " previous-joiner-per-age)
     (mapcat (fn [age seed]
               (let [previous-joiner-at-age (get previous-joiner-per-age age project-from)]
-                (println (str "Previous joiner at age " age " " previous-joiner-at-age " " project-from))
                 (joiners-seq (partial joiners-model age project-from)
                              duration-model
                              placements-model
@@ -73,7 +73,7 @@
 
 (defn train-model
   "Build stochastic helper models using R. Random seed ensures determinism."
-  [{:keys [periods joiner-range episodes-range duration-model joiner-birthday-model project-to knn-closed-cases] :as model-seed} random-seed]
+  [{:keys [periods joiner-range episodes-range duration-model joiner-birthday-model project-to project-from knn-closed-cases] :as model-seed} random-seed]
   (let [[s1 s2 s3] (rand/split-n random-seed 3)
         [joiners-from joiners-to] joiner-range
         [episodes-from episodes-to] episodes-range
@@ -83,7 +83,8 @@
                         (model/joiners-model-gen project-to s2))
      :joiner-birthday-model joiner-birthday-model
      :placements-model (model/periods->placements-model closed-periods episodes-from episodes-to)
-     :periods closed-periods}))
+     :periods closed-periods
+     :project-from project-from}))
 
 (defn project-1
   "Returns a single sequence of projected periods."

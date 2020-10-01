@@ -20,7 +20,7 @@
   (def scc "data/scc/2020-08-27/%s")
 
 (def input-format
-  ccc)
+  scc)
 
 (def input-file (partial format input-format))
 (def output-file (partial format input-format))
@@ -30,7 +30,7 @@
 (defn load-model-inputs
   "A useful REPL function to load the data files and convert them to  model inputs"
   ([{:keys [episodes-csv placement-costs-csv duration-lower-csv duration-median-csv duration-upper-csv
-            zero-joiner-day-ages-csv survival-hazard-csv knn-closed-cases-csv]}]
+            zero-joiner-day-ages-csv survival-hazard-csv]}]
    (let [episodes (read/episodes episodes-csv)
          project-from (->> (mapcat (juxt :report-date :ceased) episodes)
                            (keep identity)
@@ -49,7 +49,8 @@
                        ;; :duration-upper-csv (input-file "duration-model-upper.csv")
                        :zero-joiner-day-ages-csv (input-file "zero-joiner-day-ages.csv")
                        ;; :survival-hazard-csv (input-file "survival-hazard.csv")
-                       :knn-closed-cases-csv (input-file "knn-closed-cases.csv")})))
+                       ;; :knn-closed-cases-csv (input-file "knn-closed-cases.csv")
+                       })))
 
 (defn prepare-model-inputs
   [{:keys [project-from periods] :as model-inputs}]
@@ -70,7 +71,7 @@
 (defn generate-projection-csv!
   "Main REPL function for writing a projection CSV"
   [rewind-years train-years project-years n-runs seed]
-  (let [{:keys [project-from periods placement-costs duration-model joiner-birthday-model knn-closed-cases]} (prepare-model-inputs (load-model-inputs))
+  (let [{:keys [project-from periods placement-costs duration-model joiner-birthday-model]} (prepare-model-inputs (load-model-inputs))
         project-from (time/years-before project-from rewind-years)
         _ (println (str "Project from " project-from))
         output-file (output-file (format "%s-projection-%s-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s.csv" (la-label) (time/date-as-string project-from) rewind-years train-years project-years n-runs seed))
@@ -223,7 +224,7 @@
   (let [{:keys [project-from periods placement-costs duration-model joiner-birthday-model knn-closed-cases] :as model-inputs} (prepare-model-inputs (load-model-inputs))
         project-from (time/years-before project-from rewind-years)
         _ (println (str "Project from " project-from))
-        output-file (output-file (format "%s-episodes-%s-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s.csv" (la-label) (time/date-as-string project-from) rewind-years train-years project-years n-runs seed))
+        output-file (output-file (format "%s-episodes-%s-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-cosine-noscale-nopicking.csv" (la-label) (time/date-as-string project-from) rewind-years train-years project-years n-runs seed))
         _ (println output-file)
         project-to (time/years-after project-from project-years)
         learn-from (time/years-before project-from train-years)
