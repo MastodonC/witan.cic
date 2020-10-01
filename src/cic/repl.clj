@@ -246,7 +246,8 @@
 (def project-from (->> (mapcat (juxt :report-date :ceased) episodes)
                        (keep identity)
                        (time/max-date)))
-(def periods (periods/assoc-birthday-bounds (map #(assoc % :reported project-from ) periods)))
+(def periods (periods/assoc-birthday-bounds (map #(assoc % :reported project-from) periods)))
+(def periods (rand/sample-birthdays periods (rand/seed 42)))
 (def periods (periods/periods-as-at periods project-from))
 
 (def knn-closed-cases (read/knn-closed-cases (input-file "knn-closed-cases.csv")))
@@ -257,3 +258,10 @@
 (filter #(= (:open %) "861-3") knn-closed-cases)
 
 
+(comment
+  (def periods-csv (write/periods->knn-closed-cases-csv periods))
+
+  (print periods-csv)
+
+  project-from
+  )

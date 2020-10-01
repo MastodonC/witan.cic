@@ -49,8 +49,7 @@
       (update :placement parse-placement)
       (update :CIN keyword)
       (update :legal-status keyword)
-      (update :uasc (comp boolean #{"True"}))
-      #_(update :cluster #(Long/parseLong %))))
+      (update :uasc (comp boolean #{"True"}))))
 
 (defn load-csv
   "Loads csv file with each row as a vector.

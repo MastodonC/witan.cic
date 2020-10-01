@@ -240,17 +240,10 @@
 (defn knn-closed-cases
   [periods project-from seed]
   (let [clusters-out (str (write/temp-file "file" ".csv"))
-        periods-in (->> (periods/to-mapseq periods)
-                        (map #(-> %
-                                  (update :placement name)
-                                  (update :beginning time/date-as-string)
-                                  (update :end (fn [end] (when end (time/date-as-string end))))
-                                  (update :report-date time/date-as-string)
-                                  (update :birthday time/date-as-string)
-                                  (set/rename-keys {:report-date :report_date :period-id :period_id})))
-                        (write/mapseq->csv!)
-                        (str))
+        periods-in (write/periods->knn-closed-cases-csv periods)
         script "src/close-open-cases.R"
+        algo "euclidean_scaled"
+        tiers 3
         seed-long (rand/rand-long seed)]
-    (rscript/exec script periods-in clusters-out (time/date-as-string project-from) (str (Math/abs seed-long)))
+    (rscript/exec script periods-in clusters-out (time/date-as-string project-from) algo (str tiers) (str (Math/abs seed-long)))
     (read/knn-closed-cases clusters-out)))

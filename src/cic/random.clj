@@ -57,8 +57,8 @@
              (let [knn-closed-periods (map (fn [{:keys [closed offset]}]
                                              {:period (get closed-periods closed)
                                               :offset offset})
-                                           (get knn-closed-cases (:period-id period))) ;; TODO use
-                   knn-closed-period (first (shuffle knn-closed-periods))
+                                           (get knn-closed-cases (:period-id period)))
+                   knn-closed-period (first knn-closed-periods)
                    closed-period (:period knn-closed-period)]
                (if closed-period
                  (let [closed-offset (:offset knn-closed-period)

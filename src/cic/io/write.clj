@@ -1,8 +1,11 @@
 (ns cic.io.write
   (:require [cic.spec :as spec]
             [cic.time :as time]
+            [cic.periods :as periods]
+            [cic.time :as time]
             [clj-time.format :as f]
             [clojure.data.csv :as data-csv]
+            [clojure.set :as set]
             [clojure.java.io :as io])
   (:import java.io.File))
 
@@ -185,3 +188,16 @@
                mapseq)
          (write-csv! path))
     path))
+
+(defn periods->knn-closed-cases-csv
+  [periods]
+  (->> (periods/to-mapseq periods)
+       (map #(-> %
+                 (update :placement name)
+                 (update :beginning time/date-as-string)
+                 (update :end (fn [end] (when end (time/date-as-string end))))
+                 (update :report-date time/date-as-string)
+                 (update :birthday time/date-as-string)
+                 (set/rename-keys {:report-date :report_date :period-id :period_id})))
+       (mapseq->csv!)
+       (str)))
