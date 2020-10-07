@@ -11,7 +11,7 @@ If there are 2 overlapping episodes in a phase, take the minimum
 report_date and the maximum ceased_date to turn the overlapping
 episodes into one longer episode, with the placement, legal_status,
 care_status, DOB and period_id from the 1st of the overlapping
-episodes
+episodes.
 
 ## Status
 
