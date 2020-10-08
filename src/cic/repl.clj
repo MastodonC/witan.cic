@@ -54,7 +54,7 @@
 
 (defn prepare-model-inputs
   [{:keys [project-from periods] :as model-inputs}]
-  (let [periods (->> (map #(assoc % :reported project-from) periods)
+  (let [periods (->> (map #(assoc % :report-date project-from) periods)
                      (periods/assoc-birthday-bounds))]
     (assoc model-inputs
            :periods periods)))
@@ -243,13 +243,14 @@
 
 (def episodes (read/episodes (input-file "episodes.scrubbed.csv")))
 (def periods (periods/from-episodes episodes))
-(def project-from (->> (mapcat (juxt :report-date :ceased) episodes)
-                       (keep identity)
-                       (time/max-date)))
-(def periods (periods/assoc-birthday-bounds (map #(assoc % :reported project-from) periods)))
+(def project-from (-> (->> (mapcat (juxt :report-date :ceased) episodes)
+                           (keep identity)
+                           (time/max-date))
+                      (time/years-before 1)))
+(def periods (periods/assoc-birthday-bounds (map #(assoc % :report-date project-from) periods)))
 (def periods (rand/sample-birthdays periods (rand/seed 42)))
 (def periods (periods/periods-as-at periods project-from))
-
+(println (filter #(when (= (:period-id %) "467-1") %) periods))
 (def knn-closed-cases (read/knn-closed-cases (input-file "knn-closed-cases.csv")))
 
 (filter #(= (:period-id %) "861-3") periods)

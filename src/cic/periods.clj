@@ -73,8 +73,9 @@
                       (assoc :open? true)
                       (dissoc :end)
                       (assoc :duration duration)
+                      (assoc :report-date as-at)
                       (update :episodes (fn [episodes] (vec (filter #(<= (:offset %) duration) episodes))))))
-                period)))))
+                (assoc period :report-date as-at))))))
 
 (defn episode-on
   [{:keys [beginning episodes]} date]
@@ -103,11 +104,11 @@
   If these constraints can't be satisfied, a message is logged and the child is excluded."
   [periods]
   (into []
-        (comp (map (fn [{:keys [beginning reported birth-month end period-id] :as period}]
+        (comp (map (fn [{:keys [beginning report-date birth-month end period-id] :as period}]
                      (let [ ;; Earliest possible birthday is either the 1st day in the month of their birth
                            ;; or 18 years prior to their final end date (or current report date if not yet ended),
                            ;; whichever is the later.
-                           earliest-birthday (time/latest (time/years-before (or end reported) 18)
+                           earliest-birthday (time/latest (time/years-before (or end report-date) 18)
                                                           (time/month-beginning birth-month))
                            ;; Latest possible birthday is either the last day of the month of their birth
                            ;; or the date they were taken into care, whichever is the earlier

@@ -35,7 +35,7 @@
   This allows the output to account for uncertainty in the input."
   [periods seed]
   (let [rngs (split-n seed (count periods))]
-    (mapv (fn [{:keys [beginning reported birth-month end period-id birthday-bounds] :as period} rng]
+    (mapv (fn [{:keys [beginning report-date birth-month end period-id birthday-bounds] :as period} rng]
             (let [[earliest-birthday latest-birthday] birthday-bounds]
               (let [birthday-offset (-> {:a 0 :b (time/day-interval earliest-birthday latest-birthday)}
                                         (d/uniform)
@@ -52,7 +52,7 @@
         closed-periods (zipmap (map :period-id closed-periods)
                                closed-periods)]
     (->> (for [period periods
-               :let [open-offset (time/day-interval (:beginning period) (:reported period))]]
+               :let [open-offset (time/day-interval (:beginning period) (:report-date period))]]
            (if (:open? period)
              (let [knn-closed-periods (map (fn [{:keys [closed offset]}]
                                              {:period (get closed-periods closed)
@@ -67,6 +67,7 @@
                        end (time/earliest (time/days-after (:beginning period) (+ open-offset future-duration))
                                           (time/days-before (time/years-after (:birthday period) 18) 1))
                        simulated-duration (time/day-interval (:beginning period) end)
+                       _ (println (:period-id period) "closed by" (:period-id closed-period) "offset" closed-offset)
                        ;; Let's make sure the placements match up as they should
                        _ (when (not=
                                 (:placement (last (:episodes period)))
