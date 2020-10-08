@@ -185,9 +185,9 @@ learner.features.closed <- function(closed_episodes, feature_tiers) {
     inner_join(data.frame(day_offset = c(1,2,4,6,8,10,12,14,16,18,20,24, seq(28, 18 * 365, by = 14))),by = character(0)) %>%
     mutate(feature_date = beginning + days(day_offset)) %>%
     filter(report_date < feature_date & feature_date < end) %>%
-    mutate(episode_days = ifelse(feature_date >= report_date & feature_date <= ceased,
-                                 day_diff(report_date, feature_date),
-                                 day_diff(report_date, ceased)))
+    mutate(episode_days = if_else(feature_date >= report_date & feature_date <= ceased,
+                                  day_diff(report_date, feature_date),
+                                  day_diff(report_date, ceased)))
   
   features <- feature_episodes %>%
     group_by(period_id, day_offset) %>%
@@ -325,7 +325,7 @@ episodes <- read.csv(input, na.strings = "") %>%
   mutate(open = open == "true") %>%
   group_by(period_id) %>%
   arrange(period_id, report_date) %>%
-  mutate(ceased = ifelse(is.na(lead(report_date)) & !open, end, lead(report_date))) %>%
+  mutate(ceased = if_else(is.na(lead(report_date)) & !open, end, lead(report_date))) %>%
   ungroup %>%
   as.data.frame
 episodes$beginning <- ymd(episodes$beginning)
