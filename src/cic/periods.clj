@@ -73,9 +73,9 @@
                       (assoc :open? true)
                       (dissoc :end)
                       (assoc :duration duration)
-                      (assoc :report-date as-at)
+                      (assoc :snapshot-date as-at)
                       (update :episodes (fn [episodes] (vec (filter #(<= (:offset %) duration) episodes))))))
-                (assoc period :report-date as-at))))))
+                (assoc period :snapshot-date as-at))))))
 
 (defn episode-on
   [{:keys [beginning episodes]} date]
@@ -103,12 +103,13 @@
   - A child must have left by the time they are 18
   If these constraints can't be satisfied, a message is logged and the child is excluded."
   [periods]
+  (println (first periods))
   (into []
-        (comp (map (fn [{:keys [beginning report-date birth-month end period-id] :as period}]
+        (comp (map (fn [{:keys [beginning snapshot-date birth-month end period-id] :as period}]
                      (let [ ;; Earliest possible birthday is either the 1st day in the month of their birth
                            ;; or 18 years prior to their final end date (or current report date if not yet ended),
                            ;; whichever is the later.
-                           earliest-birthday (time/latest (time/years-before (or end report-date) 18)
+                           earliest-birthday (time/latest (time/years-before (or end snapshot-date) 18)
                                                           (time/month-beginning birth-month))
                            ;; Latest possible birthday is either the last day of the month of their birth
                            ;; or the date they were taken into care, whichever is the earlier
@@ -123,7 +124,7 @@
 
 (defn to-mapseq
   [periods]
-  (mapcat (fn [{:keys [beginning end period-id open? episodes birthday]}]
+  (mapcat (fn [{:keys [beginning end period-id open? episodes birthday snapshot-date]}]
             (map (fn [{:keys [offset placement]}]
                    {:period-id period-id
                     :beginning beginning
@@ -131,6 +132,7 @@
                     :end end
                     :open open?
                     :placement placement
-                    :report-date (time/days-after beginning offset)})
+                    :report-date (time/days-after beginning offset)
+                    :snapshot-date snapshot-date})
                  episodes))
           periods))

@@ -32,10 +32,10 @@
   ([{:keys [episodes-csv placement-costs-csv duration-lower-csv duration-median-csv duration-upper-csv
             zero-joiner-day-ages-csv survival-hazard-csv]}]
    (let [episodes (read/episodes episodes-csv)
-         project-from (->> (mapcat (juxt :report-date :ceased) episodes)
-                           (keep identity)
-                           (time/max-date))]
-     (hash-map :project-from project-from
+         latest-event-date (->> (mapcat (juxt :report-date :ceased) episodes)
+                                (keep identity)
+                                (time/max-date))]
+     (hash-map :latest-event-date latest-event-date
                :periods (periods/from-episodes episodes)
                :placement-costs (read/costs-csv placement-costs-csv)
                ;; :knn-closed-cases (read/knn-closed-cases knn-closed-cases-csv)
@@ -53,10 +53,12 @@
                        })))
 
 (defn prepare-model-inputs
-  [{:keys [project-from periods] :as model-inputs}]
-  (let [periods (->> (map #(assoc % :report-date project-from) periods)
+  [{:keys [latest-event-date periods] :as model-inputs} rewind-years]
+  (let [project-from (time/years-before latest-event-date rewind-years)
+        periods (->> (periods/periods-as-at periods project-from)
                      (periods/assoc-birthday-bounds))]
     (assoc model-inputs
+           :project-from project-from
            :periods periods)))
 
 (defn format-actual-for-output
@@ -71,15 +73,13 @@
 (defn generate-projection-csv!
   "Main REPL function for writing a projection CSV"
   [rewind-years train-years project-years n-runs seed]
-  (let [{:keys [project-from periods placement-costs duration-model joiner-birthday-model]} (prepare-model-inputs (load-model-inputs))
-        project-from (time/years-before project-from rewind-years)
+  (let [{:keys [project-from periods placement-costs duration-model joiner-birthday-model]} (prepare-model-inputs (load-model-inputs) rewind-years)
         _ (println (str "Project from " project-from))
-        output-file (output-file (format "%s-projection-%s-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s.csv" (la-label) (time/date-as-string project-from) rewind-years train-years project-years n-runs seed))
+        output-file (output-file (format "%s-projection-%s-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-euclidean-quantile-1-7interval.csv" (la-label) (time/date-as-string project-from) rewind-years train-years project-years n-runs seed))
         ;; project-from (time/quarter-preceding (time/years-before project-from rewind-years))
         project-to (time/years-after project-from project-years)
         learn-from (time/years-before project-from train-years)
-        projection-periods (periods/periods-as-at periods project-from)
-        model-seed {:periods projection-periods
+        model-seed {:periods periods
                     :duration-model duration-model
                     ;; :knn-closed-cases knn-closed-cases
                     :joiner-birthday-model joiner-birthday-model
@@ -90,7 +90,7 @@
         output-from (time/years-before learn-from 2)
         summary-seq (into []
                           (map format-actual-for-output)
-                          (summary/periods-summary (rand/sample-birthdays projection-periods (rand/seed seed))
+                          (summary/periods-summary (rand/sample-birthdays periods (rand/seed seed))
                                                    (time/day-seq output-from project-from 7)
                                                    placement-costs))
         projection (projection/projection model-seed
@@ -221,14 +221,12 @@
 (defn generate-episodes-csv!
   "Outputs a file showing a single projection in rowise episodes format."
   [rewind-years train-years project-years n-runs seed]
-  (let [{:keys [project-from periods placement-costs duration-model joiner-birthday-model knn-closed-cases] :as model-inputs} (prepare-model-inputs (load-model-inputs))
-        project-from (time/years-before project-from rewind-years)
+  (let [{:keys [project-from periods placement-costs duration-model joiner-birthday-model knn-closed-cases] :as model-inputs} (prepare-model-inputs (load-model-inputs) rewind-years)
         _ (println (str "Project from " project-from))
-        output-file (output-file (format "%s-episodes-%s-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-cosine-noscale-nopicking.csv" (la-label) (time/date-as-string project-from) rewind-years train-years project-years n-runs seed))
+        output-file (output-file (format "%s-episodes-%s-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-euclidean-quantile-1-7interval.csv" (la-label) (time/date-as-string project-from) rewind-years train-years project-years n-runs seed))
         _ (println output-file)
         project-to (time/years-after project-from project-years)
         learn-from (time/years-before project-from train-years)
-        periods (periods/periods-as-at periods project-from)
         t0 (time/min-date (map :beginning periods))
         model-seed {:periods periods
                     :joiner-birthday-model joiner-birthday-model
@@ -240,23 +238,24 @@
          (write/episodes-table t0 project-to)
          (write/write-csv! output-file))))
 
+(comment
+  
+  (def episodes (read/episodes (input-file "episodes.scrubbed.csv")))
+  (def periods (periods/from-episodes episodes))
+  (def project-from (-> (->> (mapcat (juxt :report-date :ceased) episodes)
+                             (keep identity)
+                             (time/max-date))
+                        (time/years-before 1)))
+  (def periods (periods/assoc-birthday-bounds (map #(assoc % :snapshot-date project-from) periods)))
+  (def periods (rand/sample-birthdays periods (rand/seed 42)))
+  (def periods (periods/periods-as-at periods project-from))
+  (println (filter #(when (= (:period-id %) "467-1") %) periods))
+  (def knn-closed-cases (read/knn-closed-cases (input-file "knn-closed-cases.csv")))
 
-(def episodes (read/episodes (input-file "episodes.scrubbed.csv")))
-(def periods (periods/from-episodes episodes))
-(def project-from (-> (->> (mapcat (juxt :report-date :ceased) episodes)
-                           (keep identity)
-                           (time/max-date))
-                      (time/years-before 1)))
-(def periods (periods/assoc-birthday-bounds (map #(assoc % :report-date project-from) periods)))
-(def periods (rand/sample-birthdays periods (rand/seed 42)))
-(def periods (periods/periods-as-at periods project-from))
-(println (filter #(when (= (:period-id %) "467-1") %) periods))
-(def knn-closed-cases (read/knn-closed-cases (input-file "knn-closed-cases.csv")))
+  (filter #(= (:period-id %) "861-3") periods)
+  (filter #(= (:period-id %) "2526-1") periods)
 
-(filter #(= (:period-id %) "861-3") periods)
-(filter #(= (:period-id %) "2526-1") periods)
-
-(filter #(= (:open %) "861-3") knn-closed-cases)
+  (filter #(= (:open %) "861-3") knn-closed-cases))
 
 
 (comment

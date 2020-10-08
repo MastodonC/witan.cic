@@ -243,7 +243,7 @@
         periods-in (write/periods->knn-closed-cases-csv periods)
         script "src/close-open-cases.R"
         algo "euclidean_scaled"
-        tiers 3
+        tiers 1
         seed-long (rand/rand-long seed)]
     (rscript/exec script periods-in clusters-out (time/date-as-string project-from) algo (str tiers) (str (Math/abs seed-long)))
     (read/knn-closed-cases clusters-out)))

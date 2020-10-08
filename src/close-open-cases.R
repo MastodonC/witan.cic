@@ -12,33 +12,54 @@ feature_tiers <- as.integer(args[5])
 seed.long <- as.integer(args[6])
 set.seed(seed.long)
 
-# input <- "/var/folders/tw/tzkjfqd11md5hdjcyjxgmf740000gn/T/file7431607053732494348.csv"
-# output <- "/var/folders/tw/tzkjfqd11md5hdjcyjxgmf740000gn/T/file5499741138263074201.csv"
-# project_from <- as.Date("2020-01-24")
+# input <- "/var/folders/tw/tzkjfqd11md5hdjcyjxgmf740000gn/T/file1757128781135691100.csv"
+# output <- "/var/folders/tw/tzkjfqd11md5hdjcyjxgmf740000gn/T/file3331216095947691608.csv"
+# project_from <- as.Date("2019-01-24")
 # algorithm <- "euclidean_scaled"
 # seed.long <- 1416938423
 # set.seed(seed.long)
-# feature_tiers <- 3
+# feature_tiers <- 1
 
 day_diff <- function(start, stop) {
   as.numeric(difftime(stop, start, units = "days"))
 }
 
+quantile <- function(xs) {
+  ecdf(xs)(xs)
+}
+
+library(data.table)
 cluster_euclidean <- function(open.features, closed.features, scaled = TRUE) {
+  # scaled <- TRUE
+  # closed.features <- closed.features[rownames(closed.features) %like% "1197-1",]
   features <- rbind(open.features %>% mutate(case = "Open"),
                     closed.features %>% mutate(case = "Closed"))
   
   features.txt <- features %>% select(current, case)
   features.num <- sapply(features %>% select(-current, -case), as.numeric)
   if (scaled) {
-    features.num <- scale(features.num)
+    features.num <- apply(features.num, 2, quantile)
+    # features.num <- scale(features.num)
   }
   
   M <- features.num[features.txt$case == "Closed",]
   X <- features.num[features.txt$case == "Open",]
   
   res <- data.frame(open = c(), closed = c(), k = c(), placement = c())
+  
+  ## Start fiddling
+  # open closed
+  # 1861-2 96-1
+  # 
+  # open.features[which(rownames(open.features) == "3354-1"),]
+  # 
+  # closed.features[which(rownames(closed.features) == "424-1:322"),]
+  # closed.features[which(rownames(closed.features) == "424-1:322"),]
+  # i <- which(rownames(open.features) == "3354-1")
+  ## End fiddling
+  
   for (i in 1:nrow(X)) {
+    
     v <- X[i,]
     open_id <- rownames(open.features[i,])
     placement <- open.features[i,]$current
@@ -182,7 +203,7 @@ learner.features.closed <- function(closed_episodes, feature_tiers) {
   feature_episodes <- closed_episodes %>%
     group_by(period_id) %>%
     mutate(period_duration = day_diff(min(report_date), max(ceased))) %>% ungroup %>%
-    inner_join(data.frame(day_offset = c(1,2,4,6,8,10,12,14,16,18,20,24, seq(28, 18 * 365, by = 14))),by = character(0)) %>%
+    inner_join(data.frame(day_offset = c(1,2,4,6,8,10,12,14, seq(21, 18 * 365, by = 7))), by = character(0)) %>%
     mutate(feature_date = beginning + days(day_offset)) %>%
     filter(report_date < feature_date & feature_date < end) %>%
     mutate(episode_days = if_else(feature_date >= report_date & feature_date <= ceased,
@@ -192,11 +213,12 @@ learner.features.closed <- function(closed_episodes, feature_tiers) {
   features <- feature_episodes %>%
     group_by(period_id, day_offset) %>%
     arrange(report_date) %>%
-    summarise(age = day_diff(birthday[1], feature_date[1]),
+    summarise(# age = day_diff(birthday[1], feature_date[1]),
               entry = day_diff(birthday[1], beginning[1]),
               care_days = day_diff(beginning[1], feature_date[1]),
-              current = last(placement),
-              period_duration = last(period_duration)) %>%
+              current = last(placement) # ,
+              # period_duration = last(period_duration)
+              ) %>%
       reshape2::melt(id.vars = c("period_id", "day_offset"))
   
   if (feature_tiers < 1) {
@@ -231,13 +253,12 @@ learner.features.closed <- function(closed_episodes, feature_tiers) {
 
 learner.features.open <- function(open_episodes, feature_date, feature_tiers) {
   open_episodes <- episodes %>% filter(open)
-  feature_date <- as.Date("2020-03-30")
   feature_episodes <- open_episodes %>%
     mutate(episode_days = day_diff(report_date, coalesce(ceased, feature_date)))
   
   features <- feature_episodes %>%
     group_by(period_id) %>%
-    summarise(age = day_diff(birthday[1], feature_date),
+    summarise(# age = day_diff(birthday[1], feature_date),
               entry = day_diff(birthday[1], beginning[1]),
               care_days = day_diff(beginning[1], feature_date),
               current = last(placement)) %>%
@@ -332,6 +353,7 @@ episodes$beginning <- ymd(episodes$beginning)
 episodes$birthday <- ymd(episodes$birthday)
 episodes$end <- ymd(episodes$end)
 episodes$report_date <- ymd(episodes$report_date)
+episodes$snapshot_date <- ymd(episodes$snapshot_date)
 episodes$ceased <- ymd(episodes$ceased)
 clusters <- cluster_cases(episodes, project_from, feature_tiers)
 write.csv(clusters, output, row.names = FALSE)
