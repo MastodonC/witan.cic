@@ -1,5 +1,6 @@
 (ns cic.model
-  (:require [cic.io.read :as read]
+  (:require [cic.episodes :as episodes]
+            [cic.io.read :as read]
             [cic.io.write :as write]
             [cic.periods :as periods]
             [cic.random :as rand]
@@ -144,17 +145,6 @@
         (do #_(println "Didn't find phase transition params for age" age "placement" placement "first transition" first-transition?)
             placement)))))
 
-(defn joiner-placements-model
-  [coefs]
-  (fn [age]
-    (let [params (get coefs age)]
-      (if params
-        (let [[ks alphas] (apply map vector params)
-              category-probs (zipmap ks (d/draw (d/dirichlet {:alphas alphas})))]
-          (d/draw (d/categorical category-probs)))
-        spec/unknown-placement ;; Fallback - never seen a joiner of this age
-        ))))
-
 (defn period->phases
   [{:keys [birthday beginning end episodes] :as period} episodes-from episodes-to]
   (for [[{offset-a :offset from :placement} {offset-b :offset to :placement}] (partition-all 2 1 episodes)
@@ -247,3 +237,50 @@
         seed-long (rand/rand-long seed)]
     (rscript/exec script periods-in clusters-out (time/date-as-string project-from) algo (str tiers) (str (Math/abs seed-long)))
     (read/knn-closed-cases clusters-out)))
+
+(defn markov-placements-model
+  [periods]
+  (let [all-segments (mapcat periods/segment periods)
+        groups (group-by (juxt :age :from-placement) all-segments)]
+    (fn [{:keys [episodes birthday beginning duration] :as period}]
+      (let [[episodes total-duration] (loop [total-duration duration
+                                             last-placement (-> episodes last :placement)
+                                             all-episodes episodes]
+                                        (let [age (time/year-interval birthday (time/days-after beginning total-duration))
+                                              sample (loop [lower-range age
+                                                            upper-range age]
+                                                       (when (or (>= lower-range 0)
+                                                                 (<= upper-range 17))
+                                                         (let [lower (rand-nth (get groups [lower-range last-placement]))
+                                                               upper (rand-nth (get groups [upper-range last-placement]))]
+                                                           (if (or lower upper)
+                                                             (or lower upper)
+                                                             (recur (dec lower-range) (inc upper-range))))))]
+                                          (when-not sample (println (format "No sample for age %s, placement %s or consecutive age" age last-placement)))
+                                          (let [{:keys [terminal? episodes duration to-placement]} sample
+                                                episodes (episodes/add-offset total-duration episodes)]
+                                            (println age)
+                                            (if (or terminal? (>= age 18))
+                                              [(concat all-episodes episodes) (+ total-duration duration)]
+                                              (recur (+ total-duration duration)
+                                                     to-placement
+                                                     (concat all-episodes episodes))))))]
+        (doto (-> period
+                  (assoc :episodes episodes)
+                  (assoc :duration total-duration)
+                  (assoc :open? false)
+                  (assoc :end (time/days-after beginning total-duration))))))))
+
+(defn joiner-placements-model
+  [periods]
+  (let [coefs (reduce (fn [acc {:keys [admission-age episodes]}]
+                        (update-in acc [admission-age (-> episodes first :placement)] (fnil inc 0)))
+                      periods)]
+    (fn [age]
+      (let [params (get coefs age)]
+        (if params
+          (let [[ks alphas] (apply map vector params)
+                category-probs (zipmap ks (d/draw (d/dirichlet {:alphas alphas})))]
+            (d/draw (d/categorical category-probs)))
+          spec/unknown-placement ;; Fallback - never seen a joiner of this age
+)))))

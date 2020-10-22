@@ -47,49 +47,10 @@
           periods rngs)))
 
 (defn close-open-periods
-  [periods knn-closed-cases seed]
-  (let [closed-periods (remove :open? periods)
-        closed-periods (zipmap (map :period-id closed-periods)
-                               closed-periods)]
-    (->> (for [period periods
-               :let [open-offset (time/day-interval (:beginning period) (:snapshot-date period))]]
-           (if (:open? period)
-             (let [knn-closed-periods (map (fn [{:keys [closed offset]}]
-                                             {:period (get closed-periods closed)
-                                              :offset offset})
-                                           (get knn-closed-cases (:period-id period)))
-                   knn-closed-period (first knn-closed-periods)
-                   closed-period (:period knn-closed-period)]
-               (if closed-period
-                 (let [closed-offset (:offset knn-closed-period)
-                       closed-duration (:duration closed-period)
-                       future-duration (- closed-duration closed-offset)
-                       end (time/earliest (time/days-after (:beginning period) (+ open-offset future-duration))
-                                          (time/days-before (time/years-after (:birthday period) 18) 1))
-                       simulated-duration (time/day-interval (:beginning period) end)
-                       _ (println (:period-id period) "closed by" (:period-id closed-period) "offset" closed-offset)
-                       ;; Let's make sure the placements match up as they should
-                       _ (when (not=
-                                (:placement (last (:episodes period)))
-                                (:placement (last (take-while #(< (:offset %) closed-offset) (:episodes closed-period)))))
-                           (print period closed-period closed-offset (last (:episodes period)) (last (take-while #(< (:offset %) closed-offset) (:episodes closed-period)))))
-                       future-episodes (->> (:episodes closed-period)
-                                            (drop-while #(< (:offset %) closed-offset))
-                                            (map (fn [{:keys [offset] :as episode}]
-                                                   (-> episode
-                                                       (update :offset - closed-offset)
-                                                       (update :offset + open-offset))))
-                                            (take-while #(< (:offset %) simulated-duration)))
-                       period (-> period
-                                  (assoc :open? false)
-                                  (update :episodes concat future-episodes)
-                                  (assoc :duration simulated-duration)
-                                  (assoc :end end)
-                                  (assoc :provenance "P")
-                                  (assoc :match-offset open-offset)
-                                  (assoc :matched-id (:period-id closed-period))
-                                  (assoc :matched-offset closed-offset))]
-                   period)
-                 (do (println (str "Can't close open period " (:period-id period) ", ignoring")))))
-             (assoc period :provenance "H")))
-         (keep identity))))
+  [periods markov-model seed]
+  (println "Closing open periods...")
+  (for [period periods
+        :let [open-offset (time/day-interval (:beginning period) (:snapshot-date period))]]
+    (if (:open? period)
+      (assoc (markov-model period) :provenance "P")
+      (assoc period :provenance "H"))))

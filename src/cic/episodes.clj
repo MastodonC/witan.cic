@@ -17,3 +17,9 @@
   (->> csv
        (remove-stale-rows)
        (remove-unmodelled-episodes)))
+
+(defn add-offset
+  [offset episodes]
+  (map (fn [episode]
+         (update episode :offset + offset))
+       episodes))

@@ -103,7 +103,6 @@
   - A child must have left by the time they are 18
   If these constraints can't be satisfied, a message is logged and the child is excluded."
   [periods]
-  (println (first periods))
   (into []
         (comp (map (fn [{:keys [beginning snapshot-date birth-month end period-id] :as period}]
                      (let [ ;; Earliest possible birthday is either the 1st day in the month of their birth
@@ -136,3 +135,33 @@
                     :snapshot-date snapshot-date})
                  episodes))
           periods))
+
+(defn segment
+  [{:keys [beginning birthday duration episodes open? beginning]}]
+  (let [segment-interval 365]
+    (for [segment-time (range 0 duration segment-interval)]
+      (let [reversed-episodes (reverse episodes)
+            segment-duration (min (- duration segment-time) segment-interval)
+            from-age (time/year-interval birthday (time/days-after beginning segment-time))
+            [prior-episodes segment-episodes] (->> episodes
+                                                   (split-with (fn [{:keys [offset placement]}]
+                                                                 (<= offset segment-time))))
+            prior-episode (some-> (last prior-episodes)
+                                  (assoc :offset 0))
+            segment-episodes (concat (when prior-episode [prior-episode])
+                                     (->>  (take-while (fn [{:keys [offset placement]}]
+                                                         (<= offset (+ segment-time segment-interval)))
+                                                       segment-episodes)
+                                           (map (fn [placement]
+                                                  (update placement :offset - segment-time)))))
+            from-placement (->> segment-episodes first :placement)
+            to-placement (->> segment-episodes last :placement)]
+        {:from-placement from-placement ;; starting placement
+         :to-placement to-placement
+         :age from-age             ;; in years?
+         :terminal? (< segment-duration segment-interval)
+         :duration segment-duration ;; duration may not be full segment if they leave
+         :episodes segment-episodes}))))
+
+
+
