@@ -238,14 +238,27 @@
     (rscript/exec script periods-in clusters-out (time/date-as-string project-from) algo (str tiers) (str (Math/abs seed-long)))
     (read/knn-closed-cases clusters-out)))
 
+
+(def offset-groups* (atom nil))
+
 (defn markov-placements-model
   [periods]
-  (let [all-segments (mapcat periods/segment periods)
-        groups (group-by (juxt :age :from-placement) all-segments)]
+  (let [offset-groups (or @offset-groups*
+                          (reset! offset-groups*
+                                  (reduce (fn [coll offset]
+                                            (assoc coll offset
+                                                   (->> (mapcat periods/segment periods)
+                                                        (map #(periods/shorten-segment % offset))
+                                                        (keep identity)
+                                                        (group-by (juxt :age :from-placement)))))
+                                          {}
+                                          (range 0 365))))]
     (fn [{:keys [episodes birthday beginning duration] :as period}]
-      (let [[episodes total-duration] (loop [total-duration duration
+      (let [offset (rem duration 365)
+            [episodes total-duration] (loop [total-duration duration
                                              last-placement (-> episodes last :placement)
-                                             all-episodes episodes]
+                                             all-episodes episodes
+                                             groups (get offset-groups offset)]
                                         (let [age (time/year-interval birthday (time/days-after beginning total-duration))
                                               sample (loop [lower-range age
                                                             upper-range age]
@@ -256,17 +269,17 @@
                                                            (if (or lower upper)
                                                              (or lower upper)
                                                              (recur (dec lower-range) (inc upper-range))))))]
-                                          (when-not sample (println (format "No sample for age %s, placement %s or consecutive age" age last-placement)))
+                                          (when-not sample (println (format "No sample for age %s, placement %s or consecutive age for offset %s" age last-placement offset)))
                                           (let [{:keys [terminal? episodes duration to-placement]} sample
                                                 episodes (episodes/add-offset total-duration episodes)]
-                                            (println age)
                                             (if (or terminal? (>= age 18))
                                               [(concat all-episodes episodes) (+ total-duration duration)]
                                               (recur (+ total-duration duration)
                                                      to-placement
-                                                     (concat all-episodes episodes))))))]
+                                                     (concat all-episodes episodes)
+                                                     (get offset-groups 0))))))]
         (doto (-> period
-                  (assoc :episodes episodes)
+                  (assoc :episodes (episodes/simplify episodes))
                   (assoc :duration total-duration)
                   (assoc :open? false)
                   (assoc :end (time/days-after beginning total-duration))))))))

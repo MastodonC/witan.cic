@@ -251,10 +251,10 @@
   (def periods (periods/periods-as-at periods project-from))
   (println (filter #(when (= (:period-id %) "467-1") %) periods))
   (def knn-closed-cases (read/knn-closed-cases (input-file "knn-closed-cases.csv")))
-
+  (def markov-model (model/markov-placements-model periods))
+  (markov-model (first (filter #(= (:period-id %) "2409-2") periods)))
   (filter #(= (:period-id %) "861-3") periods)
   (filter #(= (:period-id %) "2526-1") periods)
-
   (filter #(= (:open %) "861-3") knn-closed-cases))
 
 

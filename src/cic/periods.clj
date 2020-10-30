@@ -1,5 +1,6 @@
 (ns cic.periods
   (:require [cic.time :as time]
+            [cic.episodes :as episodes]
             [clojure.set :as cs]
             [taoensso.timbre :as timbre]))
 
@@ -30,10 +31,11 @@
     (-> (select-keys first-episode [:period-id :birth-month :report-date :cluster])
         (cs/rename-keys {:report-date :beginning})
         (assoc :end (:ceased last-episode))
-        (assoc :episodes (mapv (fn [{:keys [placement report-date]}]
-                                 (hash-map :placement placement
-                                           :offset (time/day-interval beginning report-date)))
-                               episodes)))))
+        (assoc :episodes (->> (mapv (fn [{:keys [placement report-date]}]
+                                      (hash-map :placement placement
+                                                :offset (time/day-interval beginning report-date)))
+                                    episodes)
+                              episodes/simplify)))))
 
 (defn assoc-open-at
   [{:keys [beginning end] :as period} date]
@@ -161,7 +163,19 @@
          :age from-age             ;; in years?
          :terminal? (< segment-duration segment-interval)
          :duration segment-duration ;; duration may not be full segment if they leave
-         :episodes segment-episodes}))))
+         :episodes (episodes/simplify segment-episodes)}))))
+
+(defn shorten-segment
+  [{:keys [duration] :as segment} by]
+  (when (< by duration)
+    (let [episodes (mapv #(update % :offset - by) (:episodes segment))
+          episodes (->> episodes
+                        (drop (->> episodes (filter #(<= (:offset %) 0)) count dec))
+                        (mapv #(update % :offset max 0)))]
+      (-> segment
+          (update :duration - by)
+          (assoc :from-placement (-> episodes first :placement))
+          (assoc :episodes episodes)))))
 
 
 
