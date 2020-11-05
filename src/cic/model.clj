@@ -248,13 +248,14 @@
                                   (reduce (fn [coll offset]
                                             (assoc coll offset
                                                    (->> (mapcat periods/segment periods)
-                                                        (map #(periods/shorten-segment % offset))
+                                                        (map #(periods/tail-segment % offset))
                                                         (keep identity)
                                                         (group-by (juxt :age :from-placement)))))
                                           {}
                                           (range 0 365))))]
     (fn [{:keys [episodes birthday beginning duration] :as period}]
-      (let [offset (rem duration 365)
+      (let [max-duration (dec (time/day-interval beginning (time/years-after birthday 18)))
+            offset (rem duration 365)
             [episodes total-duration] (loop [total-duration duration
                                              last-placement (-> episodes last :placement)
                                              all-episodes episodes
@@ -271,12 +272,14 @@
                                                              (recur (dec lower-range) (inc upper-range))))))]
                                           (when-not sample (println (format "No sample for age %s, placement %s or consecutive age for offset %s" age last-placement offset)))
                                           (let [{:keys [terminal? episodes duration to-placement]} sample
-                                                episodes (episodes/add-offset total-duration episodes)]
-                                            (if (or terminal? (>= age 18))
-                                              [(concat all-episodes episodes) (+ total-duration duration)]
-                                              (recur (+ total-duration duration)
+                                                episodes (concat all-episodes (episodes/add-offset total-duration episodes))
+                                                total-duration (+ total-duration duration)]
+                                            (if (or terminal? (>= total-duration max-duration))
+                                              [(take-while #(< (:offset %) max-duration) episodes)
+                                               (min total-duration max-duration)]
+                                              (recur total-duration
                                                      to-placement
-                                                     (concat all-episodes episodes)
+                                                     episodes
                                                      (get offset-groups 0))))))]
         (doto (-> period
                   (assoc :episodes (episodes/simplify episodes))

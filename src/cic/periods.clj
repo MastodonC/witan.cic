@@ -165,7 +165,17 @@
          :duration segment-duration ;; duration may not be full segment if they leave
          :episodes (episodes/simplify segment-episodes)}))))
 
-(defn shorten-segment
+(defn head-segment
+  "Takes a segment and the number of days to take from the beginning"
+  [{:keys [duration episodes] :as segment} to]
+  (let [episodes (->> episodes
+                      (take-while #(< (:offset %) to)))]
+    (-> segment
+        (assoc :duration to)
+        (assoc :episodes episodes))))
+
+(defn tail-segment
+  "Takes a segment and the number of days to trim off the beginning"
   [{:keys [duration] :as segment} by]
   (when (< by duration)
     (let [episodes (mapv #(update % :offset - by) (:episodes segment))
