@@ -82,6 +82,7 @@
         model-seed {:periods periods
                     :duration-model duration-model
                     ;; :knn-closed-cases knn-closed-cases
+                    :learn-from learn-from
                     :joiner-birthday-model joiner-birthday-model
                     :joiner-range [learn-from project-from]
                     :episodes-range [learn-from project-from]
@@ -223,7 +224,7 @@
   [rewind-years train-years project-years n-runs seed]
   (let [{:keys [project-from periods placement-costs duration-model joiner-birthday-model knn-closed-cases] :as model-inputs} (prepare-model-inputs (load-model-inputs) rewind-years)
         _ (println (str "Project from " project-from))
-        output-file (output-file (format "%s-episodes-%s-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-euclidean-quantile-1-7interval.csv" (la-label) (time/date-as-string project-from) rewind-years train-years project-years n-runs seed))
+        output-file (output-file (format "%s-episodes-%s-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-segments-range.csv" (la-label) (time/date-as-string project-from) rewind-years train-years project-years n-runs seed))
         _ (println output-file)
         project-to (time/years-after project-from project-years)
         learn-from (time/years-before project-from train-years)
@@ -232,6 +233,7 @@
                     :joiner-birthday-model joiner-birthday-model
                     :joiner-range [learn-from project-from]
                     :episodes-range [learn-from project-from]
+                    :segments-range [learn-from project-from]
                     :project-to project-to
                     :project-from project-from}]
     (->> (projection/project-n model-seed [project-to] seed n-runs)
@@ -264,4 +266,18 @@
   (print periods-csv)
 
   project-from
+
+  (def offset-groups (clojure.edn/read-string (slurp "offset-groups.edn")))
+
+  (def offset-groups-list (mapcat (fn [[offset v]] (mapcat (fn [[k v]] (map (fn [v] (assoc v :offset offset)) v)) v)) offset-groups))
+
+  (first offset-groups-list)
+
+  (spit "offset-groups.csv"
+        (str "id,from-placement,to-placement,age,terminal,duration,offset\n"
+             (->> (for [{:keys [id from-placement to-placement age terminal? duration offset]} offset-groups-list]
+                    (clojure.string/join "," (vector id from-placement to-placement age terminal? duration offset)))
+                  (clojure.string/join "\n"))))
   )
+
+

@@ -35,10 +35,10 @@
         period (markov-model {:beginning start-time
                               :birthday birthday
                               :episodes [{:placement joiner-placement :offset 0}]
-                              :duration 0})]
+                              :duration 0
+                              :period-id (rand/rand-id 8 seed-4)})]
     (when (time/< next-time end)
       (let [period (assoc period
-                          :period-id (rand/rand-id 8 seed-4)
                           :admission-age age
                           :dob (time/year birthday)
                           :provenance "S")]
@@ -75,13 +75,13 @@
 
 (defn train-model
   "Build stochastic helper models using R. Random seed ensures determinism."
-  [{:keys [periods joiner-range episodes-range duration-model joiner-birthday-model project-to project-from] :as model-seed} random-seed]
+  [{:keys [periods joiner-range episodes-range duration-model joiner-birthday-model project-to project-from segments-range] :as model-seed} random-seed]
   (println "Training model...")
   (let [[s1 s2 s3] (rand/split-n random-seed 3)
         [joiners-from joiners-to] joiner-range
         [episodes-from episodes-to] episodes-range
         all-periods (rand/sample-birthdays periods s1)
-        markov-model (model/markov-placements-model all-periods)
+        markov-model (apply model/markov-placements-model all-periods segments-range)
         closed-periods (rand/close-open-periods all-periods markov-model s3)]
     
     {:joiners-model (-> (filter #(time/between? (:beginning %) joiners-from joiners-to) closed-periods)

@@ -239,38 +239,59 @@
     (read/knn-closed-cases clusters-out)))
 
 
-(def offset-groups* (atom nil))
+(def offset-groups-filtered* (atom nil))
+(def offset-groups-all* (atom nil))
+(def matched-segments* (atom nil))
+
+(defn offset-groups
+  [offset-groups* periods learn-from learn-to filter?]
+  (or @offset-groups*
+      (reset! offset-groups*
+              (reduce (fn [{:keys [id-offset] :as coll} offset]
+                        (let [[segments id-offset] (reduce (fn [[coll id-offset] period]
+                                                             (let [segments (filter #(or (not filter?)
+                                                                                         (and (time/<= learn-from (:date %))
+                                                                                              (time/< (:date %) learn-to)))
+                                                                                    (periods/segment period id-offset))]
+                                                               [(into coll segments)
+                                                                (+ id-offset (count segments))]))
+                                                           [[] id-offset]
+                                                           periods)]
+                          (-> coll
+                              (assoc offset (->> segments
+                                                 (map #(periods/tail-segment % offset))
+                                                 (keep identity)
+                                                 (group-by (juxt :age :from-placement))))
+                              (assoc :id-offset id-offset))))
+                      {:id-offset 0}
+                      (range 0 365)))))
 
 (defn markov-placements-model
-  [periods]
-  (let [offset-groups (or @offset-groups*
-                          (reset! offset-groups*
-                                  (reduce (fn [coll offset]
-                                            (assoc coll offset
-                                                   (->> (mapcat periods/segment periods)
-                                                        (map #(periods/tail-segment % offset))
-                                                        (keep identity)
-                                                        (group-by (juxt :age :from-placement)))))
-                                          {}
-                                          (range 0 365))))]
-    (fn [{:keys [episodes birthday beginning duration] :as period}]
+  [periods learn-from learn-to]
+  (let [offset-groups-filtered (offset-groups offset-groups-filtered* periods learn-from learn-to true)
+        offset-groups-all (offset-groups offset-groups-all* periods learn-from learn-to false)]
+    (fn [{:keys [episodes birthday beginning duration period-id] :as period}]
       (let [max-duration (dec (time/day-interval beginning (time/years-after birthday 18)))
             offset (rem duration 365)
             [episodes total-duration] (loop [total-duration duration
                                              last-placement (-> episodes last :placement)
                                              all-episodes episodes
-                                             groups (get offset-groups offset)]
+                                             groups-filtered (get offset-groups-filtered offset)
+                                             groups-all (get offset-groups-all offset)]
                                         (let [age (time/year-interval birthday (time/days-after beginning total-duration))
                                               sample (loop [lower-range age
                                                             upper-range age]
                                                        (when (or (>= lower-range 0)
                                                                  (<= upper-range 17))
-                                                         (let [lower (rand-nth (get groups [lower-range last-placement]))
-                                                               upper (rand-nth (get groups [upper-range last-placement]))]
-                                                           (if (or lower upper)
-                                                             (or lower upper)
+                                                         (let [lower-filtered (rand-nth (get groups-filtered [lower-range last-placement]))
+                                                               upper-filtered (rand-nth (get groups-filtered [upper-range last-placement]))
+                                                               lower-all (rand-nth (get groups-all [lower-range last-placement]))
+                                                               upper-all (rand-nth (get groups-all [upper-range last-placement]))]
+                                                           (if (or lower-filtered upper-filtered lower-all upper-all)
+                                                             (or lower-filtered upper-filtered lower-all upper-all)
                                                              (recur (dec lower-range) (inc upper-range))))))]
                                           (when-not sample (println (format "No sample for age %s, placement %s or consecutive age for offset %s" age last-placement offset)))
+                                          (swap! matched-segments* conj {:period-id period-id :sample-id (:id sample)})
                                           (let [{:keys [terminal? episodes duration to-placement]} sample
                                                 episodes (concat all-episodes (episodes/add-offset total-duration episodes))
                                                 total-duration (+ total-duration duration)]
@@ -280,7 +301,8 @@
                                               (recur total-duration
                                                      to-placement
                                                      episodes
-                                                     (get offset-groups 0))))))]
+                                                     (get offset-groups-filtered 0)
+                                                     (get offset-groups-all 0))))))]
         (doto (-> period
                   (assoc :episodes (episodes/simplify episodes))
                   (assoc :duration total-duration)
