@@ -292,12 +292,14 @@
                                                              (recur (dec lower-range) (inc upper-range))))))]
                                           (when-not sample (println (format "No sample for age %s, placement %s or consecutive age for offset %s" age last-placement offset)))
                                           (swap! matched-segments* conj {:period-id period-id :sample-id (:id sample)})
-                                          (let [{:keys [terminal? episodes duration to-placement]} sample
+                                          (let [{:keys [terminal? episodes duration to-placement aged-out?]} sample
                                                 episodes (concat all-episodes (episodes/add-offset total-duration episodes))
-                                                total-duration (+ total-duration duration)]
+                                                total-duration (if aged-out?
+                                                                 max-duration
+                                                                 (min (+ total-duration duration) max-duration))]
                                             (if (or terminal? (>= total-duration max-duration))
-                                              [(take-while #(< (:offset %) max-duration) episodes)
-                                               (min total-duration max-duration)]
+                                              [(take-while #(< (:offset %) total-duration) episodes)
+                                               total-duration]
                                               (recur total-duration
                                                      to-placement
                                                      episodes
