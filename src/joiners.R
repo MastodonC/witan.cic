@@ -9,6 +9,7 @@ library(glm2)
 library(arm)
 
 args = commandArgs(trailingOnly=TRUE)
+# args = c("/var/folders/tw/tzkjfqd11md5hdjcyjxgmf740000gn/T/file14146548989716177472.csv","/var/folders/tw/tzkjfqd11md5hdjcyjxgmf740000gn/T/file346105388764673154.csv","2023-01-01","907901448")
 input <- args[1]
 output <- args[2]
 project.to <- as.Date(parse_date_time(args[3], "%Y-%m-%d"))

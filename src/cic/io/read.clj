@@ -193,3 +193,22 @@
                   (update :x parse-int))))
        (sort-by :n)
        (mapv :x)))
+
+(defn survival-hazard
+  [filename]
+  (->> (load-csv filename)
+       (map (fn [row]
+              (-> row
+                  (update :admission-age parse-int)
+                  (update :duration parse-double)
+                  (update :hazard parse-double))))
+       (group-by :admission-age)))
+
+(defn knn-closed-cases
+  [filename]
+  (->> (load-csv filename)
+       (remove (fn [{:keys [closed]}] (= closed "NULL")))
+       (map (fn [row]
+              (-> row
+                  (update :offset parse-int))))
+       (group-by :open)))

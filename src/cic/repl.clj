@@ -15,42 +15,50 @@
             [redux.core :as rx]
             [kixi.stats.core :as k]))
 
+  (def ccc "data/ccc/2020-06-09/%s")
+  (def ncc "data/ncc/2020-06-09/%s")
+  (def scc "data/scc/2020-08-27/%s")
+
 (def input-format
-  "data/%s")
+  scc)
 
 (def input-file (partial format input-format))
 (def output-file (partial format input-format))
+(defn la-label []
+  (last (re-find #"/([a-z]+cc)/" input-format)))
 
 (defn load-model-inputs
   "A useful REPL function to load the data files and convert them to  model inputs"
   ([{:keys [episodes-csv placement-costs-csv duration-lower-csv duration-median-csv duration-upper-csv
-            zero-joiner-day-ages-csv]}]
+            zero-joiner-day-ages-csv survival-hazard-csv]}]
    (let [episodes (read/episodes episodes-csv)
-         project-from (->> (mapcat (juxt :report-date :ceased) episodes)
-                           (keep identity)
-                           (time/max-date))]
-     (hash-map :project-from project-from
+         latest-event-date (->> (mapcat (juxt :report-date :ceased) episodes)
+                                (keep identity)
+                                (time/max-date))]
+     (hash-map :latest-event-date latest-event-date
                :periods (periods/from-episodes episodes)
                :placement-costs (read/costs-csv placement-costs-csv)
-               :duration-model (-> (read/duration-csvs duration-lower-csv
-                                                       duration-median-csv
-                                                       duration-upper-csv)
-                                   (model/duration-model))
+               ;; :knn-closed-cases (read/knn-closed-cases knn-closed-cases-csv)
                :joiner-birthday-model (-> (read/zero-joiner-day-ages zero-joiner-day-ages-csv)
                                           (model/joiner-birthday-model)))))
   ([]
-   (load-model-inputs {:episodes-csv (format input-format "episodes.scrubbed.csv")
+   (load-model-inputs {:episodes-csv (input-file "episodes.scrubbed.csv")
                        :placement-costs-csv (input-file "placement-costs.csv")
-                       :duration-lower-csv (input-file "duration-model-lower.csv")
-                       :duration-median-csv (input-file "duration-model-median.csv")
-                       :duration-upper-csv (input-file "duration-model-upper.csv")
-                       :zero-joiner-day-ages-csv (input-file "zero-joiner-day-ages.csv")})))
+                       ;; :duration-lower-csv (input-file "duration-model-lower.csv")
+                       ;; :duration-median-csv (input-file "duration-model-median.csv")
+                       ;; :duration-upper-csv (input-file "duration-model-upper.csv")
+                       :zero-joiner-day-ages-csv (input-file "zero-joiner-day-ages.csv")
+                       ;; :survival-hazard-csv (input-file "survival-hazard.csv")
+                       ;; :knn-closed-cases-csv (input-file "knn-closed-cases.csv")
+                       })))
 
 (defn prepare-model-inputs
-  [{:keys [project-from periods] :as model-inputs}]
-  (let [periods (->> (map #(assoc % :reported project-from) periods)
+  [{:keys [latest-event-date periods] :as model-inputs} rewind-years]
+  (let [project-from (time/years-before latest-event-date rewind-years)
+        periods (->> (periods/periods-as-at periods project-from)
                      (periods/assoc-birthday-bounds))]
     (assoc model-inputs
+           :project-from project-from
            :periods periods)))
 
 (defn format-actual-for-output
@@ -65,29 +73,28 @@
 (defn generate-projection-csv!
   "Main REPL function for writing a projection CSV"
   [rewind-years train-years project-years n-runs seed]
-  (let [output-file (output-file (format "projection-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-episodes-filter.csv" rewind-years train-years project-years n-runs seed))
-        {:keys [project-from periods placement-costs duration-model joiner-birthday-model]} (prepare-model-inputs (load-model-inputs))
-        project-from (time/quarter-preceding (time/years-before project-from rewind-years))
+  (let [{:keys [project-from periods placement-costs duration-model joiner-birthday-model]} (prepare-model-inputs (load-model-inputs) rewind-years)
         _ (println (str "Project from " project-from))
+        output-file (output-file (format "%s-projection-%s-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-euclidean-quantile-1-7interval.csv" (la-label) (time/date-as-string project-from) rewind-years train-years project-years n-runs seed))
+        ;; project-from (time/quarter-preceding (time/years-before project-from rewind-years))
         project-to (time/years-after project-from project-years)
         learn-from (time/years-before project-from train-years)
-        projection-periods (periods/periods-as-at periods project-from)
-        projection-seed {:seed (filter :open? projection-periods)
-                         :date project-from}
-        model-seed {:seed projection-periods
+        model-seed {:periods periods
                     :duration-model duration-model
+                    ;; :knn-closed-cases knn-closed-cases
+                    :learn-from learn-from
                     :joiner-birthday-model joiner-birthday-model
                     :joiner-range [learn-from project-from]
                     :episodes-range [learn-from project-from]
+                    :project-from project-from
                     :project-to project-to}
         output-from (time/years-before learn-from 2)
         summary-seq (into []
                           (map format-actual-for-output)
-                          (summary/periods-summary (rand/sample-birthdays projection-periods (rand/seed seed))
+                          (summary/periods-summary (rand/sample-birthdays periods (rand/seed seed))
                                                    (time/day-seq output-from project-from 7)
                                                    placement-costs))
-        projection (projection/projection projection-seed
-                                          model-seed
+        projection (projection/projection model-seed
                                           (time/day-seq project-from project-to 7)
                                           placement-costs
                                           seed n-runs)]
@@ -215,21 +222,62 @@
 (defn generate-episodes-csv!
   "Outputs a file showing a single projection in rowise episodes format."
   [rewind-years train-years project-years n-runs seed]
-  (let [output-file (output-file (format "episodes-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-episodes-filter.csv" rewind-years train-years project-years n-runs seed))
-        _ (println output-file)
-        {:keys [project-from periods placement-costs duration-model joiner-birthday-model] :as model-inputs} (prepare-model-inputs (load-model-inputs))
-        project-from (time/quarter-preceding (time/years-before project-from rewind-years))
+  (let [{:keys [project-from periods placement-costs duration-model joiner-birthday-model knn-closed-cases] :as model-inputs} (prepare-model-inputs (load-model-inputs) rewind-years)
         _ (println (str "Project from " project-from))
+        output-file (output-file (format "%s-episodes-%s-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-segments-range.csv" (la-label) (time/date-as-string project-from) rewind-years train-years project-years n-runs seed))
+        _ (println output-file)
         project-to (time/years-after project-from project-years)
         learn-from (time/years-before project-from train-years)
-        periods (periods/periods-as-at periods project-from)
-        projection-seed {:seed periods
-                         :date project-from}
-        model-seed {:seed periods
-                    :duration-model duration-model
+        t0 (time/min-date (map :beginning periods))
+        model-seed {:periods periods
                     :joiner-birthday-model joiner-birthday-model
                     :joiner-range [learn-from project-from]
-                    :episodes-range [learn-from project-from]}]
-    (->> (projection/project-n projection-seed model-seed [project-to] seed n-runs)
-         (write/episodes-table project-to)
+                    :episodes-range [learn-from project-from]
+                    :segments-range [learn-from project-from]
+                    :project-to project-to
+                    :project-from project-from}]
+    (->> (projection/project-n model-seed [project-to] seed n-runs)
+         (write/episodes-table t0 project-to)
          (write/write-csv! output-file))))
+
+(comment
+  
+  (def episodes (read/episodes (input-file "episodes.scrubbed.csv")))
+  (def periods (periods/from-episodes episodes))
+  (def project-from (-> (->> (mapcat (juxt :report-date :ceased) episodes)
+                             (keep identity)
+                             (time/max-date))
+                        (time/years-before 1)))
+  (def periods (periods/assoc-birthday-bounds (map #(assoc % :snapshot-date project-from) periods)))
+  (def periods (rand/sample-birthdays periods (rand/seed 42)))
+  (def periods (periods/periods-as-at periods project-from))
+  (println (filter #(when (= (:period-id %) "467-1") %) periods))
+  (def knn-closed-cases (read/knn-closed-cases (input-file "knn-closed-cases.csv")))
+  (def markov-model (model/markov-placements-model periods))
+  (markov-model (first (filter #(= (:period-id %) "2409-2") periods)))
+  (filter #(= (:period-id %) "861-3") periods)
+  (filter #(= (:period-id %) "2526-1") periods)
+  (filter #(= (:open %) "861-3") knn-closed-cases))
+
+
+(comment
+  (def periods-csv (write/periods->knn-closed-cases-csv periods))
+
+  (print periods-csv)
+
+  project-from
+
+  (def offset-groups (clojure.edn/read-string (slurp "offset-groups.edn")))
+
+  (def offset-groups-list (mapcat (fn [[offset v]] (mapcat (fn [[k v]] (map (fn [v] (assoc v :offset offset)) v)) v)) offset-groups))
+
+  (first offset-groups-list)
+
+  (spit "offset-groups.csv"
+        (str "id,from-placement,to-placement,age,terminal,duration,offset\n"
+             (->> (for [{:keys [id from-placement to-placement age terminal? duration offset]} offset-groups-list]
+                    (clojure.string/join "," (vector id from-placement to-placement age terminal? duration offset)))
+                  (clojure.string/join "\n"))))
+  )
+
+

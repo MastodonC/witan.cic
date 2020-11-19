@@ -17,8 +17,9 @@
 
 (defn rand-nth
   [coll seed]
-  (let [i (int (p/sample-1 (d/uniform {:a 0 :b (count coll)}) seed))]
-    (nth coll i)))
+  (when (seq coll)
+    (let [i (int (p/sample-1 (d/uniform {:a 0 :b (count coll)}) seed))]
+      (nth coll i))))
 
 (let [letters (map char (range 65 90))]
   (defn rand-id
@@ -34,7 +35,7 @@
   This allows the output to account for uncertainty in the input."
   [periods seed]
   (let [rngs (split-n seed (count periods))]
-    (mapv (fn [{:keys [beginning reported birth-month end period-id birthday-bounds] :as period} rng]
+    (mapv (fn [{:keys [beginning birth-month end period-id birthday-bounds] :as period} rng]
             (let [[earliest-birthday latest-birthday] birthday-bounds]
               (let [birthday-offset (-> {:a 0 :b (time/day-interval earliest-birthday latest-birthday)}
                                         (d/uniform)
@@ -44,3 +45,12 @@
                     (assoc :birthday birthday)
                     (assoc :admission-age (time/year-interval birthday beginning))))))
           periods rngs)))
+
+(defn close-open-periods
+  [periods markov-model seed]
+  (println "Closing open periods...")
+  (for [period periods
+        :let [open-offset (time/day-interval (:beginning period) (:snapshot-date period))]]
+    (if (:open? period)
+      (assoc (markov-model period) :provenance "P")
+      (assoc period :provenance "H"))))
