@@ -1,7 +1,10 @@
 (ns cic.episodes)
 
 (defn remove-unmodelled-episodes [data]
-  (remove (some-fn :uasc (comp #{:V4 :V3} :legal-status)) data))
+  (remove (some-fn :uasc (comp #{:V4 :V3} :legal-status) (comp #{:F6} :placement)) data))
+
+(defn remove-f6 [data]
+  (remove (comp #{:F6} :placement) data))
 
 (defn remove-stale-rows
   "The raw data may contain multiple open episodes for a child, one per report year that the episode was open.
@@ -16,7 +19,8 @@
   [csv]
   (->> csv
        (remove-stale-rows)
-       (remove-unmodelled-episodes)))
+       (remove-unmodelled-episodes)
+       (remove-f6)))
 
 (defn add-offset
   [offset episodes]

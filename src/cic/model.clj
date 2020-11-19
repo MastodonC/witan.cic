@@ -268,7 +268,7 @@
 
 (defn markov-placements-model
   [periods learn-from learn-to]
-  (let [offset-groups-filtered (offset-groups offset-groups-filtered* periods learn-from learn-to true)
+  (let [offset-groups-filtered (offset-groups offset-groups-filtered* periods learn-from learn-to false)
         offset-groups-all (offset-groups offset-groups-all* periods learn-from learn-to false)]
     (fn [{:keys [episodes birthday beginning duration period-id] :as period}]
       (let [max-duration (dec (time/day-interval beginning (time/years-after birthday 18)))
