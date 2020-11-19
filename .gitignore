@@ -16,6 +16,8 @@ pom.xml.asc
 .DS_Store
 /data/
 *.png
-*.csv
-*.log
 offset-groups.edn
+*.csv
+*.edn
+*.log
+.nrepl-history
