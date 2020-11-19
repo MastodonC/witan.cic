@@ -17,3 +17,20 @@
   (->> csv
        (remove-stale-rows)
        (remove-unmodelled-episodes)))
+
+(defn add-offset
+  [offset episodes]
+  (map (fn [episode]
+         (update episode :offset + offset))
+       episodes))
+
+(defn simplify
+  [episodes]
+  (first (reduce (fn [[seq previous-placement] {:keys [placement] :as episode}]
+                   (vector
+                    (cond-> seq
+                      (not= previous-placement placement)
+                      (conj episode))
+                    placement))
+                 [[] nil]
+                 episodes)))

@@ -1,5 +1,6 @@
 (ns cic.periods
   (:require [cic.time :as time]
+            [cic.episodes :as episodes]
             [clojure.set :as cs]
             [taoensso.timbre :as timbre]))
 
@@ -30,10 +31,11 @@
     (-> (select-keys first-episode [:period-id :birth-month :report-date :cluster])
         (cs/rename-keys {:report-date :beginning})
         (assoc :end (:ceased last-episode))
-        (assoc :episodes (mapv (fn [{:keys [placement report-date]}]
-                                 (hash-map :placement placement
-                                           :offset (time/day-interval beginning report-date)))
-                               episodes)))))
+        (assoc :episodes (->> (mapv (fn [{:keys [placement report-date]}]
+                                      (hash-map :placement placement
+                                                :offset (time/day-interval beginning report-date)))
+                                    episodes)
+                              episodes/simplify)))))
 
 (defn assoc-open-at
   [{:keys [beginning end] :as period} date]
@@ -103,7 +105,6 @@
   - A child must have left by the time they are 18
   If these constraints can't be satisfied, a message is logged and the child is excluded."
   [periods]
-  (println (first periods))
   (into []
         (comp (map (fn [{:keys [beginning snapshot-date birth-month end period-id] :as period}]
                      (let [ ;; Earliest possible birthday is either the 1st day in the month of their birth
@@ -136,3 +137,60 @@
                     :snapshot-date snapshot-date})
                  episodes))
           periods))
+
+(defn segment
+  [{:keys [beginning birthday duration episodes open? beginning]} id-offset]
+  (let [segment-interval 365]
+    (map
+     (fn [segment-time idx]
+       (let [reversed-episodes (reverse episodes)
+             segment-duration (min (- duration segment-time) segment-interval)
+             from-age (time/year-interval birthday (time/days-after beginning segment-time))
+             [prior-episodes segment-episodes] (->> episodes
+                                                    (split-with (fn [{:keys [offset placement]}]
+                                                                  (<= offset segment-time))))
+             prior-episode (some-> (last prior-episodes)
+                                   (assoc :offset 0))
+             segment-episodes (concat (when prior-episode [prior-episode])
+                                      (->>  (take-while (fn [{:keys [offset placement]}]
+                                                          (<= offset (+ segment-time segment-interval)))
+                                                        segment-episodes)
+                                            (map (fn [placement]
+                                                   (update placement :offset - segment-time)))))
+             from-placement (->> segment-episodes first :placement)
+             to-placement (->> segment-episodes last :placement)]
+         {:id (+ idx id-offset)
+          :date (time/days-after beginning segment-time)
+          :from-placement from-placement ;; starting placement
+          :to-placement to-placement
+          :age from-age ;; in years?
+          :terminal? (< segment-duration segment-interval)
+          :duration segment-duration ;; duration may not be full segment if they leave
+          :episodes (episodes/simplify segment-episodes)}))
+     (range 0 duration segment-interval)
+     (map inc (range)))))
+
+(defn head-segment
+  "Takes a segment and the number of days to take from the beginning"
+  [{:keys [duration episodes] :as segment} to]
+  (let [episodes (->> episodes
+                      (take-while #(< (:offset %) to)))]
+    (-> segment
+        (assoc :duration to)
+        (assoc :episodes episodes))))
+
+(defn tail-segment
+  "Takes a segment and the number of days to trim off the beginning"
+  [{:keys [duration] :as segment} by]
+  (when (< by duration)
+    (let [episodes (mapv #(update % :offset - by) (:episodes segment))
+          episodes (->> episodes
+                        (drop (->> episodes (filter #(<= (:offset %) 0)) count dec))
+                        (mapv #(update % :offset max 0)))]
+      (-> segment
+          (update :duration - by)
+          (assoc :from-placement (-> episodes first :placement))
+          (assoc :episodes episodes)))))
+
+
+

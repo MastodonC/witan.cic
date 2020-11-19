@@ -1,5 +1,6 @@
 (ns cic.model
-  (:require [cic.io.read :as read]
+  (:require [cic.episodes :as episodes]
+            [cic.io.read :as read]
             [cic.io.write :as write]
             [cic.periods :as periods]
             [cic.random :as rand]
@@ -144,17 +145,6 @@
         (do #_(println "Didn't find phase transition params for age" age "placement" placement "first transition" first-transition?)
             placement)))))
 
-(defn joiner-placements-model
-  [coefs]
-  (fn [age]
-    (let [params (get coefs age)]
-      (if params
-        (let [[ks alphas] (apply map vector params)
-              category-probs (zipmap ks (d/draw (d/dirichlet {:alphas alphas})))]
-          (d/draw (d/categorical category-probs)))
-        spec/unknown-placement ;; Fallback - never seen a joiner of this age
-        ))))
-
 (defn period->phases
   [{:keys [birthday beginning end episodes] :as period} episodes-from episodes-to]
   (for [[{offset-a :offset from :placement} {offset-b :offset to :placement}] (partition-all 2 1 episodes)
@@ -247,3 +237,88 @@
         seed-long (rand/rand-long seed)]
     (rscript/exec script periods-in clusters-out (time/date-as-string project-from) algo (str tiers) (str (Math/abs seed-long)))
     (read/knn-closed-cases clusters-out)))
+
+
+(def offset-groups-filtered* (atom nil))
+(def offset-groups-all* (atom nil))
+(def matched-segments* (atom nil))
+
+(defn offset-groups
+  [offset-groups* periods learn-from learn-to filter?]
+  (or @offset-groups*
+      (reset! offset-groups*
+              (reduce (fn [{:keys [id-offset] :as coll} offset]
+                        (let [[segments id-offset] (reduce (fn [[coll id-offset] period]
+                                                             (let [segments (filter #(or (not filter?)
+                                                                                         (and (time/<= learn-from (:date %))
+                                                                                              (time/< (:date %) learn-to)))
+                                                                                    (periods/segment period id-offset))]
+                                                               [(into coll segments)
+                                                                (+ id-offset (count segments))]))
+                                                           [[] id-offset]
+                                                           periods)]
+                          (-> coll
+                              (assoc offset (->> segments
+                                                 (map #(periods/tail-segment % offset))
+                                                 (keep identity)
+                                                 (group-by (juxt :age :from-placement))))
+                              (assoc :id-offset id-offset))))
+                      {:id-offset 0}
+                      (range 0 365)))))
+
+(defn markov-placements-model
+  [periods learn-from learn-to]
+  (let [offset-groups-filtered (offset-groups offset-groups-filtered* periods learn-from learn-to true)
+        offset-groups-all (offset-groups offset-groups-all* periods learn-from learn-to false)]
+    (fn [{:keys [episodes birthday beginning duration period-id] :as period}]
+      (let [max-duration (dec (time/day-interval beginning (time/years-after birthday 18)))
+            offset (rem duration 365)
+            [episodes total-duration] (loop [total-duration duration
+                                             last-placement (-> episodes last :placement)
+                                             all-episodes episodes
+                                             groups-filtered (get offset-groups-filtered offset)
+                                             groups-all (get offset-groups-all offset)]
+                                        (let [age (time/year-interval birthday (time/days-after beginning total-duration))
+                                              sample (loop [lower-range age
+                                                            upper-range age]
+                                                       (when (or (>= lower-range 0)
+                                                                 (<= upper-range 17))
+                                                         (let [lower-filtered (rand-nth (get groups-filtered [lower-range last-placement]))
+                                                               upper-filtered (rand-nth (get groups-filtered [upper-range last-placement]))
+                                                               lower-all (rand-nth (get groups-all [lower-range last-placement]))
+                                                               upper-all (rand-nth (get groups-all [upper-range last-placement]))]
+                                                           (if (or lower-filtered upper-filtered lower-all upper-all)
+                                                             (or lower-filtered upper-filtered lower-all upper-all)
+                                                             (recur (dec lower-range) (inc upper-range))))))]
+                                          (when-not sample (println (format "No sample for age %s, placement %s or consecutive age for offset %s" age last-placement offset)))
+                                          (swap! matched-segments* conj {:period-id period-id :sample-id (:id sample)})
+                                          (let [{:keys [terminal? episodes duration to-placement]} sample
+                                                episodes (concat all-episodes (episodes/add-offset total-duration episodes))
+                                                total-duration (+ total-duration duration)]
+                                            (if (or terminal? (>= total-duration max-duration))
+                                              [(take-while #(< (:offset %) max-duration) episodes)
+                                               (min total-duration max-duration)]
+                                              (recur total-duration
+                                                     to-placement
+                                                     episodes
+                                                     (get offset-groups-filtered 0)
+                                                     (get offset-groups-all 0))))))]
+        (doto (-> period
+                  (assoc :episodes (episodes/simplify episodes))
+                  (assoc :duration total-duration)
+                  (assoc :open? false)
+                  (assoc :end (time/days-after beginning total-duration))))))))
+
+(defn joiner-placements-model
+  [periods]
+  (let [coefs (reduce (fn [acc {:keys [admission-age episodes]}]
+                        (update-in acc [admission-age (-> episodes first :placement)] (fnil inc 0)))
+                      periods)]
+    (fn [age]
+      (let [params (get coefs age)]
+        (if params
+          (let [[ks alphas] (apply map vector params)
+                category-probs (zipmap ks (d/draw (d/dirichlet {:alphas alphas})))]
+            (d/draw (d/categorical category-probs)))
+          spec/unknown-placement ;; Fallback - never seen a joiner of this age
+)))))
