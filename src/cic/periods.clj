@@ -139,8 +139,9 @@
           periods))
 
 (defn segment
-  [{:keys [beginning birthday duration episodes open? beginning]} id-offset]
-  (let [segment-interval 365]
+  [{:keys [beginning end birthday duration episodes open?]} id-offset]
+  (let [segment-interval 365
+        max-date (time/years-after birthday 18)]
     (map
      (fn [segment-time idx]
        (let [reversed-episodes (reverse episodes)
@@ -166,7 +167,9 @@
           :age from-age ;; in years?
           :terminal? (< segment-duration segment-interval)
           :duration segment-duration ;; duration may not be full segment if they leave
-          :episodes (episodes/simplify segment-episodes)}))
+          :episodes (episodes/simplify segment-episodes)
+          :aged-out? (and end (or (time/>= max-date end)
+                                  (<= 50 (time/day-interval end max-date))))}))
      (range 0 duration segment-interval)
      (map inc (range)))))
 
