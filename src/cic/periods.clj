@@ -4,6 +4,8 @@
             [clojure.set :as cs]
             [taoensso.timbre :as timbre]))
 
+(def segment-interval (* 365 6))
+
 (defn period-id
   "Period ID is a composite key of the child's ID and a period number"
   [episode period-index]
@@ -64,20 +66,23 @@
          (map (comp #(assoc-open-at % projection-start)
                     summarise-periods)))))
 
+(defn period-as-at
+  [{:keys [episodes beginning end open? duration] :as period} as-at]
+  (if (or open? (time/> end as-at))
+    (let [duration (time/day-interval beginning as-at)]
+      (-> period
+          (assoc :open? true)
+          (dissoc :end)
+          (assoc :duration duration)
+          (assoc :snapshot-date as-at)
+          (update :episodes (fn [episodes] (vec (filter #(<= (:offset %) duration) episodes))))))
+    (assoc period :snapshot-date as-at)))
+
 (defn periods-as-at
   "This function takes the periods that have occurred and creates a view of how they would have appeared at some point in the past"
   [periods as-at]
   (->> (filter #(time/<= (:beginning %) as-at) periods)
-       (map (fn [{:keys [episodes beginning end open? duration] :as period}]
-              (if (or open? (time/>= end as-at))
-                (let [duration (time/day-interval beginning as-at)]
-                  (-> period
-                      (assoc :open? true)
-                      (dissoc :end)
-                      (assoc :duration duration)
-                      (assoc :snapshot-date as-at)
-                      (update :episodes (fn [episodes] (vec (filter #(<= (:offset %) duration) episodes))))))
-                (assoc period :snapshot-date as-at))))))
+       (map #(period-as-at % as-at))))
 
 (defn episode-on
   [{:keys [beginning episodes]} date]
@@ -118,8 +123,12 @@
                                                           (time/month-end birth-month))]
                        (if (time/>= latest-birthday earliest-birthday)
                          (assoc period :birthday-bounds [earliest-birthday latest-birthday])
-                         (do (timbre/info (format "Birthday for %s can't be inferred, removing" period-id))
-                             nil)))))
+                         (do (timbre/info (format "Birthday for %s can't be inferred, assuming passed 18. Closing case and truncating at 18" period-id))
+                             (assoc period
+                                    :birthday-bounds [latest-birthday latest-birthday]
+                                    :open? false
+                                    :end (time/days-before (time/years-after latest-birthday 18) 1)
+                                    :duration (dec (time/day-interval latest-birthday (time/years-after latest-birthday 18)))))))))
               (keep identity))
         periods))
 
@@ -139,42 +148,48 @@
           periods))
 
 (defn segment
-  [{:keys [beginning end birthday duration episodes open?]} id-offset]
-  (let [segment-interval 365
-        max-date (time/years-after birthday 18)]
-    (map
-     (fn [segment-time idx]
-       (let [reversed-episodes (reverse episodes)
-             segment-duration (min (- duration segment-time) segment-interval)
-             from-age (time/year-interval birthday (time/days-after beginning segment-time))
-             [prior-episodes segment-episodes] (->> episodes
-                                                    (split-with (fn [{:keys [offset placement]}]
-                                                                  (<= offset segment-time))))
-             prior-episode (some-> (last prior-episodes)
-                                   (assoc :offset 0))
-             segment-episodes (concat (when prior-episode [prior-episode])
-                                      (->>  (take-while (fn [{:keys [offset placement]}]
-                                                          (<= offset (+ segment-time segment-interval)))
-                                                        segment-episodes)
-                                            (map (fn [placement]
-                                                   (update placement :offset - segment-time)))))
-             from-placement (->> segment-episodes first :placement)
-             to-placement (->> segment-episodes last :placement)
-             terminal? (< segment-duration segment-interval)]
-         {:id (+ idx id-offset)
-          :date (time/days-after beginning segment-time)
-          :from-placement from-placement ;; starting placement
-          :to-placement to-placement
-          :age from-age ;; in years?
-          :terminal? terminal?
-          :duration segment-duration ;; duration may not be full segment if they leave
-          :episodes (episodes/simplify segment-episodes)
-          :aged-out? (and terminal? ;; Only set for terminal segment
-                          end
-                          (or (time/>= end max-date)
-                              (<= (time/day-interval end max-date) 50)))}))
-     (range 0 duration segment-interval)
-     (map inc (range)))))
+  [{:keys [beginning end birthday duration episodes open?]}]
+  (let [max-date (time/years-after birthday 18)
+        join-age-days (time/day-interval birthday beginning)]
+    (->> (map
+          (fn [segment-time idx]
+            (let [reversed-episodes (reverse episodes)
+                  ;; Duration is the shorter of the segment duration and the amount of time remaining
+                  segment-duration (min (- duration segment-time) segment-interval)
+                  from-age (time/year-interval birthday (time/days-after beginning segment-time))
+                  [prior-episodes segment-episodes] (->> episodes
+                                                         (split-with (fn [{:keys [offset placement]}]
+                                                                       (<= offset segment-time))))
+                  prior-episode (some-> (last prior-episodes)
+                                        (assoc :offset 0))
+                  segment-episodes (concat (when prior-episode [prior-episode])
+                                           (->>  (take-while (fn [{:keys [offset placement]}]
+                                                               (<= offset (+ segment-time segment-interval)))
+                                                             segment-episodes)
+                                                 (map (fn [placement]
+                                                        (update placement :offset - segment-time)))))
+                  from-placement (->> segment-episodes first :placement)
+                  to-placement (->> segment-episodes last :placement)
+                  terminal? (< segment-duration segment-interval)]
+              (when (pos? segment-duration) ;; No zero-length segments please!
+                {:date (time/days-after beginning segment-time)
+                 :from-placement from-placement ;; starting placement
+                 :to-placement to-placement
+                 :age from-age ;; in years?
+                 :care-days segment-time
+                 :age-days (time/day-interval birthday (time/days-after beginning segment-time))
+                 :join-age-days join-age-days
+                 :initial? (zero? segment-time)
+                 :terminal? terminal?
+                 :duration segment-duration ;; duration may not be full segment if they leave
+                 :episodes (episodes/simplify segment-episodes)
+                 :aged-out? (and terminal? ;; Only set for terminal segment
+                                 end
+                                 (or (time/>= end max-date)
+                                     (<= (time/day-interval end max-date) 50)))})))
+          (range 0 duration segment-interval)
+          (map inc (range)))
+         (keep identity))))
 
 (defn head-segment
   "Takes a segment and the number of days to take from the beginning"
@@ -195,8 +210,39 @@
                         (mapv #(update % :offset max 0)))]
       (-> segment
           (update :duration - by)
+          (update :date time/days-after by)
+          (update :care-days + by)
+          (update :age-days + by)
           (assoc :from-placement (-> episodes first :placement))
           (assoc :episodes episodes)))))
 
+(defn period-generator
+  [periods project-from]
+  (let [period (rand-nth periods)
+        {:keys [open? beginning end]} period
+        interval (time/day-interval beginning (or end project-from))
+        as-at (time/days-after beginning (rand-int interval))]
+    (cons (period-as-at period as-at)
+          (lazy-seq (period-generator periods project-from)))))
+
+(defn period-as-at-wayback
+  [period project-from]
+  (let [{:keys [open? beginning end]} period
+        interval (time/day-interval beginning (or end project-from))
+        as-at (time/days-after beginning (rand-int interval))]
+    (period-as-at period as-at)))
+
+(defn joiner-generator
+  [periods]
+  (let [period (rand-nth periods)]
+    (cons (-> period
+              (assoc :duration 0)
+              (dissoc :end)
+              (assoc :open? true)
+              (update :episodes (partial take 1)))
+          (lazy-seq (joiner-generator periods)))))
 
 
+(defn max-duration
+  [{:keys [birthday beginning]}]
+  (time/day-interval beginning (time/day-before-18th-birthday birthday)))

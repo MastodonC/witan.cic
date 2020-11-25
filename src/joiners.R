@@ -30,7 +30,10 @@ quarters.between <- function(from, to) {
 defaults <- expand.grid(quarter = quarters.between(min(df$beginning), max(df$beginning)), admission_age = levels(df$admission_age))
 
 # Count the joiners per age and quarter
+max_date <- max(df$beginning)
+
 dat <- df %>%
+    filter(ceiling_date(beginning, "3 months") < max_date) %>% # Ensure only complete quarters
     mutate(quarter = floor_date(beginning, "3 months")) %>%
     group_by(admission_age, quarter) %>%
     summarise(n = n()) %>%
@@ -45,9 +48,19 @@ mod <- bayesglm(n ~ quarter * admission_age, data = dat, family = poisson(link =
 params <- mvrnorm(1, coef(mod), vcov(mod))
 params.df <- data.frame(name = names(params), param = params)
 
-# rand <- as.integer(runif(1, 1000, 9999))
-# write.csv(df, sprintf("/Users/henry/Mastodon C/witan.cic/data/testing/input-%s.csv", rand), row.names = FALSE)
-# write.csv(params.df, sprintf("/Users/henry/Mastodon C/witan.cic/data/testing/params-%s.csv", rand), row.names = FALSE)
+
+# FIXME: override trending with static data
+# Take a mean from the past 5 years
+# mean_arrivals <- dat %>%
+#         filter(quarter >= max(df$beginning) - years(1)) %>%
+#     group_by(admission_age) %>%
+#     summarise(n = mean(n))
+# params.df <- data.frame(name = c("(Intercept)", "quarter",
+#                                  paste0("admission_age", mean_arrivals$admission_age),
+#                                  paste0("quarter:admission_age", mean_arrivals$admission_age)),
+#                         param = c(0, 0,
+#                                   log(mean_arrivals$n),
+#                                   rep(0, nrow(mean_arrivals))))
 
 write.csv(params.df, output, row.names = FALSE)
 

@@ -133,3 +133,7 @@
   [date]
   (p/periodic-seq (financial-year-end date)
                   (t/years 1)))
+
+(defn day-before-18th-birthday
+  [birthday]
+  (t/minus (t/plus birthday (t/years 18)) (t/days 1)))

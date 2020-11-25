@@ -1,5 +1,6 @@
 (ns cic.io.read
   (:require [camel-snake-kebab.core :as csk]
+            [cic.time :as time]
             [clj-time.format :as f]
             [clojure.data.csv :as data-csv]
             [clojure.java.io :as io]
@@ -41,15 +42,18 @@
 
 (defn format-episode
   [row]
-  (-> (cs/rename-keys row {:id :child-id :care-status :CIN :dob :birth-month})
-      (update :birth-month parse-month)
-      (update :report-date parse-date)
-      (update :ceased #(when-not (str/blank? %) (parse-date %)))
-      (update :report-year #(Long/parseLong %))
-      (update :placement parse-placement)
-      (update :CIN keyword)
-      (update :legal-status keyword)
-      (update :uasc (comp boolean #{"True"}))))
+  (let [max-date (time/make-date 2020 3 31)]
+    (-> (cs/rename-keys row {:id :child-id :care-status :CIN :dob :birth-month})
+        (update :birth-month parse-month)
+        (update :report-date parse-date)
+        (update :ceased #(when-let [ceased (when-not (str/blank? %) (parse-date %))]
+                           (when (time/<= ceased max-date)
+                             ceased)))
+        (update :report-year #(Long/parseLong %))
+        (update :placement parse-placement)
+        (update :CIN keyword)
+        (update :legal-status keyword)
+        (update :uasc (comp boolean #{"True"})))))
 
 (defn load-csv
   "Loads csv file with each row as a vector.
@@ -62,7 +66,7 @@
                           (vec)))
         parsed-data (rest parsed-csv)
         headers (map csk/->kebab-case-keyword (first parsed-csv))]
-    (map (partial zipmap headers) parsed-data)))
+    (into [] (map (partial zipmap headers)) parsed-data)))
 
 (defn episodes
   [filename]
@@ -212,3 +216,61 @@
               (-> row
                   (update :offset parse-int))))
        (group-by :open)))
+
+(defn rejection-proportions
+  [filename]
+  (->> (load-csv filename)
+       (map (fn [row]
+              (-> row
+                  (update :age parse-int)
+                  (update :group parse-double)
+                  (update :p parse-double))))
+       (group-by (juxt :age :group))
+       (reduce (fn [coll [k v]]
+                 (assoc coll k (reduce (fn [coll {:keys [provenance p]}]
+                                         (assoc coll (keyword (str/lower-case provenance)) p))
+                                       {} v)))
+               {})))
+
+(defn returning
+  [x & args]
+  x)
+
+(defn period-candidates
+  [filename]
+  (println "Reading period candidates")
+  (returning
+   (->> (load-csv filename)
+        (map (fn [row]
+               (try
+                 (-> row
+                     (update :admission-age parse-int)
+                     (update :admission-age-days parse-int)
+                     (update :duration parse-int)
+                     (update :duration-group parse-int)
+                     (update :reject-ratio parse-double))
+                 (catch Exception e
+                   (println row)
+                   (throw e))))))
+   (println "Read period candidates")))
+
+(defn age-out-proportions
+  [filename]
+  (->> (load-csv filename)
+       (map (fn [row]
+              (-> row
+                  (update :admission-age parse-int)
+                  (update :p parse-double))))
+       (reduce (fn [coll {:keys [admission-age p]}]
+                 (assoc coll admission-age p))
+               {})))
+
+(defn age-out-candidates
+  [filename]
+  (->> (load-csv filename)
+       (map (fn [row]
+              (-> row
+                  (update :admission-age parse-int)
+                  (update :admission-age-days parse-int)
+                  (update :duration parse-int))))))
+

@@ -1,6 +1,7 @@
 (ns cic.random
   (:refer-clojure :exclude [rand-nth])
   (:require [cic.time :as time]
+            [cic.periods :as periods]
             [clojure.test.check.random :as r]
             [kixi.stats.distribution :as d]
             [kixi.stats.protocols :as p]))
@@ -43,14 +44,35 @@
                     birthday (time/days-after earliest-birthday birthday-offset)]
                 (-> period
                     (assoc :birthday birthday)
-                    (assoc :admission-age (time/year-interval birthday beginning))))))
+                    (assoc :admission-age (time/year-interval birthday beginning))
+                    (assoc :admission-age-days (time/day-interval birthday beginning))))))
           periods rngs)))
 
 (defn close-open-periods
-  [periods markov-model seed]
+  [periods projection-model age-out-model age-out-projection-model seed]
   (println "Closing open periods...")
-  (for [period periods
-        :let [open-offset (time/day-interval (:beginning period) (:snapshot-date period))]]
-    (if (:open? period)
-      (assoc (markov-model period) :provenance "P")
-      (assoc period :provenance "H"))))
+  (->> (for [{:keys [period-id beginning open? admission-age birthday] :as period} periods
+             :let [age-out? (age-out-model admission-age seed)]]
+         (if open?
+           (if-let [{:keys [episodes-edn duration]} (if age-out?
+                                                      (or (age-out-projection-model period-id)
+                                                          (projection-model period-id))
+                                                      (projection-model period-id))]
+             (let [duration (if (or age-out? (>= (time/year-interval birthday (time/days-after beginning duration)) 17))
+                              ;; Either we wanted to age out, or they did by virtue of staying beyond 17th birthday
+                              (periods/max-duration period)
+                              (min duration (periods/max-duration period)))]
+               (assoc period
+                      :episodes (read-string episodes-edn)
+                      :duration duration
+                      :end (time/days-after beginning duration)
+                      :provenance "P"))
+             ;; If we can't close a case, it's almost certainly
+             ;; because they are an aged-out case. Set max duration
+             (let [duration (periods/max-duration period)]
+               (assoc period
+                      :duration duration
+                      :end (time/days-after beginning duration)
+                      :provenance "P")))
+           (assoc period :provenance "H")))
+       #_(keep identity)))

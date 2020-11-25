@@ -17,7 +17,7 @@
 
   (def ccc "data/ccc/2020-06-09/%s")
   (def ncc "data/ncc/2020-06-09/%s")
-(def scc "data/scc/2020-10-22/%s")
+  (def scc "data/scc/2021-02-24/%s")
 
 (def input-format
   scc)
@@ -27,10 +27,25 @@
 (defn la-label []
   (last (re-find #"/([a-z]+cc)/" input-format)))
 
+(defn load-preparation-inputs
+  ([{:keys [episodes-csv]}]
+   (let [episodes (-> (read/episodes episodes-csv)
+                      (episodes/remove-f6))
+         latest-event-date (->> (mapcat (juxt :report-date :ceased) episodes)
+                                (keep identity)
+                                (time/max-date))]
+     (hash-map :latest-event-date latest-event-date
+               :periods (periods/from-episodes episodes))))
+  ([]
+   (load-preparation-inputs {:episodes-csv (input-file "suffolk-scrubbed-episodes-20210219.csv")})))
+
 (defn load-model-inputs
   "A useful REPL function to load the data files and convert them to  model inputs"
   ([{:keys [episodes-csv placement-costs-csv duration-lower-csv duration-median-csv duration-upper-csv
-            zero-joiner-day-ages-csv survival-hazard-csv]}]
+            zero-joiner-day-ages-csv survival-hazard-csv rejection-proportions-csv
+            candidates-simulation-csv candidates-projection-csv
+            age-out-proportions-csv
+            age-out-projected-candidates-csv age-out-simulated-candidates-csv]}]
    (let [episodes (-> (read/episodes episodes-csv)
                       (episodes/remove-f6))
          latest-event-date (->> (mapcat (juxt :report-date :ceased) episodes)
@@ -41,9 +56,27 @@
                :placement-costs (read/costs-csv placement-costs-csv)
                ;; :knn-closed-cases (read/knn-closed-cases knn-closed-cases-csv)
                :joiner-birthday-model (-> (read/zero-joiner-day-ages zero-joiner-day-ages-csv)
-                                          (model/joiner-birthday-model)))))
+                                          (model/joiner-birthday-model))
+               ;;:rejection-model
+               #_(-> (read/rejection-proportions rejection-proportions-csv)
+                   (model/rejection-model))
+               :projection-model
+               (-> (read/period-candidates candidates-projection-csv)
+                   (model/projection-model))
+               :simulation-model
+               (-> (read/period-candidates candidates-simulation-csv)
+                   (model/simulation-model))
+               :age-out-model
+               (-> (read/age-out-proportions age-out-proportions-csv)
+                   (model/age-out-model))
+               :age-out-projection-model
+               (-> (read/age-out-candidates age-out-projected-candidates-csv)
+                   (model/age-out-projection-model))
+               :age-out-simulation-model
+               (-> (read/age-out-candidates age-out-simulated-candidates-csv)
+                   (model/age-out-simulation-model)))))
   ([]
-   (load-model-inputs {:episodes-csv (input-file "suffolk-scrubbed-episodes-20201022-a.csv")
+   (load-model-inputs {:episodes-csv (input-file "suffolk-scrubbed-episodes-20210219.csv")
                        :placement-costs-csv (input-file "placement-costs.csv")
                        ;; :duration-lower-csv (input-file "duration-model-lower.csv")
                        ;; :duration-median-csv (input-file "duration-model-median.csv")
@@ -51,7 +84,14 @@
                        :zero-joiner-day-ages-csv (input-file "zero-joiner-day-ages.csv")
                        ;; :survival-hazard-csv (input-file "survival-hazard.csv")
                        ;; :knn-closed-cases-csv (input-file "knn-closed-cases.csv")
+                       ;; :rejection-proportions-csv (input-file "rejection-proportions.csv")
+                       :candidates-projection-csv (input-file "projected-candidates.csv")
+                       :candidates-simulation-csv (input-file "simulated-candidates.csv")
+                       :age-out-proportions-csv (input-file "age-out-proportions.csv")
+                       :age-out-projected-candidates-csv (input-file "projected-age-out-candidates.csv")
+                       :age-out-simulated-candidates-csv (input-file "simulated-age-out-candidates.csv")
                        })))
+
 
 (defn prepare-model-inputs
   [{:keys [latest-event-date periods] :as model-inputs} rewind-years]
@@ -74,23 +114,29 @@
 (defn generate-projection-csv!
   "Main REPL function for writing a projection CSV"
   [rewind-years train-years project-years n-runs seed]
-  (let [{:keys [project-from periods placement-costs duration-model joiner-birthday-model]} (prepare-model-inputs (load-model-inputs) rewind-years)
-        _ (println (str "Project from " project-from))
-        output-file (output-file (format "%s-projection-%s-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-euclidean-quantile-1-7interval.csv" (la-label) (time/date-as-string project-from) rewind-years train-years project-years n-runs seed))
-        ;; project-from (time/quarter-preceding (time/years-before project-from rewind-years))
-        project-to (time/years-after project-from project-years)
+  (let [{:keys [project-from periods placement-costs duration-model joiner-birthday-model
+                rejection-model projection-model simulation-model
+                age-out-model age-out-projection-model age-out-simulation-model]} (prepare-model-inputs (load-model-inputs) rewind-years)
+        output-file (output-file (format "%s-projection-%s-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-uniform-resampling.csv" (la-label) (time/date-as-string project-from) rewind-years train-years project-years n-runs seed))
+         project-to (time/years-after project-from project-years) ;; project-to (time/days-after project-from 100) ;;
         learn-from (time/years-before project-from train-years)
         model-seed {:periods periods
                     :duration-model duration-model
+                    :rejection-model rejection-model
                     ;; :knn-closed-cases knn-closed-cases
                     :learn-from learn-from
                     :joiner-birthday-model joiner-birthday-model
                     :joiner-range [learn-from project-from]
                     :episodes-range [learn-from project-from]
-                    :segments-range [learn-from project-from]
+                    :segments-range [(time/years-before learn-from 20) (time/years-after project-from 20)]
                     :project-from project-from
-                    :project-to project-to}
-        output-from (time/years-before learn-from 2)
+                    :project-to project-to
+                    :projection-model projection-model
+                    :simulation-model simulation-model
+                    :age-out-model age-out-model
+                    :age-out-projection-model age-out-projection-model
+                    :age-out-simulation-model age-out-simulation-model}
+        output-from (time/years-before learn-from 2) ;; output-from (time/days-before project-from 100) ;; 
         summary-seq (into []
                           (map format-actual-for-output)
                           (summary/periods-summary (rand/sample-birthdays periods (rand/seed seed))
@@ -101,6 +147,81 @@
                                           placement-costs
                                           seed n-runs)]
     (->> (write/projection-table (concat summary-seq projection))
+         (write/write-csv! output-file))))
+
+(defn generate-distribution-csv!
+  "Main REPL function for writing a projection CSV"
+  [rewind-years train-years n-samples seed]
+  (let [{:keys [project-from periods placement-costs duration-model joiner-birthday-model rejection-proportions]} (prepare-model-inputs (load-model-inputs) rewind-years)
+        _ (println (str "Project from " project-from))
+        output-file (output-file (format "%s-distribution-%s-segment-interval-%s-rewind-%syr-train-%syr-samples-%s-seed-%s.csv" (la-label) (time/date-as-string project-from) periods/segment-interval rewind-years train-years n-samples seed))
+        ;; project-from (time/quarter-preceding (time/years-before project-from rewind-years))
+        periods (rand/sample-birthdays periods (rand/seed seed))
+        learn-from (time/years-before project-from train-years)
+        period-completer (model/markov-placements-model periods (constantly true) learn-from project-from true)
+        simulated-periods (into []
+                                (comp (map #(assoc % :provenance "S"))
+                                      (map period-completer)
+                                      (take n-samples))
+                                (periods/joiner-generator periods))]
+    (->> (periods/period-generator periods project-from)
+         (into simulated-periods
+               (comp (map #(assoc % :provenance "P"))
+                     (map period-completer)
+                     (take n-samples)))
+         (write/duration-table)
+         (write/write-csv! output-file))))
+
+(defn output-segments-csv!
+  [rewind-years train-years seed]
+  (let [{:keys [project-from periods placement-costs duration-model joiner-birthday-model]} (prepare-model-inputs (load-model-inputs) rewind-years)
+        _ (println (str "Project from " project-from))
+        output-file (output-file (format "%s-segments-%s-segment-interval-%s-rewind-%syr-train-%syr-seed-%s.csv" (la-label) (time/date-as-string project-from) periods/segment-interval rewind-years train-years seed))
+        ;; project-from (time/quarter-preceding (time/years-before project-from rewind-years))
+        periods (rand/sample-birthdays periods (rand/seed seed))
+        learn-from (time/years-before project-from train-years)
+        close-open-periods? true
+        offset-segments (model/offset-groups periods learn-from project-from close-open-periods?)]
+    (->> (vals offset-segments)
+         (apply concat)
+         (write/segments-table)
+         (write/write-csv! output-file))))
+
+(defn output-generated-universe!
+  [rewind-years train-years n-samples seed]
+  (let [{:keys [project-from periods]} (prepare-model-inputs (load-preparation-inputs) rewind-years)
+        _ (println (str "Project from " project-from))
+        output-file (output-file (format "%s-periods-universe-%s-segment-interval-%s-rewind-%syr-train-%syr-samples-%s-seed-%s-age-out-jitter-7.csv" (la-label) (time/date-as-string project-from) periods/segment-interval rewind-years train-years n-samples seed))
+        periods (rand/sample-birthdays periods (rand/seed seed))
+        learn-from (time/years-before project-from train-years)
+        period-completer (model/markov-placements-model periods (constantly true) learn-from project-from true)
+        historic-periods (map #(assoc % :provenance "H" :iteration 0) (remove :open? periods))
+        open-periods (map #(assoc % :provenance "O") (filter :open? periods))
+        candidate-periods (into [] (map (fn [iter]
+                                          (map #(assoc % :iteration iter :provenance "C")
+                                               (rand/sample-birthdays open-periods (rand/seed (+ seed iter))))))
+                                (range n-samples))
+        _ (println "Finished candidates")
+        completed-periods (into [] (comp cat
+                                         (map #(assoc % :provenance "P"))
+                                         (map period-completer))
+                                candidate-periods)
+        completed-periods (into completed-periods (comp cat
+                                                        (map #(assoc % :provenance "P" :aged-out? true))
+                                                        (map #(period-completer % true)))
+                                candidate-periods)
+        _ (println "Finished projected periods")
+        simulated-periods (into [] (comp cat
+                                         (map #(assoc % :provenance "S"))
+                                         (map (comp period-completer #(periods/period-as-at-wayback % project-from))))
+                                candidate-periods)
+        simulated-periods (into simulated-periods (comp cat
+                                                        (map #(assoc % :provenance "S" :aged-out? true))
+                                                        (map (comp #(period-completer % true) #(periods/period-as-at-wayback % project-from))))
+                                candidate-periods)
+        _ (println "Finished simulated periods")]
+    (->> (apply concat historic-periods open-periods completed-periods simulated-periods candidate-periods)
+         (write/periods-universe)
          (write/write-csv! output-file))))
 
 (defn generate-annual-csv!
@@ -224,10 +345,11 @@
 (defn generate-episodes-csv!
   "Outputs a file showing a single projection in rowise episodes format."
   [rewind-years train-years project-years n-runs seed]
-  (let [{:keys [project-from periods placement-costs duration-model joiner-birthday-model knn-closed-cases] :as model-inputs} (prepare-model-inputs (load-model-inputs) rewind-years)
+  (let [{:keys [project-from periods placement-costs duration-model joiner-birthday-model knn-closed-cases
+                projection-model simulation-model
+                age-out-model age-out-projection-model age-out-simulation-model] :as model-inputs} (prepare-model-inputs (load-model-inputs) rewind-years)
         _ (println (str "Project from " project-from))
-        output-file (output-file (format "%s-episodes-%s-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-segments-range.csv" (la-label) (time/date-as-string project-from) rewind-years train-years project-years n-runs seed))
-        _ (println output-file)
+        output-file (output-file (format "%s-episodes-%s-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-uniform-resampling.csv" (la-label) (time/date-as-string project-from) rewind-years train-years project-years n-runs seed))
         project-to (time/years-after project-from project-years)
         learn-from (time/years-before project-from train-years)
         t0 (time/min-date (map :beginning periods))
@@ -237,14 +359,19 @@
                     :episodes-range [learn-from project-from]
                     :segments-range [learn-from project-from]
                     :project-to project-to
-                    :project-from project-from}]
+                    :project-from project-from
+                    :projection-model projection-model
+                    :simulation-model simulation-model
+                    :age-out-model age-out-model
+                    :age-out-projection-model age-out-projection-model
+                    :age-out-simulation-model age-out-simulation-model}]
     (->> (projection/project-n model-seed [project-to] seed n-runs)
          (write/episodes-table t0 project-to)
          (write/write-csv! output-file))))
 
 (comment
   
-  (def episodes (read/episodes (input-file "episodes.scrubbed.csv")))
+  (def episodes (read/episodes (input-file "suffolk-scrubbed-episodes-20210219.csv")))
   (def periods (periods/from-episodes episodes))
   (def project-from (-> (->> (mapcat (juxt :report-date :ceased) episodes)
                              (keep identity)
@@ -280,6 +407,131 @@
              (->> (for [{:keys [id from-placement to-placement age terminal? duration offset]} offset-groups-list]
                     (clojure.string/join "," (vector id from-placement to-placement age terminal? duration offset)))
                   (clojure.string/join "\n"))))
+  )
+
+(comment
+  (def offset-segments (model/offset-groups periods
+                                            (time/years-before project-from 10)
+                                            (time/years-after project-from 10)
+                                            true))
+  
+  (def placements (distinct (map :placement episodes)))
+
+  (def source-segments
+    (into [] (comp (mapcat (fn [placement]
+                             (get offset-segments [0 true placement true])))
+                   (filter (every-pred :initial? :terminal?))) placements))
+
+  (def max-age-days (* 365 18))
+
+  (def get-matched-segment (fn [feature-fn feature-vec segments]
+                             (model/min-key'
+                              (fn [segment]
+                                (model/euclidean-distance (feature-fn segment) feature-vec))
+                              segments)))
+
+  (def jitter-scale 1)
+
+  (defn to-table [cols xs]
+    (into [(mapv name cols)]
+          (map (apply juxt cols))
+          xs))
+
+
+  (def period-simulations
+    (into [] (comp (filter :open?)
+                   (map (fn [{:keys [birthday beginning snapshot-date duration episodes] :as period}]
+                          (assoc period
+                                 :join-age-days (time/day-interval birthday beginning)
+                                 :age-days (time/day-interval birthday snapshot-date)
+                                 :care-days (time/day-interval beginning snapshot-date)
+                                 :max-duration (dec (time/day-interval beginning (time/days-after birthday max-age-days)))
+                                 :offset (rem duration periods/segment-interval)
+                                 :last-placement (-> episodes last :placement)
+                                 :initial? (< duration periods/segment-interval))))
+                   (mapcat (fn [{:keys [age-days care-days duration max-duration offset last-placement initial? join-age-days] :as period}]
+                             (into [] (map (fn [simulation]
+                                             (let [age-days (model/jitter-binomial age-days max-age-days jitter-scale)
+                                                   care-days (model/jitter-binomial duration max-duration jitter-scale)
+                                                   segment (get-matched-segment (juxt :age-days :care-days) [age-days care-days]
+                                                                                (get offset-segments [offset true last-placement initial?]))]
+                                               (when segment
+                                                 (assoc period
+                                                        :combined-duration (+ duration (:duration segment))
+                                                        :care-weeks (quot (+ duration (:duration segment)) 7)
+                                                        :segment-simulation simulation
+                                                        :segment-terminal? (:terminal? segment)
+                                                        :segment-duration (:duration segment)
+                                                        :segment-age-days (:age-days segment)
+                                                        :segment-care-days (:care-days segment)
+                                                        :last-placement (-> segment :episodes last :placement)
+                                                        :segment-aged-out? (:aged-out? segment))))))
+                                   (range 100))))
+                   (remove nil?))
+          periods))
+
+  (cic.io.write/write-csv! "period-simulations.csv" (to-table [:join-age-days :care-days :last-placement :segment-duration :segment-terminal?] period-simulations))
+
+  (cic.io.write/write-csv! "closed-periods.csv" (to-table [:join-age-days :care-days :last-placement] (into [] (comp (remove :open?)
+                                                                                                                     (map (fn [{:keys [birthday beginning end episodes] :as period}]
+                                                                                                                            (assoc period
+                                                                                                                                   :join-age-days (time/day-interval birthday beginning)
+                                                                                                                                   :care-days (time/day-interval beginning end)
+                                                                                                                                   :last-placement (-> episodes last :placement)))))
+                                                                                                            periods)))
+
+  ;; For terminal durations less than 1 year, what is the density per week?
+
+  (def inc! (fnil inc 0))
+
+  (def simulated-distribution
+    (->> (into []
+               (filter (every-pred :segment-terminal? #(< (:combined-duration %) periods/segment-interval)))
+               period-simulations)
+         (reduce (fn [acc {:keys [admission-age care-weeks] :as simulation}]
+                   (-> acc
+                       (update-in [admission-age care-weeks] inc!)
+                       (update-in [admission-age :n] inc!)))
+                 {})))
+
+
+  (def empirical-distribution
+    (->> (into []
+               (comp (remove :open?)
+                     (filter #(< (:duration %) periods/segment-interval))
+                     (map #(assoc % :care-weeks (quot (:duration %) 7))))
+               periods)
+         (reduce (fn [acc {:keys [admission-age care-weeks] :as simulation}]
+                   (-> acc
+                       (update-in [admission-age care-weeks] inc!)
+                       (update-in [admission-age :n] inc!)))
+                 {})))
+  
+
+  
+  (defn admission-age-care-weeks-pdf
+    [sample]
+    (let [counts (reduce (fn [acc {:keys [admission-age care-weeks] :as simulation}]
+                           (-> acc
+                               (update-in [admission-age care-weeks] inc!)
+                               (update-in [admission-age :n] inc!)))
+                         {})]
+      (reduce (fn [counts age]
+                (let [n (get-in counts [age :n] 0)
+                      +' (fnil + 0)
+                      adj (/ 1 52)]
+                  (reduce (fn [counts week]
+                            (-> counts
+                                (update-in [age week] +' adj)
+                                (update-in [age week] / (inc n))
+                                (update-in [age week] double)))
+                          (update counts age dissoc :n)
+                          (range 52))))
+              counts
+              (range 17))))
+  
+
+
   )
 
 

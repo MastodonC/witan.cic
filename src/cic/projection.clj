@@ -1,5 +1,6 @@
 (ns cic.projection
-  (:require [cic.model :as model]
+  (:require [clojure.core.async :as a]
+            [cic.model :as model]
             [cic.random :as rand]
             [cic.spec :as spec]
             [cic.summary :as summary]
@@ -23,33 +24,44 @@
 
 (defn joiners-seq
   "Return a lazy sequence of projected joiners for a particular age of admission."
-  [joiners-model duration-model joiner-placements-model markov-model placements-model joiner-birthday-model last-joiner previous-offset age end seed]
+  [joiners-model duration-model joiner-placements-model markov-model placements-model simulation-model joiner-birthday-model last-joiner previous-offset age end seed]
   (let [[seed-1 seed-2 seed-3 seed-4 seed-5 seed-6] (rand/split-n seed 6)
         interval (joiners-model (time/days-after last-joiner previous-offset) seed-1)
         new-offset (+ previous-offset interval)
         next-time (time/days-after last-joiner new-offset)
         start-time (time/without-time next-time)
-        birthday (joiner-birthday-model start-time seed-6)
-        joiner-placement (joiner-placements-model age)
-        ;; duration (duration-model birthday start-time seed-2)
-        period (markov-model {:beginning start-time
-                              :birthday birthday
-                              :episodes [{:placement joiner-placement :offset 0}]
-                              :duration 0
-                              :period-id (rand/rand-id 8 seed-4)})]
+        {:keys [episodes-edn admission-age-days duration iterations]} (simulation-model age)
+        birthday (time/days-before start-time admission-age-days)
+        age-out? (>= (time/year-interval birthday (time/days-after start-time duration)) 17)
+        max-duration (time/day-interval start-time (time/day-before-18th-birthday birthday))
+        duration (if age-out?
+                   max-duration
+                   (min duration max-duration))
+        period {:beginning start-time
+                :birthday birthday
+                :episodes (read-string episodes-edn)
+                :duration duration
+                :end (time/days-after start-time duration)
+                :open? false
+                :provenance "S"
+                :admission-age age
+                :dob (time/year birthday)
+                :period-id (rand/rand-id 8 seed-4)}]
     (when (time/< next-time end)
-      (let [period (assoc period
-                          :admission-age age
-                          :dob (time/year birthday)
-                          :provenance "S")]
+      (if period
         (cons period
               (lazy-seq
                (joiners-seq joiners-model duration-model joiner-placements-model markov-model
-                            placements-model joiner-birthday-model last-joiner new-offset age end seed-5)))))))
+                            placements-model simulation-model joiner-birthday-model last-joiner new-offset age end seed-5)))
+        (lazy-seq
+         (joiners-seq joiners-model duration-model joiner-placements-model markov-model
+                      placements-model simulation-model joiner-birthday-model last-joiner new-offset age end seed-5))))))
 
 (defn project-joiners
   "Return a lazy sequence of projected joiners for all ages of admission."
-  [{:keys [joiners-model joiner-placements-model markov-model duration-model placements-model joiner-birthday-model periods project-from] :as model}
+  [{:keys [joiners-model joiner-placements-model markov-model duration-model placements-model joiner-birthday-model
+           periods project-from
+           simulation-model] :as model}
    end seed]
   (let [previous-joiner-per-age (->> (group-by :admission-age periods)
                                      (reduce (fn [m [k v]] (assoc m k (time/max-date (map :beginning v)))) {}))]
@@ -61,6 +73,7 @@
                              joiner-placements-model
                              markov-model
                              placements-model
+                             simulation-model
                              (partial joiner-birthday-model age)
                              previous-joiner-at-age 0
                              age end seed)))
@@ -68,22 +81,22 @@
             (rand/split-n seed (count spec/ages)))))
 
 (defn init-model
-  [{:keys [periods joiner-range episodes-range duration-model joiner-birthday-model project-from project-to] :as model-seed} random-seed]
-  (let [[s1 s2] (rand/split-n random-seed 2)
-        all-periods (rand/sample-birthdays periods s1)]
+  [{:keys [periods joiner-range episodes-range duration-model joiner-birthday-model project-from project-to segments-range rejection-model] :as model-seed} random-seed]
+  (let [[s1 s2] (rand/split-n random-seed 2)]
     model-seed))
 
 (defn train-model
   "Build stochastic helper models using R. Random seed ensures determinism."
-  [{:keys [periods joiner-range episodes-range duration-model joiner-birthday-model project-to project-from segments-range] :as model-seed} random-seed]
+  [{:keys [periods joiner-range episodes-range duration-model joiner-birthday-model project-to project-from segments-range markov-model
+           projection-model simulation-model age-out-model
+           age-out-projection-model age-out-simulation-model] :as model-seed} random-seed]
   (println "Training model...")
   (let [[s1 s2 s3] (rand/split-n random-seed 3)
         [joiners-from joiners-to] joiner-range
         [episodes-from episodes-to] episodes-range
+        [learn-from learn-to] segments-range
         all-periods (rand/sample-birthdays periods s1)
-        markov-model (apply model/markov-placements-model all-periods segments-range)
-        closed-periods (rand/close-open-periods all-periods markov-model s3)]
-    
+        closed-periods (rand/close-open-periods all-periods projection-model age-out-model age-out-projection-model s3)]
     {:joiners-model (-> (filter #(time/between? (:beginning %) joiners-from joiners-to) closed-periods)
                         (model/joiners-model-gen project-to s2))
      :joiner-birthday-model joiner-birthday-model
@@ -91,7 +104,12 @@
      :markov-model markov-model
      :joiner-placements-model (model/joiner-placements-model all-periods)
      :periods closed-periods
-     :project-from project-from}))
+     :project-from project-from
+     :projection-model projection-model
+     :simulation-model (fn [admission-age]
+                         (or (when (or (age-out-model admission-age nil) (= admission-age 17)) ;; TODO Passing nil because seed isn't used yet
+                               (age-out-simulation-model admission-age))
+                             (simulation-model admission-age)))}))
 
 (defn project-1
   "Returns a single sequence of projected periods."
@@ -100,23 +118,36 @@
         model (train-model model-seed s1)]
     (concat (:periods model) (project-joiners model end s3))))
 
-(defn project-n
-  "Returns n stochastic sequences of projected periods."
+(defn projection-chan
   [model-seed project-dates seed n-runs]
   (let [max-date (time/max-date project-dates)
         [s1 s2] (rand/split-n (rand/seed seed) 2)
-        model-seed (init-model model-seed s1)]
-    (map-indexed (fn [iteration seed]
-                   (->> (project-1 model-seed max-date seed)
-                        (map #(assoc % :simulation-number (inc iteration)))))
-                 (rand/split-n s2 n-runs))))
+        model-seed (init-model model-seed s1)
+        parallelism (* 3 (quot (.availableProcessors (Runtime/getRuntime)) 4)) ;; use 3/4 the cores
+        in-chan (a/to-chan! (map-indexed vector (rand/split-n s2 n-runs)))
+        out-chan (a/chan 1024)
+        simulation-number (atom 0)
+        projection-xf (map (fn [[iteration seed]]
+                             (into []
+                                   (map #(assoc % :simulation-number (inc iteration)))
+                                   (project-1 model-seed max-date seed))))
+        _ (a/pipeline-blocking parallelism out-chan projection-xf in-chan)]
+    out-chan))
 
 (defn projection
-  "Calculates summary statistics over n sequences of projected periods."
   [model-seed project-dates placement-costs seed n-runs]
-  (->> (project-n model-seed project-dates seed n-runs)
-       (map #(summary/periods-summary % project-dates placement-costs))
-       (summary/grand-summary)))
+  (let [out-chan (a/chan 1024 (map #(summary/periods-summary % project-dates placement-costs)))
+        _ (a/pipe (projection-chan model-seed project-dates seed n-runs)
+                  out-chan)
+        ]
+    (summary/grand-summary
+     (a/<!!
+      (a/into [] out-chan)))))
+
+(defn project-n
+  [model-seed project-dates seed n-runs]
+  (let [out-chan (projection-chan model-seed project-dates seed n-runs)]
+    (a/<!! (a/into [] out-chan))))
 
 (defn cost-projection
   [projection-seed model-seed project-until placement-costs seed n-runs]
