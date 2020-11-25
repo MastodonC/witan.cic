@@ -159,17 +159,20 @@
                                             (map (fn [placement]
                                                    (update placement :offset - segment-time)))))
              from-placement (->> segment-episodes first :placement)
-             to-placement (->> segment-episodes last :placement)]
+             to-placement (->> segment-episodes last :placement)
+             terminal? (< segment-duration segment-interval)]
          {:id (+ idx id-offset)
           :date (time/days-after beginning segment-time)
           :from-placement from-placement ;; starting placement
           :to-placement to-placement
           :age from-age ;; in years?
-          :terminal? (< segment-duration segment-interval)
+          :terminal? terminal?
           :duration segment-duration ;; duration may not be full segment if they leave
           :episodes (episodes/simplify segment-episodes)
-          :aged-out? (and end (or (time/>= max-date end)
-                                  (<= 50 (time/day-interval end max-date))))}))
+          :aged-out? (and terminal? ;; Only set for terminal segment
+                          end
+                          (or (time/>= end max-date)
+                              (<= (time/day-interval end max-date) 50)))}))
      (range 0 duration segment-interval)
      (map inc (range)))))
 
