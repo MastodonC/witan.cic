@@ -266,6 +266,18 @@
                       {:id-offset 0}
                       (range 0 365)))))
 
+(defn min-key'
+  "Like clojure.core/min-key but expects a sequence of xs
+  and returns nil for an empty sequence"
+  [f xs]
+  (when (seq xs)
+    (apply min-key f xs)))
+
+(defn distance
+  "Returns the absolute distance between x and y"
+  [x y]
+  (Math/abs (- x y)))
+
 (defn markov-placements-model
   [periods learn-from learn-to]
   (let [offset-groups-filtered (offset-groups offset-groups-filtered* periods learn-from learn-to false)
@@ -273,6 +285,12 @@
     (fn [{:keys [episodes birthday beginning duration period-id] :as period}]
       (let [max-duration (dec (time/day-interval beginning (time/years-after birthday 18)))
             offset (rem duration 365)
+            get-matched-segment (fn [segments]
+                                  (->> segments
+                                       (sort-by (comp (partial distance duration) :prior-care-days))
+                                       (take 10)
+                                       (seq)
+                                       (rand-nth)))
             [episodes total-duration] (loop [total-duration duration
                                              last-placement (-> episodes last :placement)
                                              all-episodes episodes
@@ -283,10 +301,10 @@
                                                             upper-range age]
                                                        (when (or (>= lower-range 0)
                                                                  (<= upper-range 17))
-                                                         (let [lower-filtered (rand-nth (get groups-filtered [lower-range last-placement]))
-                                                               upper-filtered (rand-nth (get groups-filtered [upper-range last-placement]))
-                                                               lower-all (rand-nth (get groups-all [lower-range last-placement]))
-                                                               upper-all (rand-nth (get groups-all [upper-range last-placement]))]
+                                                         (let [lower-filtered (get-matched-segment (get groups-filtered [lower-range last-placement]))
+                                                               upper-filtered (get-matched-segment (get groups-filtered [upper-range last-placement]))
+                                                               lower-all (get-matched-segment (get groups-all [lower-range last-placement]))
+                                                               upper-all (get-matched-segment (get groups-all [upper-range last-placement]))]
                                                            (if (or lower-filtered upper-filtered lower-all upper-all)
                                                              (or lower-filtered upper-filtered lower-all upper-all)
                                                              (recur (dec lower-range) (inc upper-range))))))]

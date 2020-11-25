@@ -166,6 +166,7 @@
           :from-placement from-placement ;; starting placement
           :to-placement to-placement
           :age from-age ;; in years?
+          :prior-care-days segment-time
           :terminal? terminal?
           :duration segment-duration ;; duration may not be full segment if they leave
           :episodes (episodes/simplify segment-episodes)
