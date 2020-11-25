@@ -17,7 +17,7 @@
 
   (def ccc "data/ccc/2020-06-09/%s")
   (def ncc "data/ncc/2020-06-09/%s")
-  (def scc "data/scc/2020-08-27/%s")
+(def scc "data/scc/2020-10-22/%s")
 
 (def input-format
   scc)
@@ -31,7 +31,8 @@
   "A useful REPL function to load the data files and convert them to  model inputs"
   ([{:keys [episodes-csv placement-costs-csv duration-lower-csv duration-median-csv duration-upper-csv
             zero-joiner-day-ages-csv survival-hazard-csv]}]
-   (let [episodes (read/episodes episodes-csv)
+   (let [episodes (-> (read/episodes episodes-csv)
+                      (episodes/remove-f6))
          latest-event-date (->> (mapcat (juxt :report-date :ceased) episodes)
                                 (keep identity)
                                 (time/max-date))]
@@ -42,7 +43,7 @@
                :joiner-birthday-model (-> (read/zero-joiner-day-ages zero-joiner-day-ages-csv)
                                           (model/joiner-birthday-model)))))
   ([]
-   (load-model-inputs {:episodes-csv (input-file "episodes.scrubbed.csv")
+   (load-model-inputs {:episodes-csv (input-file "suffolk-scrubbed-episodes-20201022-a.csv")
                        :placement-costs-csv (input-file "placement-costs.csv")
                        ;; :duration-lower-csv (input-file "duration-model-lower.csv")
                        ;; :duration-median-csv (input-file "duration-model-median.csv")
@@ -86,6 +87,7 @@
                     :joiner-birthday-model joiner-birthday-model
                     :joiner-range [learn-from project-from]
                     :episodes-range [learn-from project-from]
+                    :segments-range [learn-from project-from]
                     :project-from project-from
                     :project-to project-to}
         output-from (time/years-before learn-from 2)
