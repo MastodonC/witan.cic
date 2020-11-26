@@ -241,6 +241,7 @@
 
 (def offset-groups-filtered* (atom nil))
 (def offset-groups-all* (atom nil))
+(def placement-groups* (atom nil))
 (def matched-segments* (atom nil))
 
 (defn offset-groups
@@ -261,10 +262,36 @@
                               (assoc offset (->> segments
                                                  (map #(periods/tail-segment % offset))
                                                  (keep identity)
-                                                 (group-by (juxt :age :from-placement))))
+                                                 (group-by :from-placement)))
                               (assoc :id-offset id-offset))))
                       {:id-offset 0}
-                      (range 0 365)))))
+                      (range 0 periods/segment-interval)))))
+
+(defn placement-groups
+  [placement-groups* periods learn-from learn-to filter?]
+  (or @placement-groups*
+      (reset! placement-groups*
+              (->> (reduce (fn [{:keys [id-offset segments] :as coll} offset]
+                             (let [[segments id-offset] (reduce (fn [[coll id-offset] period]
+                                                                  (let [segments (filter #(or (not filter?)
+                                                                                              (and (time/<= learn-from (:date %))
+                                                                                                   (time/< (:date %) learn-to)))
+                                                                                         (periods/segment period id-offset))]
+                                                                    [(into coll segments)
+                                                                     (+ id-offset (count segments))]))
+                                                                [[] id-offset]
+                                                                periods)]
+                               (-> coll
+                                   (update :segments into (->> segments
+                                                               (map #(some-> %
+                                                                             (periods/tail-segment offset)
+                                                                             (assoc :offset offset)))
+                                                               (keep identity)))
+                                   (assoc :id-offset id-offset))))
+                           {:id-offset 0 :segments []}
+                           (range 0 periods/segment-interval))
+                   :segments
+                   (group-by :from-placement)))))
 
 (defn min-key'
   "Like clojure.core/min-key but expects a sequence of xs
@@ -278,37 +305,44 @@
   [x y]
   (Math/abs (- x y)))
 
+(defn euclidean-distance
+  [as bs]
+  (->> (map (fn [a b]
+              (Math/pow (- a b) 2))
+            as bs)
+       (apply +)
+       (Math/sqrt)))
+
+(defn jitter-normal
+  [sd]
+  (let [dist (d/normal {:mu 0 :sd sd})]
+    (fn [x]
+      (+ x (d/draw dist)))))
+
 (defn markov-placements-model
   [periods learn-from learn-to]
   (let [offset-groups-filtered (offset-groups offset-groups-filtered* periods learn-from learn-to false)
-        offset-groups-all (offset-groups offset-groups-all* periods learn-from learn-to false)]
+        offset-groups-all offset-groups-filtered #_(offset-groups offset-groups-all* periods learn-from learn-to false)
+        placement-groups (placement-groups placement-groups* periods learn-from learn-to false)]
     (fn [{:keys [episodes birthday beginning duration period-id] :as period}]
       (let [max-duration (dec (time/day-interval beginning (time/years-after birthday 18)))
-            offset (rem duration 365)
-            get-matched-segment (fn [segments]
-                                  (->> segments
-                                       (sort-by (comp (partial distance duration) :prior-care-days))
-                                       (take 10)
-                                       (seq)
-                                       (rand-nth)))
+            offset (rem duration periods/segment-interval)
+            get-matched-segment (fn [feature-fn feature-vec segments]
+                                  (min-key'
+                                   (fn [segment]
+                                     (euclidean-distance (feature-fn segment) feature-vec))
+                                   segments))
+            age-days-jitter (jitter-normal 28)
+            care-days-jitter (jitter-normal 28)
             [episodes total-duration] (loop [total-duration duration
                                              last-placement (-> episodes last :placement)
                                              all-episodes episodes
-                                             groups-filtered (get offset-groups-filtered offset)
                                              groups-all (get offset-groups-all offset)]
-                                        (let [age (time/year-interval birthday (time/days-after beginning total-duration))
-                                              sample (loop [lower-range age
-                                                            upper-range age]
-                                                       (when (or (>= lower-range 0)
-                                                                 (<= upper-range 17))
-                                                         (let [lower-filtered (get-matched-segment (get groups-filtered [lower-range last-placement]))
-                                                               upper-filtered (get-matched-segment (get groups-filtered [upper-range last-placement]))
-                                                               lower-all (get-matched-segment (get groups-all [lower-range last-placement]))
-                                                               upper-all (get-matched-segment (get groups-all [upper-range last-placement]))]
-                                                           (if (or lower-filtered upper-filtered lower-all upper-all)
-                                                             (or lower-filtered upper-filtered lower-all upper-all)
-                                                             (recur (dec lower-range) (inc upper-range))))))]
-                                          (when-not sample (println (format "No sample for age %s, placement %s or consecutive age for offset %s" age last-placement offset)))
+                                        (let [age-days (age-days-jitter (time/day-interval birthday (time/days-after beginning total-duration)))
+                                              care-days (care-days-jitter total-duration)
+                                              sample (or (get-matched-segment (juxt :age-days :care-days) [age-days care-days] (get groups-all last-placement))
+                                                         (get-matched-segment (juxt :age-days :care-days :offset) [age-days care-days offset] (get placement-groups last-placement)))]
+                                          (when-not sample (println (format "No sample for age %s, placement %s or consecutive age for offset %s" age-days last-placement offset)))
                                           (swap! matched-segments* conj {:period-id period-id :sample-id (:id sample)})
                                           (let [{:keys [terminal? episodes duration to-placement aged-out?]} sample
                                                 episodes (concat all-episodes (episodes/add-offset total-duration episodes))
@@ -321,7 +355,6 @@
                                               (recur total-duration
                                                      to-placement
                                                      episodes
-                                                     (get offset-groups-filtered 0)
                                                      (get offset-groups-all 0))))))]
         (doto (-> period
                   (assoc :episodes (episodes/simplify episodes))

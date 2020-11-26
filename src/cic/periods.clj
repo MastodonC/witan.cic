@@ -4,6 +4,8 @@
             [clojure.set :as cs]
             [taoensso.timbre :as timbre]))
 
+(def segment-interval (* 365 5))
+
 (defn period-id
   "Period ID is a composite key of the child's ID and a period number"
   [episode period-index]
@@ -140,8 +142,8 @@
 
 (defn segment
   [{:keys [beginning end birthday duration episodes open?]} id-offset]
-  (let [segment-interval 365
-        max-date (time/years-after birthday 18)]
+  (let [max-date (time/years-after birthday 18)
+        join-age-days (time/day-interval birthday beginning)]
     (map
      (fn [segment-time idx]
        (let [reversed-episodes (reverse episodes)
@@ -166,7 +168,9 @@
           :from-placement from-placement ;; starting placement
           :to-placement to-placement
           :age from-age ;; in years?
-          :prior-care-days segment-time
+          :care-days segment-time
+          :age-days (time/day-interval birthday (time/days-after beginning segment-time))
+          :join-age-days join-age-days
           :terminal? terminal?
           :duration segment-duration ;; duration may not be full segment if they leave
           :episodes (episodes/simplify segment-episodes)
@@ -196,6 +200,9 @@
                         (mapv #(update % :offset max 0)))]
       (-> segment
           (update :duration - by)
+          (update :date time/days-after by)
+          (update :care-days + by)
+          (update :age-days + by)
           (assoc :from-placement (-> episodes first :placement))
           (assoc :episodes episodes)))))
 
