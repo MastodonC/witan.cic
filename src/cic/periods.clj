@@ -4,7 +4,7 @@
             [clojure.set :as cs]
             [taoensso.timbre :as timbre]))
 
-(def segment-interval (* 365 5))
+(def segment-interval (* 365 1))
 
 (defn period-id
   "Period ID is a composite key of the child's ID and a period number"
