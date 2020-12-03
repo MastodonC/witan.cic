@@ -147,6 +147,7 @@
     (map
      (fn [segment-time idx]
        (let [reversed-episodes (reverse episodes)
+             ;; Duration is the shorter of the segment duration and the amount of time remaining
              segment-duration (min (- duration segment-time) segment-interval)
              from-age (time/year-interval birthday (time/days-after beginning segment-time))
              [prior-episodes segment-episodes] (->> episodes
@@ -171,6 +172,7 @@
           :care-days segment-time
           :age-days (time/day-interval birthday (time/days-after beginning segment-time))
           :join-age-days join-age-days
+          :initial? (zero? segment-time)
           :terminal? terminal?
           :duration segment-duration ;; duration may not be full segment if they leave
           :episodes (episodes/simplify segment-episodes)

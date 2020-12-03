@@ -262,7 +262,7 @@
                               (assoc offset (->> segments
                                                  (map #(periods/tail-segment % offset))
                                                  (keep identity)
-                                                 (group-by :from-placement)))
+                                                 (group-by (juxt :from-placement :initial?))))
                               (assoc :id-offset id-offset))))
                       {:id-offset 0}
                       (range 0 periods/segment-interval)))))
@@ -323,7 +323,8 @@
   [periods learn-from learn-to]
   (let [offset-groups-filtered (offset-groups offset-groups-filtered* periods learn-from learn-to false)
         offset-groups-all offset-groups-filtered #_(offset-groups offset-groups-all* periods learn-from learn-to false)
-        placement-groups (placement-groups placement-groups* periods learn-from learn-to false)]
+        ;; placement-groups (placement-groups placement-groups* periods learn-from learn-to false)
+        ]
     (fn [{:keys [episodes birthday beginning duration period-id] :as period}]
       (let [max-duration (dec (time/day-interval beginning (time/years-after birthday 18)))
             offset (rem duration periods/segment-interval)
@@ -337,11 +338,13 @@
             [episodes total-duration] (loop [total-duration duration
                                              last-placement (-> episodes last :placement)
                                              all-episodes episodes
-                                             groups-all (get offset-groups-all offset)]
+                                             groups-all (get offset-groups-all offset)
+                                             initial? (< duration periods/segment-interval)]
                                         (let [age-days (age-days-jitter (time/day-interval birthday (time/days-after beginning total-duration)))
                                               care-days (care-days-jitter total-duration)
-                                              sample (or (get-matched-segment (juxt :age-days :care-days) [age-days care-days] (get groups-all last-placement))
-                                                         (get-matched-segment (juxt :age-days :care-days :offset) [age-days care-days offset] (get placement-groups last-placement)))]
+                                              sample (or (get-matched-segment (juxt :age-days :care-days) [age-days care-days] (get groups-all [last-placement initial?]))
+                                                         ;; (get-matched-segment (juxt :age-days :care-days :offset) [age-days care-days offset] (get placement-groups last-placement))
+                                                         )]
                                           (when-not sample (println (format "No sample for age %s, placement %s or consecutive age for offset %s" age-days last-placement offset)))
                                           (swap! matched-segments* conj {:period-id period-id :sample-id (:id sample)})
                                           (let [{:keys [terminal? episodes duration to-placement aged-out?]} sample
@@ -355,7 +358,9 @@
                                               (recur total-duration
                                                      to-placement
                                                      episodes
-                                                     (get offset-groups-all 0))))))]
+                                                     (get offset-groups-all 0)
+                                                     (= 1 2) ;; Always return false
+                                                     )))))]
         (doto (-> period
                   (assoc :episodes (episodes/simplify episodes))
                   (assoc :duration total-duration)
