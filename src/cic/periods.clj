@@ -141,7 +141,7 @@
           periods))
 
 (defn segment
-  [{:keys [beginning end birthday duration episodes open?]} id-offset]
+  [{:keys [beginning end birthday duration episodes open?]}]
   (let [max-date (time/years-after birthday 18)
         join-age-days (time/day-interval birthday beginning)]
     (map
@@ -164,8 +164,7 @@
              from-placement (->> segment-episodes first :placement)
              to-placement (->> segment-episodes last :placement)
              terminal? (< segment-duration segment-interval)]
-         {:id (+ idx id-offset)
-          :date (time/days-after beginning segment-time)
+         {:date (time/days-after beginning segment-time)
           :from-placement from-placement ;; starting placement
           :to-placement to-placement
           :age from-age ;; in years?

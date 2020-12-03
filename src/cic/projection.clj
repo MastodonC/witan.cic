@@ -68,20 +68,20 @@
             (rand/split-n seed (count spec/ages)))))
 
 (defn init-model
-  [{:keys [periods joiner-range episodes-range duration-model joiner-birthday-model project-from project-to] :as model-seed} random-seed]
+  [{:keys [periods joiner-range episodes-range duration-model joiner-birthday-model project-from project-to segments-range] :as model-seed} random-seed]
   (let [[s1 s2] (rand/split-n random-seed 2)
-        all-periods (rand/sample-birthdays periods s1)]
-    model-seed))
+        all-periods (rand/sample-birthdays periods s1)
+        markov-model (apply model/markov-placements-model all-periods segments-range)]
+    (assoc model-seed :markov-model markov-model)))
 
 (defn train-model
   "Build stochastic helper models using R. Random seed ensures determinism."
-  [{:keys [periods joiner-range episodes-range duration-model joiner-birthday-model project-to project-from segments-range] :as model-seed} random-seed]
+  [{:keys [periods joiner-range episodes-range duration-model joiner-birthday-model project-to project-from segments-range markov-model] :as model-seed} random-seed]
   (println "Training model...")
   (let [[s1 s2 s3] (rand/split-n random-seed 3)
         [joiners-from joiners-to] joiner-range
         [episodes-from episodes-to] episodes-range
         all-periods (rand/sample-birthdays periods s1)
-        markov-model (apply model/markov-placements-model all-periods segments-range)
         closed-periods (rand/close-open-periods all-periods markov-model s3)]
     
     {:joiners-model (-> (filter #(time/between? (:beginning %) joiners-from joiners-to) closed-periods)

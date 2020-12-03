@@ -245,27 +245,17 @@
 (def matched-segments* (atom nil))
 
 (defn offset-groups
-  [offset-groups* periods learn-from learn-to filter?]
-  (or @offset-groups*
-      (reset! offset-groups*
-              (reduce (fn [{:keys [id-offset] :as coll} offset]
-                        (let [[segments id-offset] (reduce (fn [[coll id-offset] period]
-                                                             (let [segments (filter #(or (not filter?)
-                                                                                         (and (time/<= learn-from (:date %))
-                                                                                              (time/< (:date %) learn-to)))
-                                                                                    (periods/segment period id-offset))]
-                                                               [(into coll segments)
-                                                                (+ id-offset (count segments))]))
-                                                           [[] id-offset]
-                                                           periods)]
-                          (-> coll
-                              (assoc offset (->> segments
-                                                 (map #(periods/tail-segment % offset))
-                                                 (keep identity)
-                                                 (group-by (juxt :from-placement :initial?))))
-                              (assoc :id-offset id-offset))))
-                      {:id-offset 0}
-                      (range 0 periods/segment-interval)))))
+  [periods]
+  (let [id-seq (atom 0)
+        segments (mapcat periods/segment periods)]
+    (memoize
+     (fn [offset]
+       (println "Calculating segments for offset" offset)
+       (->> (for [segment segments
+                  :let [segment (periods/tail-segment segment offset)]
+                  :when [segment]]
+              (assoc segment :id (swap! id-seq inc)))
+            (group-by (juxt :from-placement :initial?)))))))
 
 (defn placement-groups
   [placement-groups* periods learn-from learn-to filter?]
@@ -327,7 +317,7 @@
 
 (defn markov-placements-model
   [periods learn-from learn-to]
-  (let [offset-groups-filtered (offset-groups offset-groups-filtered* periods learn-from learn-to false)
+  (let [offset-groups-filtered (offset-groups periods)
         offset-groups-all offset-groups-filtered #_(offset-groups offset-groups-all* periods learn-from learn-to false)
         ;; placement-groups (placement-groups placement-groups* periods learn-from learn-to false)
         ]
@@ -344,7 +334,7 @@
               [episodes total-duration] (loop [total-duration duration
                                                last-placement (-> episodes last :placement)
                                                all-episodes episodes
-                                               groups-all (get offset-groups-all offset)
+                                               groups-all (offset-groups-all offset)
                                                initial? (< duration periods/segment-interval)]
                                           (let [age-days (time/day-interval birthday (time/days-after beginning total-duration))
                                                 age-days (jitter-binomial age-days max-age-days)
@@ -365,7 +355,7 @@
                                                 (recur total-duration
                                                        to-placement
                                                        episodes
-                                                       (get offset-groups-all 0)
+                                                       (offset-groups-all 0)
                                                        (boolean false) ;; Always return false
                                                        )))))]
           (doto (-> period
