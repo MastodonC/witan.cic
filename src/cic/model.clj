@@ -313,7 +313,7 @@
   [x n]
   (let [p (/ x n)
         dist (d/binomial {:n n :p p})]
-    (+ x (d/draw dist))))
+    (d/draw dist)))
 
 (defn markov-placements-model
   [periods learn-from learn-to]
