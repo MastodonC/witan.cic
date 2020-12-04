@@ -287,10 +287,10 @@
       (+ x (d/draw dist)))))
 
 (defn jitter-binomial
-  [x n]
+  [x n scale]
   (let [p (/ x n)
-        dist (d/binomial {:n n :p p})]
-    (d/draw dist)))
+        dist (d/binomial {:n (/ n scale) :p p})]
+    (int (* scale (d/draw dist)))))
 
 (defn markov-placements-model
   [periods learn-from learn-to close-open-periods?]
@@ -312,8 +312,9 @@
                                                offset (rem duration periods/segment-interval)
                                                initial? (< duration periods/segment-interval)]
                                           (let [age-days (time/day-interval birthday (time/days-after beginning total-duration))
-                                                age-days (jitter-binomial age-days max-age-days)
-                                                care-days (jitter-binomial total-duration max-duration)
+                                                jitter-scale 3 ;; Higher is more jittering
+                                                age-days (jitter-binomial age-days max-age-days jitter-scale)
+                                                care-days (jitter-binomial total-duration max-duration jitter-scale)
                                                 sample (get-matched-segment (juxt :age-days :care-days) [age-days care-days] (get offset-segments [offset last-placement initial?]))]
                                             (when-not sample (println (format "No sample for age %s, placement %s or consecutive age for offset %s" age-days last-placement offset)))
                                             (swap! matched-segments* conj {:period-id period-id :sample-id (:id sample)})
