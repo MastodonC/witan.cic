@@ -1,5 +1,6 @@
 (ns cic.projection
-  (:require [cic.model :as model]
+  (:require [clojure.core.async :as a]
+            [cic.model :as model]
             [cic.random :as rand]
             [cic.spec :as spec]
             [cic.summary :as summary]
@@ -83,7 +84,7 @@
         [episodes-from episodes-to] episodes-range
         all-periods (rand/sample-birthdays periods s1)
         closed-periods (rand/close-open-periods all-periods markov-model s3)]
-    
+
     {:joiners-model (-> (filter #(time/between? (:beginning %) joiners-from joiners-to) closed-periods)
                         (model/joiners-model-gen project-to s2))
      :joiner-birthday-model joiner-birthday-model
@@ -109,7 +110,16 @@
     (map-indexed (fn [iteration seed]
                    (->> (project-1 model-seed max-date seed)
                         (map #(assoc % :simulation-number (inc iteration)))))
-                 (rand/split-n s2 n-runs))))
+                 (rand/split-n s2 n-runs))
+    #_(into []
+            (comp
+             (map-indexed (fn [iteration seed]
+                            (into []
+                                  (map #(assoc % :simulation-number (inc iteration)))
+                                  (project-1 model-seed max-date seed))))
+             (map #(summary/periods-summary % project-dates placement-costs)))
+            (rand/split-n s2 n-runs))
+    ))
 
 (defn projection
   "Calculates summary statistics over n sequences of projected periods."
@@ -117,6 +127,23 @@
   (->> (project-n model-seed project-dates seed n-runs)
        (map #(summary/periods-summary % project-dates placement-costs))
        (summary/grand-summary)))
+
+(defn projection-parallel
+  [model-seed project-dates placement-costs seed n-runs]
+  (let [max-date (time/max-date project-dates)
+        [s1 s2] (rand/split-n (rand/seed seed) 2)
+        model-seed (init-model model-seed s1)
+        parallelism (* 3 (quot (.availableProcessors (Runtime/getRuntime)) 4)) ;; use 3/4 the cores
+        in-chan (a/to-chan! (rand/split-n s2 n-runs))
+        out-chan (a/chan 1024)
+        projection-xf (comp
+                       (map-indexed (fn [iteration seed]
+                                      (into []
+                                            (map #(assoc % :simulation-number (inc iteration)))
+                                            (project-1 model-seed max-date seed))))
+                       (map #(summary/periods-summary % project-dates placement-costs)))
+        _ (a/pipeline-blocking parallelism out-chan projection-xf in-chan)]
+    (a/<!! (a/into [] out-chan))))
 
 (defn cost-projection
   [projection-seed model-seed project-until placement-costs seed n-runs]
