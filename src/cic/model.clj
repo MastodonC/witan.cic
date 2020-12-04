@@ -245,13 +245,17 @@
 (def matched-segments* (atom nil))
 
 (defn offset-groups
-  [periods close-open-periods?]
+  [periods learn-from learn-to close-open-periods?]
   (let [id-seq (atom 0)
-        segments (mapcat periods/segment periods)
+        segments (into []
+                       (comp (mapcat periods/segment)
+                             (map #(assoc % :in-filter? (and (time/>= (:date %) learn-from)
+                                                             (time/<= (:date %) learn-to)))))
+                       periods)
         offsets (if close-open-periods?
                   (range periods/segment-interval)
                   [0])]
-    (group-by (juxt :offset :from-placement :initial?)
+    (group-by (juxt :offset :in-filter? :from-placement :initial?)
               (sequence
                (mapcat (fn [offset]
                          (into []
@@ -294,7 +298,7 @@
 
 (defn markov-placements-model
   [periods learn-from learn-to close-open-periods?]
-  (let [offset-segments (offset-groups periods close-open-periods?)]
+  (let [offset-segments (offset-groups periods learn-from learn-to close-open-periods?)]
     (let [max-age-days (* 365 18)]
       (fn [{:keys [episodes birthday beginning duration period-id] :as period}]
         (when (and (not close-open-periods?)
@@ -312,11 +316,15 @@
                                                offset (rem duration periods/segment-interval)
                                                initial? (< duration periods/segment-interval)]
                                           (let [age-days (time/day-interval birthday (time/days-after beginning total-duration))
-                                                jitter-scale 3 ;; Higher is more jittering
+                                                jitter-scale 1 ;; Higher is more jittering
                                                 age-days (jitter-binomial age-days max-age-days jitter-scale)
                                                 care-days (jitter-binomial total-duration max-duration jitter-scale)
-                                                sample (get-matched-segment (juxt :age-days :care-days) [age-days care-days] (get offset-segments [offset last-placement initial?]))]
-                                            (when-not sample (println (format "No sample for age %s, placement %s or consecutive age for offset %s" age-days last-placement offset)))
+                                                sample (get-matched-segment (juxt :age-days :care-days) [age-days care-days]
+                                                                            (or (get offset-segments [offset true last-placement initial?])
+                                                                                (do (println (format "No sample for age %s, placement %s for offset %s initial %s within filter" age-days last-placement offset initial?))
+                                                                                    nil)
+                                                                                (get offset-segments [offset false last-placement initial?])))]
+                                            (when-not sample (println (format "No sample for age %s, placement %s for offset %s initial %s even outside filter" age-days last-placement offset initial?)))
                                             (swap! matched-segments* conj {:period-id period-id :sample-id (:id sample)})
                                             (let [{:keys [terminal? episodes duration to-placement aged-out?]} sample
                                                   episodes (concat all-episodes (episodes/add-offset total-duration episodes))
