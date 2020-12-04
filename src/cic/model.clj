@@ -245,18 +245,20 @@
 (def matched-segments* (atom nil))
 
 (defn offset-groups
-  [periods]
+  [periods close-open-periods?]
   (let [id-seq (atom 0)
-        segments (mapcat periods/segment periods)]
-    (memoize
-     (fn [offset]
-       (future
-         (println "Calculating segments for offset" offset)
-         (->> (for [segment segments
-                    :let [segment (periods/tail-segment segment offset)]
-                    :when [segment]]
-                (assoc segment :id (swap! id-seq inc)))
-              (group-by (juxt :from-placement :initial?))))))))
+        segments (mapcat periods/segment periods)
+        offsets (if close-open-periods?
+                  (range periods/segment-interval)
+                  [0])]
+    (group-by (juxt :offset :from-placement :initial?)
+              (sequence
+               (mapcat (fn [offset]
+                         (into []
+                               (comp (map #(periods/tail-segment % offset))
+                                     (map #(assoc % :offset offset)))
+                               segments)))
+               offsets))))
 
 (defn min-key'
   "Like clojure.core/min-key but expects a sequence of xs
@@ -291,16 +293,14 @@
     (d/draw dist)))
 
 (defn markov-placements-model
-  [periods learn-from learn-to]
-  (let [offset-groups-filtered (offset-groups periods)
-        offset-groups-all offset-groups-filtered #_(offset-groups offset-groups-all* periods learn-from learn-to false)
-        ;; placement-groups (placement-groups placement-groups* periods learn-from learn-to false)
-        ]
-    (let [max-age-days (* 365 18)
-]
+  [periods learn-from learn-to close-open-periods?]
+  (let [offset-segments (offset-groups periods close-open-periods?)]
+    (let [max-age-days (* 365 18)]
       (fn [{:keys [episodes birthday beginning duration period-id] :as period}]
+        (when (and (not close-open-periods?)
+                   (not (zero? duration)))
+          (throw "Can't close open case"))
         (let [max-duration (dec (time/day-interval beginning (time/years-after birthday 18)))
-              offset (rem duration periods/segment-interval)
               get-matched-segment (fn [feature-fn feature-vec segments]
                                     (min-key'
                                      (fn [segment]
@@ -309,14 +309,12 @@
               [episodes total-duration] (loop [total-duration duration
                                                last-placement (-> episodes last :placement)
                                                all-episodes episodes
-                                               groups-all (offset-groups-all offset)
+                                               offset (rem duration periods/segment-interval)
                                                initial? (< duration periods/segment-interval)]
                                           (let [age-days (time/day-interval birthday (time/days-after beginning total-duration))
                                                 age-days (jitter-binomial age-days max-age-days)
                                                 care-days (jitter-binomial total-duration max-duration)
-                                                sample (or (get-matched-segment (juxt :age-days :care-days) [age-days care-days] (get @groups-all [last-placement initial?]))
-                                                           ;; (get-matched-segment (juxt :age-days :care-days :offset) [age-days care-days offset] (get placement-groups last-placement))
-                                                           )]
+                                                sample (get-matched-segment (juxt :age-days :care-days) [age-days care-days] (get offset-segments [offset last-placement initial?]))]
                                             (when-not sample (println (format "No sample for age %s, placement %s or consecutive age for offset %s" age-days last-placement offset)))
                                             (swap! matched-segments* conj {:period-id period-id :sample-id (:id sample)})
                                             (let [{:keys [terminal? episodes duration to-placement aged-out?]} sample
@@ -330,7 +328,7 @@
                                                 (recur total-duration
                                                        to-placement
                                                        episodes
-                                                       (offset-groups-all 0)
+                                                       0 ;; Zero offset
                                                        (boolean false) ;; Always return false
                                                        )))))]
           (doto (-> period
