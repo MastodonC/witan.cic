@@ -143,7 +143,7 @@
                                             (project-1 model-seed max-date seed))))
                        (map #(summary/periods-summary % project-dates placement-costs)))
         _ (a/pipeline-blocking parallelism out-chan projection-xf in-chan)]
-    (a/<!! (a/into [] out-chan))))
+    (summary/grand-summary (a/<!! (a/into [] out-chan)))))
 
 (defn cost-projection
   [projection-seed model-seed project-until placement-costs seed n-runs]

@@ -96,10 +96,10 @@
                           (summary/periods-summary (rand/sample-birthdays periods (rand/seed seed))
                                                    (time/day-seq output-from project-from 7)
                                                    placement-costs))
-        projection (projection/projection model-seed
-                                          (time/day-seq project-from project-to 7)
-                                          placement-costs
-                                          seed n-runs)]
+        projection (projection/projection-parallel model-seed
+                                                   (time/day-seq project-from project-to 7)
+                                                   placement-costs
+                                                   seed n-runs)]
     (->> (write/projection-table (concat summary-seq projection))
          (write/write-csv! output-file))))
 
