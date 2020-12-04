@@ -250,38 +250,13 @@
         segments (mapcat periods/segment periods)]
     (memoize
      (fn [offset]
-       (println "Calculating segments for offset" offset)
-       (->> (for [segment segments
-                  :let [segment (periods/tail-segment segment offset)]
-                  :when [segment]]
-              (assoc segment :id (swap! id-seq inc)))
-            (group-by (juxt :from-placement :initial?)))))))
-
-(defn placement-groups
-  [placement-groups* periods learn-from learn-to filter?]
-  (or @placement-groups*
-      (reset! placement-groups*
-              (->> (reduce (fn [{:keys [id-offset segments] :as coll} offset]
-                             (let [[segments id-offset] (reduce (fn [[coll id-offset] period]
-                                                                  (let [segments (filter #(or (not filter?)
-                                                                                              (and (time/<= learn-from (:date %))
-                                                                                                   (time/< (:date %) learn-to)))
-                                                                                         (periods/segment period id-offset))]
-                                                                    [(into coll segments)
-                                                                     (+ id-offset (count segments))]))
-                                                                [[] id-offset]
-                                                                periods)]
-                               (-> coll
-                                   (update :segments into (->> segments
-                                                               (map #(some-> %
-                                                                             (periods/tail-segment offset)
-                                                                             (assoc :offset offset)))
-                                                               (keep identity)))
-                                   (assoc :id-offset id-offset))))
-                           {:id-offset 0 :segments []}
-                           (range 0 periods/segment-interval))
-                   :segments
-                   (group-by :from-placement)))))
+       (future
+         (println "Calculating segments for offset" offset)
+         (->> (for [segment segments
+                    :let [segment (periods/tail-segment segment offset)]
+                    :when [segment]]
+                (assoc segment :id (swap! id-seq inc)))
+              (group-by (juxt :from-placement :initial?))))))))
 
 (defn min-key'
   "Like clojure.core/min-key but expects a sequence of xs
@@ -339,7 +314,7 @@
                                           (let [age-days (time/day-interval birthday (time/days-after beginning total-duration))
                                                 age-days (jitter-binomial age-days max-age-days)
                                                 care-days (jitter-binomial total-duration max-duration)
-                                                sample (or (get-matched-segment (juxt :age-days :care-days) [age-days care-days] (get groups-all [last-placement initial?]))
+                                                sample (or (get-matched-segment (juxt :age-days :care-days) [age-days care-days] (get @groups-all [last-placement initial?]))
                                                            ;; (get-matched-segment (juxt :age-days :care-days :offset) [age-days care-days offset] (get placement-groups last-placement))
                                                            )]
                                             (when-not sample (println (format "No sample for age %s, placement %s or consecutive age for offset %s" age-days last-placement offset)))
