@@ -282,4 +282,80 @@
                   (clojure.string/join "\n"))))
   )
 
+(comment
+  (def offset-segments (model/offset-groups periods
+                                            (time/years-before project-from 10)
+                                            (time/years-after project-from 10)
+                                            true))
+  
+  (def placements (distinct (map :placement episodes)))
+
+  (def source-segments
+    (into [] (comp (mapcat (fn [placement]
+                             (get offset-segments [0 true placement true])))
+                   (filter (every-pred :initial? :terminal?))) placements))
+
+  (def max-age-days (* 365 18))
+
+  (def get-matched-segment (fn [feature-fn feature-vec segments]
+                             (model/min-key'
+                              (fn [segment]
+                                (model/euclidean-distance (feature-fn segment) feature-vec))
+                              segments)))
+
+  (def jitter-scale 1)
+
+  (defn to-table [cols xs]
+    (into [(mapv name cols)]
+          (map (apply juxt cols))
+          xs))
+
+
+  (def period-simulations
+    (into [] (comp (filter :open?)
+                   (map (fn [{:keys [birthday beginning snapshot-date duration episodes] :as period}]
+                          (assoc period
+                                 :join-age-days (time/day-interval birthday beginning)
+                                 :age-days (time/day-interval birthday snapshot-date)
+                                 :care-days (time/day-interval beginning snapshot-date)
+                                 :max-duration (dec (time/day-interval beginning (time/days-after birthday max-age-days)))
+                                 :offset (rem duration periods/segment-interval)
+                                 :last-placement (-> episodes last :placement)
+                                 :initial? (< duration periods/segment-interval))))
+                   (mapcat (fn [{:keys [age-days care-days duration max-duration offset last-placement initial?] :as period}]
+                             (into [] (map (fn [simulation]
+                                             (let [age-days (model/jitter-binomial age-days max-age-days jitter-scale)
+                                                   care-days (model/jitter-binomial duration max-duration jitter-scale)
+                                                   segment (get-matched-segment (juxt :age-days :care-days) [age-days care-days]
+                                                                                (get offset-segments [offset true last-placement initial?]))]
+                                               (when segment
+                                                 (assoc period
+                                                        :segment-simulation simulation
+                                                        :segment-terminal? (:terminal? segment)
+                                                        :segment-duration (:duration segment)
+                                                        :segment-age-days (:age-days segment)
+                                                        :segment-care-days (:care-days segment)
+                                                        :last-placement (-> segment :episodes last :placement)
+                                                        :segment-aged-out? (:aged-out? segment))))))
+                                   (range 100))))
+                   (remove nil?))
+          periods))
+
+  (cic.io.write/write-csv! "period-simulations.csv" (to-table [:join-age-days :care-days :last-placement :segment-duration :segment-terminal?] period-simulations))
+
+  (cic.io.write/write-csv! "closed-periods.csv" (to-table [:join-age-days :care-days :last-placement] (into [] (comp (remove :open?)
+                                                                                                                     (map (fn [{:keys [birthday beginning end episodes] :as period}]
+                                                                                                                            (assoc period
+                                                                                                                                   :join-age-days (time/day-interval birthday beginning)
+                                                                                                                                   :care-days (time/day-interval beginning end)
+                                                                                                                                   :last-placement (-> episodes last :placement)))))
+                                                                                                            periods)))
+
+  (take 10 periods)
+
+  
+
+
+  )
+
 
