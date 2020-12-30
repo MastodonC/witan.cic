@@ -322,7 +322,7 @@
                                  :offset (rem duration periods/segment-interval)
                                  :last-placement (-> episodes last :placement)
                                  :initial? (< duration periods/segment-interval))))
-                   (mapcat (fn [{:keys [age-days care-days duration max-duration offset last-placement initial?] :as period}]
+                   (mapcat (fn [{:keys [age-days care-days duration max-duration offset last-placement initial? join-age-days] :as period}]
                              (into [] (map (fn [simulation]
                                              (let [age-days (model/jitter-binomial age-days max-age-days jitter-scale)
                                                    care-days (model/jitter-binomial duration max-duration jitter-scale)
@@ -330,6 +330,8 @@
                                                                                 (get offset-segments [offset true last-placement initial?]))]
                                                (when segment
                                                  (assoc period
+                                                        :combined-duration (+ duration (:duration segment))
+                                                        :care-weeks (quot (+ duration (:duration segment)) 7)
                                                         :segment-simulation simulation
                                                         :segment-terminal? (:terminal? segment)
                                                         :segment-duration (:duration segment)
@@ -351,8 +353,55 @@
                                                                                                                                    :last-placement (-> episodes last :placement)))))
                                                                                                             periods)))
 
-  (take 10 periods)
+  ;; For terminal durations less than 1 year, what is the density per week?
 
+  (def inc! (fnil inc 0))
+
+  (def simulated-distribution
+    (->> (into []
+               (filter (every-pred :segment-terminal? #(< (:combined-duration %) periods/segment-interval)))
+               period-simulations)
+         (reduce (fn [acc {:keys [admission-age care-weeks] :as simulation}]
+                   (-> acc
+                       (update-in [admission-age care-weeks] inc!)
+                       (update-in [admission-age :n] inc!)))
+                 {})))
+
+
+  (def empirical-distribution
+    (->> (into []
+               (comp (remove :open?)
+                     (filter #(< (:duration %) periods/segment-interval))
+                     (map #(assoc % :care-weeks (quot (:duration %) 7))))
+               periods)
+         (reduce (fn [acc {:keys [admission-age care-weeks] :as simulation}]
+                   (-> acc
+                       (update-in [admission-age care-weeks] inc!)
+                       (update-in [admission-age :n] inc!)))
+                 {})))
+  
+
+  
+  (defn admission-age-care-weeks-pdf
+    [sample]
+    (let [counts (reduce (fn [acc {:keys [admission-age care-weeks] :as simulation}]
+                           (-> acc
+                               (update-in [admission-age care-weeks] inc!)
+                               (update-in [admission-age :n] inc!)))
+                         {})]
+      (reduce (fn [counts age]
+                (let [n (get-in counts [age :n] 0)
+                      +' (fnil + 0)
+                      adj (/ 1 52)]
+                  (reduce (fn [counts week]
+                            (-> counts
+                                (update-in [age week] +' adj)
+                                (update-in [age week] / (inc n))
+                                (update-in [age week] double)))
+                          (update counts age dissoc :n)
+                          (range 52))))
+              counts
+              (range 17))))
   
 
 
