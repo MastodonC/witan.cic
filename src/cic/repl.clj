@@ -87,7 +87,7 @@
                     :joiner-birthday-model joiner-birthday-model
                     :joiner-range [learn-from project-from]
                     :episodes-range [learn-from project-from]
-                    :segments-range [learn-from project-from]
+                    :segments-range [(time/years-before learn-from 20) (time/years-after project-from 20)]
                     :project-from project-from
                     :project-to project-to}
         output-from (time/years-before learn-from 2)
