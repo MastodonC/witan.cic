@@ -103,6 +103,20 @@
     (->> (write/projection-table (concat summary-seq projection))
          (write/write-csv! output-file))))
 
+(defn generate-distribution-csv!
+  "Main REPL function for writing a projection CSV"
+  [rewind-years train-years n-samples seed]
+  (let [{:keys [project-from periods placement-costs duration-model joiner-birthday-model]} (prepare-model-inputs (load-model-inputs) rewind-years)
+        _ (println (str "Project from " project-from))
+       ;;  output-file (output-file (format "%s-projection-%s-rewind-%syr-train-%syr-samples-%s-seed-%s-distribution.csv" (la-label) (time/date-as-string project-from) rewind-years train-years n-samples seed))
+        ;; project-from (time/quarter-preceding (time/years-before project-from rewind-years))
+        periods (rand/sample-birthdays periods (rand/seed seed))
+        learn-from (time/years-before project-from train-years)
+        period-generator (model/markov-placements-model periods learn-from project-from true)
+        ]
+    (take n-samples (periods/period-generator periods project-from))
+    ))
+
 (defn generate-annual-csv!
   [output-file rewind-years train-years project-years n-runs seed]
   (let [{:keys [periods placement-costs duration-model joiner-birthday-model]} (load-model-inputs)

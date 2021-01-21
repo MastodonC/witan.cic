@@ -371,74 +371,50 @@
        (let [dist (d/uniform {:a 0 :b proposal})]
          (<= (d/draw dist) desired))))
 
+(defn markov-period
+  [{:keys [episodes birthday beginning duration period-id] :as period} offset-segments]
+  (let [admission-age (time/year-interval birthday beginning)
+        max-duration (dec (time/day-interval beginning (time/years-after birthday 18)))
+        [episodes total-duration] (loop [total-duration duration
+                                         last-placement (-> episodes last :placement)
+                                         all-episodes episodes
+                                         offset (rem duration periods/segment-interval)
+                                         initial? (< duration periods/segment-interval)]
+                                    (let [age-days (time/day-interval birthday (time/days-after beginning total-duration))
+                                          age-days (jitter-binomial age-days max-age-days jitter-scale)
+                                          care-days (jitter-binomial total-duration max-duration jitter-scale)
+                                          sample (get-matched-segment (juxt :age-days :care-days) [age-days care-days]
+                                                                      (or (get offset-segments [offset true last-placement initial?])
+                                                                          (do (println (format "No sample for age %s, placement %s for offset %s initial %s within filter" age-days last-placement offset initial?))
+                                                                              nil)
+                                                                          (get offset-segments [offset false last-placement initial?])))]
+                                      (when-not sample (println (format "No sample for age %s, placement %s for offset %s initial %s even outside filter" age-days last-placement offset initial?)))
+                                      (let [{:keys [terminal? episodes duration to-placement aged-out?]} sample
+                                            episodes (concat all-episodes (episodes/add-offset total-duration episodes))
+                                            total-duration' (if aged-out?
+                                                              max-duration
+                                                              (min (+ total-duration duration) max-duration))
+                                            care-weeks (quot total-duration' 7)]
+                                        (if (or terminal? (>= total-duration' max-duration))
+                                          [(take-while #(< (:offset %) total-duration') episodes)
+                                           total-duration']
+                                          (recur total-duration'
+                                                 to-placement
+                                                 episodes
+                                                 0 ;; Zero offset
+                                                 (boolean false) ;; Always return false
+                                                 )))))]
+    (doto (-> period
+              (assoc :episodes (episodes/simplify episodes))
+              (assoc :duration total-duration)
+              (assoc :open? false)
+              (assoc :end (time/days-after beginning total-duration))))))
+
 (defn markov-placements-model
   [periods learn-from learn-to close-open-periods?]
-  (let [offset-segments (offset-groups periods learn-from learn-to close-open-periods?)
-        period-simulations (periods-simulations periods offset-segments)
-        empirical-pdf (->> (into []
-                                 (comp (remove :open?)
-                                       (filter #(< (:duration %) periods/segment-interval))
-                                       (map #(assoc % :care-weeks (quot (:duration %) 7))))
-                                 periods)
-                           (admission-age-care-weeks-pdf))
-        simulated-pdf (->> (into []
-                                 (filter (every-pred :segment-terminal? #(< (:combined-duration %) periods/segment-interval)))
-                                 period-simulations)
-                           (admission-age-care-weeks-pdf))]
+  (let [offset-segments (offset-groups periods learn-from learn-to close-open-periods?)]
     (fn [{:keys [episodes birthday beginning duration period-id] :as period}]
-      (when (and (not close-open-periods?)
-                 (not (zero? duration)))
-        (throw "Can't close open case"))
-      (let [admission-age (time/year-interval birthday beginning)
-            max-duration (dec (time/day-interval beginning (time/years-after birthday 18)))
-            [episodes total-duration] (loop [total-duration duration
-                                             last-placement (-> episodes last :placement)
-                                             all-episodes episodes
-                                             offset (rem duration periods/segment-interval)
-                                             initial? (< duration periods/segment-interval)]
-                                        (let [age-days (time/day-interval birthday (time/days-after beginning total-duration))
-                                              age-days (jitter-binomial age-days max-age-days jitter-scale)
-                                              care-days (jitter-binomial total-duration max-duration jitter-scale)
-                                              sample (get-matched-segment (juxt :age-days :care-days) [age-days care-days]
-                                                                          (or (get offset-segments [offset true last-placement initial?])
-                                                                              (do (println (format "No sample for age %s, placement %s for offset %s initial %s within filter" age-days last-placement offset initial?))
-                                                                                  nil)
-                                                                              (get offset-segments [offset false last-placement initial?])))]
-                                          (when-not sample (println (format "No sample for age %s, placement %s for offset %s initial %s even outside filter" age-days last-placement offset initial?)))
-                                          
-                                          (let [{:keys [terminal? episodes duration to-placement aged-out?]} sample
-                                                episodes (concat all-episodes (episodes/add-offset total-duration episodes))
-                                                total-duration' (if aged-out?
-                                                                  max-duration
-                                                                  (min (+ total-duration duration) max-duration))
-                                                care-weeks (quot total-duration' 7)
-                                                proposal (get-in simulated-pdf [admission-age care-weeks])
-                                                desired (get-in empirical-pdf [admission-age care-weeks])]
-                                            (if (or (and terminal? (< care-weeks 52) #_(accept? proposal desired))
-                                                    (not terminal?)
-                                                    (>= care-weeks 52))
-                                              (do
-                                                (swap! matched-segments* conj {:period-id period-id :sample-id (:id sample)})
-                                                (if (or terminal? (>= total-duration' max-duration))
-                                                  [(take-while #(< (:offset %) total-duration') episodes)
-                                                   total-duration']
-                                                  (recur total-duration'
-                                                         to-placement
-                                                         episodes
-                                                         0 ;; Zero offset
-                                                         (boolean false) ;; Always return false
-                                                         )))
-                                              (do (println "Rejecting sample..." admission-age care-weeks proposal desired)
-                                                  (recur total-duration
-                                                         last-placement
-                                                         all-episodes
-                                                         offset
-                                                         initial?))))))]
-        (doto (-> period
-                  (assoc :episodes (episodes/simplify episodes))
-                  (assoc :duration total-duration)
-                  (assoc :open? false)
-                  (assoc :end (time/days-after beginning total-duration))))))))
+      (markov-period period offset-segments))))
 
 (defn joiner-placements-model
   [periods]

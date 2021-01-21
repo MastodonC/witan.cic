@@ -66,20 +66,23 @@
          (map (comp #(assoc-open-at % projection-start)
                     summarise-periods)))))
 
+(defn period-as-at
+  [{:keys [episodes beginning end open? duration] :as period} as-at]
+  (if (or open? (time/>= end as-at))
+    (let [duration (time/day-interval beginning as-at)]
+      (-> period
+          (assoc :open? true)
+          (dissoc :end)
+          (assoc :duration duration)
+          (assoc :snapshot-date as-at)
+          (update :episodes (fn [episodes] (vec (filter #(<= (:offset %) duration) episodes))))))
+    (assoc period :snapshot-date as-at)))
+
 (defn periods-as-at
   "This function takes the periods that have occurred and creates a view of how they would have appeared at some point in the past"
   [periods as-at]
   (->> (filter #(time/<= (:beginning %) as-at) periods)
-       (map (fn [{:keys [episodes beginning end open? duration] :as period}]
-              (if (or open? (time/>= end as-at))
-                (let [duration (time/day-interval beginning as-at)]
-                  (-> period
-                      (assoc :open? true)
-                      (dissoc :end)
-                      (assoc :duration duration)
-                      (assoc :snapshot-date as-at)
-                      (update :episodes (fn [episodes] (vec (filter #(<= (:offset %) duration) episodes))))))
-                (assoc period :snapshot-date as-at))))))
+       (map #(period-as-at % as-at))))
 
 (defn episode-on
   [{:keys [beginning episodes]} date]
@@ -207,5 +210,22 @@
           (assoc :from-placement (-> episodes first :placement))
           (assoc :episodes episodes)))))
 
+(defn period-generator
+  [periods project-from]
+  (let [period (rand-nth periods)
+        _ (println period)
+        {:keys [open? beginning end]} period
+        interval (time/day-interval beginning (or end project-from))
+        as-at (time/days-after beginning (rand-int interval))]
+    (cons (do (println period) (period-as-at period as-at))
+          (lazy-seq (period-generator periods project-from)))))
 
-
+(defn joiner-generator
+  [periods]
+  (let [period (rand-nth periods)]
+    (cons (-> period
+              (assoc :duration 0)
+              (dissoc :end)
+              (assoc :open? true)
+              (update :episodes first))
+          (lazy-seq (joiner-generator periods)))))
