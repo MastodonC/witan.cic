@@ -162,6 +162,14 @@
           (map fields)
           cost-projection)))
 
+(defn duration-table
+  [periods]
+  (let [headers (concat ["Admission Age" "Duration" "Provenance"])
+        fields (juxt :admission-age :duration :provenance)]
+    (into [headers]
+          (map fields)
+          periods)))
+
 (defn placement-sequence-table
   [{:keys [projected-age-sequence-totals projected-age-totals
            actual-age-sequence-totals actual-age-totals]}]

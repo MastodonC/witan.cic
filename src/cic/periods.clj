@@ -217,7 +217,7 @@
         {:keys [open? beginning end]} period
         interval (time/day-interval beginning (or end project-from))
         as-at (time/days-after beginning (rand-int interval))]
-    (cons (do (println period) (period-as-at period as-at))
+    (cons (period-as-at period as-at)
           (lazy-seq (period-generator periods project-from)))))
 
 (defn joiner-generator
@@ -227,5 +227,5 @@
               (assoc :duration 0)
               (dissoc :end)
               (assoc :open? true)
-              (update :episodes first))
+              (update :episodes (partial take 1)))
           (lazy-seq (joiner-generator periods)))))

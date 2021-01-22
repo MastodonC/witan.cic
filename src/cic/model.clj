@@ -383,14 +383,13 @@
                                     (let [age-days (time/day-interval birthday (time/days-after beginning total-duration))
                                           age-days (jitter-binomial age-days max-age-days jitter-scale)
                                           care-days (jitter-binomial total-duration max-duration jitter-scale)
-                                          sample (get-matched-segment (juxt :age-days :care-days) [age-days care-days]
+                                          {:keys [terminal? episodes duration to-placement aged-out?] :as sample} (get-matched-segment (juxt :age-days :care-days) [age-days care-days]
                                                                       (or (get offset-segments [offset true last-placement initial?])
                                                                           (do (println (format "No sample for age %s, placement %s for offset %s initial %s within filter" age-days last-placement offset initial?))
                                                                               nil)
                                                                           (get offset-segments [offset false last-placement initial?])))]
                                       (when-not sample (println (format "No sample for age %s, placement %s for offset %s initial %s even outside filter" age-days last-placement offset initial?)))
-                                      (let [{:keys [terminal? episodes duration to-placement aged-out?]} sample
-                                            episodes (concat all-episodes (episodes/add-offset total-duration episodes))
+                                      (let [episodes (concat all-episodes (episodes/add-offset total-duration episodes))
                                             total-duration' (if aged-out?
                                                               max-duration
                                                               (min (+ total-duration duration) max-duration))
