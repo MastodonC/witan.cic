@@ -4,7 +4,7 @@
             [clojure.set :as cs]
             [taoensso.timbre :as timbre]))
 
-(def segment-interval (* 365 1))
+(def segment-interval (* 365 6))
 
 (defn period-id
   "Period ID is a composite key of the child's ID and a period number"
@@ -213,7 +213,6 @@
 (defn period-generator
   [periods project-from]
   (let [period (rand-nth periods)
-        _ (println period)
         {:keys [open? beginning end]} period
         interval (time/day-interval beginning (or end project-from))
         as-at (time/days-after beginning (rand-int interval))]

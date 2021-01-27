@@ -278,10 +278,10 @@
 
 (defn euclidean-distance
   [as bs]
-  (->> (map (fn [a b]
-              (Math/pow (- a b) 2))
-            as bs)
-       (apply +)
+  (->> (sequence (fn [a b]
+                   (Math/pow (- a b) 2))
+                 as bs)
+       (reduce +)
        (Math/sqrt)))
 
 (defn jitter-normal
@@ -383,20 +383,28 @@
                                     (let [age-days (time/day-interval birthday (time/days-after beginning total-duration))
                                           age-days (jitter-binomial age-days max-age-days jitter-scale)
                                           care-days (jitter-binomial total-duration max-duration jitter-scale)
-                                          {:keys [terminal? episodes duration to-placement aged-out?] :as sample} (get-matched-segment (juxt :age-days :care-days) [age-days care-days]
-                                                                      (or (get offset-segments [offset true last-placement initial?])
-                                                                          (do (println (format "No sample for age %s, placement %s for offset %s initial %s within filter" age-days last-placement offset initial?))
-                                                                              nil)
-                                                                          (get offset-segments [offset false last-placement initial?])))]
-                                      (when-not sample (println (format "No sample for age %s, placement %s for offset %s initial %s even outside filter" age-days last-placement offset initial?)))
+                                          {:keys [terminal? episodes duration to-placement aged-out?] :as sample}
+                                          (get-matched-segment (juxt :age-days :care-days) [age-days care-days]
+                                                               (or (get offset-segments [offset true last-placement initial?])
+                                                                   (do (println (format "No sample for age %s, placement %s for offset %s initial %s within filter" age-days last-placement offset initial?))
+                                                                       nil)
+                                                                   (get offset-segments [offset false last-placement initial?])))]
+                                      #_(when-not sample (println (format "No sample for age %s, placement %s for offset %s initial %s even outside filter" age-days last-placement offset initial?)))
                                       (let [episodes (concat all-episodes (episodes/add-offset total-duration episodes))
                                             total-duration' (if aged-out?
                                                               max-duration
                                                               (min (+ total-duration duration) max-duration))
                                             care-weeks (quot total-duration' 7)]
-                                        (if (or terminal? (>= total-duration' max-duration))
+                                        (cond
+                                          ;; Resample 90% of terminal cases
+                                          (and terminal? (< total-duration' max-duration) (> (rand) 0.1))
+                                          (recur total-duration last-placement all-episodes offset initial?)
+
+                                          (or terminal? (>= total-duration' max-duration))
                                           [(take-while #(< (:offset %) total-duration') episodes)
                                            total-duration']
+
+                                          :else
                                           (recur total-duration'
                                                  to-placement
                                                  episodes

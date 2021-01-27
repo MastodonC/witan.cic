@@ -212,3 +212,18 @@
               (-> row
                   (update :offset parse-int))))
        (group-by :open)))
+
+(defn rejection-proportions
+  [filename]
+  (->> (load-csv filename)
+       (map (fn [row]
+              (-> row
+                  (update :age parse-int)
+                  (update :group parse-double)
+                  (update :p parse-double))))
+       (group-by (juxt :age :group))
+       (reduce (fn [coll [k v]]
+                 (assoc coll k (reduce (fn [coll {:keys [provenance p]}]
+                                         (assoc coll provenance p))
+                                       {} v)))
+               {})))
