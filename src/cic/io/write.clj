@@ -210,3 +210,12 @@
                  (set/rename-keys {:report-date :report_date :snapshot-date :snapshot_date :period-id :period_id})))
        (mapseq->csv!)
        (str)))
+
+(defn segments-table
+  [segments]
+  (let [headers (concat ["Age" "Duration" "Date" "From Placement" "To Placement" "Age Days" "Offset" "Aged Out" "Care Days" "Initial" "Terminal" "Join Age Days"])
+        fields (juxt :age :duration (comp date->str :date) :from-placement :to-placement :age-days
+                     :offset :aged-out :care-days :initial? :terminal? :join-age-days)]
+    (into [headers]
+          (map fields)
+          segments)))

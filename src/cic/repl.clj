@@ -17,7 +17,7 @@
 
   (def ccc "data/ccc/2020-06-09/%s")
   (def ncc "data/ncc/2020-06-09/%s")
-(def scc "data/scc/2020-10-22/%s")
+  (def scc "data/scc/2020-12-04/%s")
 
 (def input-format
   scc)
@@ -43,7 +43,7 @@
                :joiner-birthday-model (-> (read/zero-joiner-day-ages zero-joiner-day-ages-csv)
                                           (model/joiner-birthday-model)))))
   ([]
-   (load-model-inputs {:episodes-csv (input-file "suffolk-scrubbed-episodes-20201022-a.csv")
+   (load-model-inputs {:episodes-csv (input-file "suffolk-scrubbed-episodes-20201203.csv")
                        :placement-costs-csv (input-file "placement-costs.csv")
                        ;; :duration-lower-csv (input-file "duration-model-lower.csv")
                        ;; :duration-median-csv (input-file "duration-model-median.csv")
@@ -108,7 +108,7 @@
   [rewind-years train-years n-samples seed]
   (let [{:keys [project-from periods placement-costs duration-model joiner-birthday-model]} (prepare-model-inputs (load-model-inputs) rewind-years)
         _ (println (str "Project from " project-from))
-        output-file (output-file (format "%s-projection-%s-rewind-%syr-train-%syr-samples-%s-seed-%s-distribution.csv" (la-label) (time/date-as-string project-from) rewind-years train-years n-samples seed))
+        output-file (output-file (format "%s-distribution-%s-segment-interval-%s-rewind-%syr-train-%syr-samples-%s-seed-%s.csv" (la-label) (time/date-as-string project-from) periods/segment-interval rewind-years train-years n-samples seed))
         ;; project-from (time/quarter-preceding (time/years-before project-from rewind-years))
         periods (rand/sample-birthdays periods (rand/seed seed))
         learn-from (time/years-before project-from train-years)
@@ -124,6 +124,21 @@
                      (map #(assoc % :provenance "P"))
                      (take n-samples)))
          (write/duration-table)
+         (write/write-csv! output-file))))
+
+(defn output-segments-csv!
+  [rewind-years train-years seed]
+  (let [{:keys [project-from periods placement-costs duration-model joiner-birthday-model]} (prepare-model-inputs (load-model-inputs) rewind-years)
+        _ (println (str "Project from " project-from))
+        output-file (output-file (format "%s-segments-%s-segment-interval-%s-rewind-%syr-train-%syr-seed-%s.csv" (la-label) (time/date-as-string project-from) periods/segment-interval rewind-years train-years seed))
+        ;; project-from (time/quarter-preceding (time/years-before project-from rewind-years))
+        periods (rand/sample-birthdays periods (rand/seed seed))
+        learn-from (time/years-before project-from train-years)
+        close-open-periods? true
+        offset-segments (model/offset-groups periods learn-from project-from close-open-periods?)]
+    (->> (vals offset-segments)
+         (apply concat)
+         (write/segments-table)
          (write/write-csv! output-file))))
 
 (defn generate-annual-csv!
