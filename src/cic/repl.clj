@@ -30,7 +30,7 @@
 (defn load-model-inputs
   "A useful REPL function to load the data files and convert them to  model inputs"
   ([{:keys [episodes-csv placement-costs-csv duration-lower-csv duration-median-csv duration-upper-csv
-            zero-joiner-day-ages-csv survival-hazard-csv]}]
+            zero-joiner-day-ages-csv survival-hazard-csv rejection-proportions-csv]}]
    (let [episodes (-> (read/episodes episodes-csv)
                       (episodes/remove-f6))
          latest-event-date (->> (mapcat (juxt :report-date :ceased) episodes)
@@ -41,7 +41,10 @@
                :placement-costs (read/costs-csv placement-costs-csv)
                ;; :knn-closed-cases (read/knn-closed-cases knn-closed-cases-csv)
                :joiner-birthday-model (-> (read/zero-joiner-day-ages zero-joiner-day-ages-csv)
-                                          (model/joiner-birthday-model)))))
+                                          (model/joiner-birthday-model))
+               :rejection-model (-> (read/rejection-proportions rejection-proportions-csv)
+                                    (model/rejection-model))
+               )))
   ([]
    (load-model-inputs {:episodes-csv (input-file "suffolk-scrubbed-episodes-20201203.csv")
                        :placement-costs-csv (input-file "placement-costs.csv")
@@ -51,6 +54,7 @@
                        :zero-joiner-day-ages-csv (input-file "zero-joiner-day-ages.csv")
                        ;; :survival-hazard-csv (input-file "survival-hazard.csv")
                        ;; :knn-closed-cases-csv (input-file "knn-closed-cases.csv")
+                       :rejection-proportions-csv (input-file "rejection-proportions.csv")
                        })))
 
 (defn prepare-model-inputs
@@ -74,14 +78,15 @@
 (defn generate-projection-csv!
   "Main REPL function for writing a projection CSV"
   [rewind-years train-years project-years n-runs seed]
-  (let [{:keys [project-from periods placement-costs duration-model joiner-birthday-model]} (prepare-model-inputs (load-model-inputs) rewind-years)
+  (let [{:keys [project-from periods placement-costs duration-model joiner-birthday-model rejection-model]} (prepare-model-inputs (load-model-inputs) rewind-years)
         _ (println (str "Project from " project-from))
-        output-file (output-file (format "%s-projection-%s-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-euclidean-quantile-1-7interval.csv" (la-label) (time/date-as-string project-from) rewind-years train-years project-years n-runs seed))
+        output-file (output-file (format "%s-projection-%s-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-0.01-reject-sampling.csv" (la-label) (time/date-as-string project-from) rewind-years train-years project-years n-runs seed))
         ;; project-from (time/quarter-preceding (time/years-before project-from rewind-years))
         project-to (time/years-after project-from project-years)
         learn-from (time/years-before project-from train-years)
         model-seed {:periods periods
                     :duration-model duration-model
+                    :rejection-model rejection-model
                     ;; :knn-closed-cases knn-closed-cases
                     :learn-from learn-from
                     :joiner-birthday-model joiner-birthday-model
@@ -106,22 +111,22 @@
 (defn generate-distribution-csv!
   "Main REPL function for writing a projection CSV"
   [rewind-years train-years n-samples seed]
-  (let [{:keys [project-from periods placement-costs duration-model joiner-birthday-model]} (prepare-model-inputs (load-model-inputs) rewind-years)
+  (let [{:keys [project-from periods placement-costs duration-model joiner-birthday-model rejection-proportions]} (prepare-model-inputs (load-model-inputs) rewind-years)
         _ (println (str "Project from " project-from))
         output-file (output-file (format "%s-distribution-%s-segment-interval-%s-rewind-%syr-train-%syr-samples-%s-seed-%s.csv" (la-label) (time/date-as-string project-from) periods/segment-interval rewind-years train-years n-samples seed))
         ;; project-from (time/quarter-preceding (time/years-before project-from rewind-years))
         periods (rand/sample-birthdays periods (rand/seed seed))
         learn-from (time/years-before project-from train-years)
-        period-completer (model/markov-placements-model periods learn-from project-from true)
+        period-completer (model/markov-placements-model periods (constantly true) learn-from project-from true)
         simulated-periods (into []
-                                (comp (map period-completer)
-                                      (map #(assoc % :provenance "S"))
+                                (comp (map #(assoc % :provenance "S"))
+                                      (map period-completer)
                                       (take n-samples))
                                 (periods/joiner-generator periods))]
     (->> (periods/period-generator periods project-from)
          (into simulated-periods
-               (comp (map period-completer)
-                     (map #(assoc % :provenance "P"))
+               (comp (map #(assoc % :provenance "P"))
+                     (map period-completer)
                      (take n-samples)))
          (write/duration-table)
          (write/write-csv! output-file))))

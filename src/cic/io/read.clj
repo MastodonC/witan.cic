@@ -224,6 +224,6 @@
        (group-by (juxt :age :group))
        (reduce (fn [coll [k v]]
                  (assoc coll k (reduce (fn [coll {:keys [provenance p]}]
-                                         (assoc coll provenance p))
+                                         (assoc coll (keyword (str/lower-case provenance)) p))
                                        {} v)))
                {})))

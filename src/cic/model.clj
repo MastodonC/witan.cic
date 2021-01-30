@@ -235,7 +235,7 @@
         algo "euclidean_scaled"
         tiers 1
         seed-long (rand/rand-long seed)]
-    (rscript/exec script periods-in clusters-out (time/date-as-string project-from) algo (str tiers) (str (Math/abs seed-long)))
+    (rscript/exec script periods-in clusters-out (time/date-as-string project-from) algo (str tiers) (str (Math/abs ^long seed-long)))
     (read/knn-closed-cases clusters-out)))
 
 
@@ -254,15 +254,19 @@
                        periods)
         offsets (if close-open-periods?
                   (range periods/segment-interval)
-                  [0])]
-    (group-by (juxt :offset :in-filter? :from-placement :initial?)
-              (sequence
-               (mapcat (fn [offset]
-                         (into []
-                               (comp (map #(periods/tail-segment % offset))
-                                     (map #(assoc % :offset offset)))
-                               segments)))
-               offsets))))
+                  [0])
+        segments (sequence
+                  (mapcat (fn [offset]
+                            (into []
+                                  (comp (map #(periods/tail-segment % offset))
+                                        (map #(assoc % :offset offset)))
+                                  segments)))
+                  offsets)]
+    (merge
+     (group-by (juxt :offset :from-placement)
+               segments)
+     (group-by (juxt :from-placement)
+               segments))))
 
 (defn min-key'
   "Like clojure.core/min-key but expects a sequence of xs
@@ -273,14 +277,14 @@
 
 (defn distance
   "Returns the absolute distance between x and y"
-  [x y]
+  [^long x ^long y]
   (Math/abs (- x y)))
 
 (defn euclidean-distance
   [as bs]
-  (->> (sequence (fn [a b]
-                   (Math/pow (- a b) 2))
-                 as bs)
+  (->> (map (fn [^long a ^long b]
+              (Math/pow (- a b) 2))
+            as bs)
        (reduce +)
        (Math/sqrt)))
 
@@ -294,7 +298,7 @@
   [x n scale]
   (let [p (/ x n)
         dist (d/binomial {:n (/ n scale) :p p})]
-    (int (* scale (d/draw dist)))))
+    (long (* scale (d/draw dist)))))
 
 (defn get-matched-segment
   [feature-fn feature-vec segments]
@@ -321,10 +325,10 @@
                                :initial? (< duration periods/segment-interval))))
                  (mapcat (fn [{:keys [age-days care-days duration max-duration offset last-placement initial? join-age-days] :as period}]
                            (into [] (map (fn [simulation]
-                                           (let [age-days (jitter-binomial age-days max-age-days jitter-scale)
+                                           (let [join-age-days (jitter-binomial join-age-days max-age-days jitter-scale)
                                                  care-days (jitter-binomial duration max-duration jitter-scale)
-                                                 segment (get-matched-segment (juxt :age-days :care-days) [age-days care-days]
-                                                                              (get offset-segments [offset true last-placement initial?]))]
+                                                 segment (get-matched-segment (juxt :join-age-days :care-days) [join-age-days care-days]
+                                                                              (get offset-segments [offset last-placement]))]
                                              (when segment
                                                (assoc period
                                                       :combined-duration (+ duration (:duration segment))
@@ -372,56 +376,77 @@
          (<= (d/draw dist) desired))))
 
 (defn markov-period
-  [{:keys [episodes birthday beginning duration period-id] :as period} offset-segments]
+  [{:keys [episodes birthday beginning duration period-id provenance] :as period} offset-segments rejection-model]
+  (assert provenance)
   (let [admission-age (time/year-interval birthday beginning)
         max-duration (dec (time/day-interval beginning (time/years-after birthday 18)))
-        [episodes total-duration] (loop [total-duration duration
-                                         last-placement (-> episodes last :placement)
-                                         all-episodes episodes
-                                         offset (rem duration periods/segment-interval)
-                                         initial? (< duration periods/segment-interval)]
-                                    (let [age-days (time/day-interval birthday (time/days-after beginning total-duration))
-                                          age-days (jitter-binomial age-days max-age-days jitter-scale)
-                                          care-days (jitter-binomial total-duration max-duration jitter-scale)
-                                          {:keys [terminal? episodes duration to-placement aged-out?] :as sample}
-                                          (get-matched-segment (juxt :age-days :care-days) [age-days care-days]
-                                                               (or (get offset-segments [offset true last-placement initial?])
-                                                                   (do (println (format "No sample for age %s, placement %s for offset %s initial %s within filter" age-days last-placement offset initial?))
-                                                                       nil)
-                                                                   (get offset-segments [offset false last-placement initial?])))]
-                                      #_(when-not sample (println (format "No sample for age %s, placement %s for offset %s initial %s even outside filter" age-days last-placement offset initial?)))
-                                      (let [episodes (concat all-episodes (episodes/add-offset total-duration episodes))
-                                            total-duration' (if aged-out?
-                                                              max-duration
-                                                              (min (+ total-duration duration) max-duration))
-                                            care-weeks (quot total-duration' 7)]
-                                        (cond
-                                          ;; Resample 90% of terminal cases
-                                          (and terminal? (< total-duration' max-duration) (> (rand) 0.1))
-                                          (recur total-duration last-placement all-episodes offset initial?)
+        init-duration duration
+        init-placement (-> episodes last :placement)
+        init-episodes episodes
+        init-offset (rem duration periods/segment-interval)
+        init-initial? (< duration periods/segment-interval)
+        [episodes total-duration iterations]
+        (loop [total-duration init-duration
+               last-placement init-placement
+               all-episodes init-episodes
+               offset init-offset
+               initial? init-initial?
+               counter 0]
+          (let [age-days (time/day-interval birthday (time/days-after beginning total-duration))
+                age-days (jitter-binomial age-days max-age-days jitter-scale)
+                join-age-days (time/day-interval birthday beginning)
+                join-age-days (jitter-binomial join-age-days max-age-days jitter-scale)
+                ;; care-days (jitter-binomial total-duration max-duration jitter-scale)
+                care-days total-duration
+                {:keys [terminal? episodes duration to-placement aged-out?] :as sample}
+                (get-matched-segment (juxt :join-age-days :care-days) [join-age-days care-days]
+                                     (or (get offset-segments [offset last-placement])
+                                         (get offset-segments [last-placement])
+                                         (do (println "No sample found - ignoring")
+                                             nil)))]
+            #_(when-not sample (println (format "No sample for age %s, placement %s for offset %s initial %s even outside filter" age-days last-placement offset initial?)))
+            (when-not sample
+              [nil nil])
+            (let [episodes (concat all-episodes (episodes/add-offset total-duration episodes))
+                  total-duration' (if aged-out?
+                                    max-duration
+                                    (min (+ total-duration duration) max-duration))
+                  care-weeks (quot total-duration' 7)
+                  iterations-exceeded? (>= counter 1000)]
+              (cond
+                ;; Resample 90% of terminal cases
+                ;; (and terminal? (< total-duration' max-duration) (> (rand) 0.1))
+                ;; (recur total-duration last-placement all-episodes offset initial?)
 
-                                          (or terminal? (>= total-duration' max-duration))
-                                          [(take-while #(< (:offset %) total-duration') episodes)
-                                           total-duration']
+                (or terminal? (>= total-duration' max-duration))
+                (if (or (rejection-model admission-age total-duration' provenance)
+                        iterations-exceeded?)
+                  [(take-while #(< (:offset %) total-duration') episodes)
+                   total-duration'
+                   counter]
+                  (recur init-duration init-placement init-episodes init-offset init-initial? (inc counter)))
 
-                                          :else
-                                          (recur total-duration'
-                                                 to-placement
-                                                 episodes
-                                                 0 ;; Zero offset
-                                                 (boolean false) ;; Always return false
-                                                 )))))]
-    (doto (-> period
-              (assoc :episodes (episodes/simplify episodes))
-              (assoc :duration total-duration)
-              (assoc :open? false)
-              (assoc :end (time/days-after beginning total-duration))))))
+                :else
+                (recur total-duration'
+                       to-placement
+                       episodes
+                       0               ;; Zero offset
+                       (boolean false) ;; Always return false
+                       (inc counter))))))]
+    (println iterations)
+    (when (and episodes total-duration)
+      (-> period
+          (assoc :episodes (episodes/simplify episodes))
+          (assoc :duration total-duration)
+          (assoc :open? false)
+          (assoc :end (time/days-after beginning total-duration))
+          (assoc :iterations iterations)))))
 
 (defn markov-placements-model
-  [periods learn-from learn-to close-open-periods?]
+  [periods rejection-model learn-from learn-to close-open-periods?]
   (let [offset-segments (offset-groups periods learn-from learn-to close-open-periods?)]
     (fn [{:keys [episodes birthday beginning duration period-id] :as period}]
-      (markov-period period offset-segments))))
+      (markov-period period offset-segments rejection-model))))
 
 (defn joiner-placements-model
   [periods]
@@ -435,4 +460,30 @@
                 category-probs (zipmap ks (d/draw (d/dirichlet {:alphas alphas})))]
             (d/draw (d/categorical category-probs)))
           spec/unknown-placement ;; Fallback - never seen a joiner of this age
-)))))
+          )))))
+
+(defn rejection-model
+  "Manage reject sampling for both simulated and projected periods. We have different reject propensities for each.
+  Returns true if the sample should be kept."
+  [rejection-proportions]
+  ;; duration group is measured in years in half-year increments
+  (let [{:keys [m-p m-s]} (reduce (fn [{:keys [m-s m-p] :as coll} [[join-age duration-group] {:keys [p s h] :or {p 0.1 s 0.1 h 0.1}}]]
+                                    (-> coll
+                                        (update :m-s max (/ h s))
+                                        (update :m-p max (/ h p))))
+                                  {:m-s 1 :m-p 1}
+                                  rejection-proportions)
+        ]
+    (fn [admission-age duration-days provenance]
+      (assert (#{"S" "P"} provenance))
+      (let [u (rand)
+            duration-group (* (Math/floor (/ duration-days (* 365 2.0))) 2.0) U (rand)
+            {:keys [h p s] :or {h 0.1 s 0.1 p 0.1}} (get rejection-proportions [admission-age duration-group])
+            candidate (if (= provenance "S") s p)
+            c (if (= provenance "S") m-s m-p)
+            keep? (if (nil? h)
+                    false
+                    (<= u (/ h (* candidate c))))]
+        ;; (println (format "(<= %s (/ %s (* %s %s))) => %s " (str u) (str h) (str c) (str candidate) (str keep?)))
+        keep?))))
+

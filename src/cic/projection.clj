@@ -37,16 +37,19 @@
                               :birthday birthday
                               :episodes [{:placement joiner-placement :offset 0}]
                               :duration 0
+                              :provenance "S"
+                              :admission-age age
+                              :dob (time/year birthday)
                               :period-id (rand/rand-id 8 seed-4)})]
     (when (time/< next-time end)
-      (let [period (assoc period
-                          :admission-age age
-                          :dob (time/year birthday)
-                          :provenance "S")]
+      (if period
         (cons period
               (lazy-seq
                (joiners-seq joiners-model duration-model joiner-placements-model markov-model
-                            placements-model joiner-birthday-model last-joiner new-offset age end seed-5)))))))
+                            placements-model joiner-birthday-model last-joiner new-offset age end seed-5)))
+        (lazy-seq
+         (joiners-seq joiners-model duration-model joiner-placements-model markov-model
+                      placements-model joiner-birthday-model last-joiner new-offset age end seed-5))))))
 
 (defn project-joiners
   "Return a lazy sequence of projected joiners for all ages of admission."
@@ -69,11 +72,11 @@
             (rand/split-n seed (count spec/ages)))))
 
 (defn init-model
-  [{:keys [periods joiner-range episodes-range duration-model joiner-birthday-model project-from project-to segments-range] :as model-seed} random-seed]
+  [{:keys [periods joiner-range episodes-range duration-model joiner-birthday-model project-from project-to segments-range rejection-model] :as model-seed} random-seed]
   (let [[s1 s2] (rand/split-n random-seed 2)
         all-periods (rand/sample-birthdays periods s1)
         [learn-from learn-to] segments-range
-        markov-model (model/markov-placements-model all-periods learn-from learn-to true)]
+        markov-model (model/markov-placements-model all-periods rejection-model learn-from learn-to true)]
     (assoc model-seed :markov-model markov-model)))
 
 (defn train-model

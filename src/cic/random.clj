@@ -49,8 +49,9 @@
 (defn close-open-periods
   [periods markov-model seed]
   (println "Closing open periods...")
-  (for [period periods
-        :let [open-offset (time/day-interval (:beginning period) (:snapshot-date period))]]
-    (if (:open? period)
-      (assoc (markov-model period) :provenance "P")
-      (assoc period :provenance "H"))))
+  (->> (for [period periods
+             :let [open-offset (time/day-interval (:beginning period) (:snapshot-date period))]]
+         (if (:open? period)
+           (markov-model (assoc period :provenance "P"))
+           (assoc period :provenance "H")))
+       (keep identity)))
