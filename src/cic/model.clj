@@ -433,7 +433,6 @@
                        0               ;; Zero offset
                        (boolean false) ;; Always return false
                        (inc counter))))))]
-    (println iterations)
     (when (and episodes total-duration)
       (-> period
           (assoc :episodes (episodes/simplify episodes))
@@ -487,3 +486,39 @@
         ;; (println (format "(<= %s (/ %s (* %s %s))) => %s " (str u) (str h) (str c) (str candidate) (str keep?)))
         keep?))))
 
+
+(defn projected-period
+  [candidates]
+  (let [periods (->> (group-by :id candidates)
+                     (reduce (fn [coll [id candidates]]
+                               (->> coll
+                                    (assoc :id id
+                                           :c (apply max (map (fn [{:keys [candidate-density target-density]}] (/ target-density candidate-density)) candidates))
+                                           :candidates candidates)))
+                             {}))]
+    (fn [period-id]
+      (let [{:keys [c candidates]} (get periods period-id)]
+        (loop [counter 0]
+          (let [{:keys [candidate-density target-density] :as r} (rand-nth candidates)
+                u (rand)]
+            (if (or (<= u (/ target-density (* c candidate-density))) (> counter 100000))
+              r
+              (recur (inc counter)))))))))
+
+(defn simulated-period
+  [candidates]
+  (let [periods (->> (group-by :admission-age candidates)
+                     (reduce (fn [coll [admission-age candidates]]
+                               (->> coll
+                                    (assoc :admission-age
+                                           :c (apply max (map (fn [{:keys [candidate-density target-density]}] (/ target-density candidate-density)) candidates))
+                                           :candidates candidates)))
+                             {}))]
+    (fn [admission-age]
+      (let [{:keys [c candidates]} (get periods admission-age)]
+        (loop [counter 0]
+          (let [{:keys [candidate-density target-density] :as r} (rand-nth candidates)
+                u (rand)]
+            (if (or (<= u (/ target-density (* c candidate-density))) (> counter 100000))
+              r
+              (recur (inc counter)))))))))

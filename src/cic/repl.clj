@@ -146,6 +146,33 @@
          (write/segments-table)
          (write/write-csv! output-file))))
 
+(defn output-generated-universe
+  [rewind-years train-years project-years n-samples seed]
+  (let [{:keys [project-from periods placement-costs duration-model joiner-birthday-model rejection-proportions]} (prepare-model-inputs (load-model-inputs) rewind-years)
+        _ (println (str "Project from " project-from))
+        output-file (output-file (format "%s-periods-universe-%s-segment-interval-%s-rewind-%syr-train-%syr-samples-%s-seed-%s.csv" (la-label) (time/date-as-string project-from) periods/segment-interval rewind-years train-years n-samples seed))
+        ;; project-from (time/quarter-preceding (time/years-before project-from rewind-years))
+        periods (rand/sample-birthdays periods (rand/seed seed))
+        learn-from (time/years-before project-from train-years)
+        period-completer (model/markov-placements-model periods (constantly true) learn-from project-from true)
+        historic-periods (map #(assoc % :provenance "H" :iteration 0) (remove :open? periods))
+        open-periods (filter :open? periods)
+        candidate-periods (into [] (map (fn [iter]
+                                          (map #(assoc % :iteration iter)
+                                               (rand/sample-birthdays open-periods (rand/seed (+ seed iter))))))
+                                (range n-samples))
+        completed-periods (into [] (comp cat
+                                         (map #(assoc % :provenance "P"))
+                                         (map period-completer))
+                                candidate-periods)
+        simulated-periods (into [] (comp cat
+                                         (map #(assoc % :provenance "S"))
+                                         (map (comp period-completer #(periods/period-as-at-wayback % project-from))))
+                                candidate-periods)]
+    (->> (concat historic-periods completed-periods simulated-periods)
+         (write/periods-universe)
+         (write/write-csv! output-file))))
+
 (defn generate-annual-csv!
   [output-file rewind-years train-years project-years n-runs seed]
   (let [{:keys [periods placement-costs duration-model joiner-birthday-model]} (load-model-inputs)

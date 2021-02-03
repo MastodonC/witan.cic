@@ -43,7 +43,8 @@
                     birthday (time/days-after earliest-birthday birthday-offset)]
                 (-> period
                     (assoc :birthday birthday)
-                    (assoc :admission-age (time/year-interval birthday beginning))))))
+                    (assoc :admission-age (time/year-interval birthday beginning))
+                    (assoc :admission-age-days (time/day-interval birthday beginning))))))
           periods rngs)))
 
 (defn close-open-periods

@@ -219,3 +219,12 @@
     (into [headers]
           (map fields)
           segments)))
+
+(defn periods-universe
+  [periods]
+  (let [headers ["Provenance" "ID" "Sample Index" "Admission Age" "Admission Age Days" "Duration" "Episodes EDN"]
+        fields (juxt :provenance :period-id :iteration :admission-age :admission-age-days :duration (comp pr-str :episodes))]
+    (into [headers]
+          (map fields)
+          periods)))
+

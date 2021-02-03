@@ -227,3 +227,16 @@
                                          (assoc coll (keyword (str/lower-case provenance)) p))
                                        {} v)))
                {})))
+
+(defn period-candidates
+  [filename]
+  (->> (load-csv filename)
+       (map (fn [row]
+              (-> row
+                  (update :admission-age parse-int)
+                  (update :admission-age-days parse-int)
+                  (update :duration parse-int)
+                  (update :duration-group parse-int)
+                  (update :noise parse-int)
+                  (update :target-density parse-double)
+                  (update :candidate-density parse-double))))))

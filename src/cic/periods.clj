@@ -219,6 +219,13 @@
     (cons (period-as-at period as-at)
           (lazy-seq (period-generator periods project-from)))))
 
+(defn period-as-at-wayback
+  [period project-from]
+  (let [{:keys [open? beginning end]} period
+        interval (time/day-interval beginning (or end project-from))
+        as-at (time/days-after beginning (rand-int interval))]
+    (period-as-at period as-at)))
+
 (defn joiner-generator
   [periods]
   (let [period (rand-nth periods)]
