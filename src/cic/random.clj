@@ -48,11 +48,15 @@
           periods rngs)))
 
 (defn close-open-periods
-  [periods markov-model seed]
+  [periods projection-model seed]
   (println "Closing open periods...")
-  (->> (for [period periods
-             :let [open-offset (time/day-interval (:beginning period) (:snapshot-date period))]]
-         (if (:open? period)
-           (markov-model (assoc period :provenance "P"))
+  (->> (for [{:keys [period-id beginning open?] :as period} periods]
+         (if open?
+           (when-let [{:keys [episodes-edn duration]} (projection-model period-id)]
+             (assoc period
+                    :episodes (read-string episodes-edn)
+                    :duration duration
+                    :end (time/days-after beginning duration)
+                    :provenance "P"))
            (assoc period :provenance "H")))
        (keep identity)))

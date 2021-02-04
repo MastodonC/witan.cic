@@ -62,7 +62,7 @@
                           (vec)))
         parsed-data (rest parsed-csv)
         headers (map csk/->kebab-case-keyword (first parsed-csv))]
-    (map (partial zipmap headers) parsed-data)))
+    (into [] (map (partial zipmap headers)) parsed-data)))
 
 (defn episodes
   [filename]
@@ -228,15 +228,25 @@
                                        {} v)))
                {})))
 
+(defn returning
+  [x & args]
+  x)
+
 (defn period-candidates
   [filename]
-  (->> (load-csv filename)
-       (map (fn [row]
-              (-> row
-                  (update :admission-age parse-int)
-                  (update :admission-age-days parse-int)
-                  (update :duration parse-int)
-                  (update :duration-group parse-int)
-                  (update :noise parse-int)
-                  (update :target-density parse-double)
-                  (update :candidate-density parse-double))))))
+  (println "Reading period candidates")
+  (returning
+   (->> (load-csv filename)
+        (map (fn [row]
+               (try
+                 (-> row
+                     (update :admission-age parse-int)
+                     (update :admission-age-days parse-int)
+                     (update :duration parse-int)
+                     (update :duration-group parse-int)
+                     (update :noise parse-int)
+                     (update :reject-ratio parse-double))
+                 (catch Exception e
+                   (println row)
+                   (throw e))))))
+   (println "Read period candidates")))

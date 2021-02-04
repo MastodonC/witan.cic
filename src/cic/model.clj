@@ -486,39 +486,47 @@
         ;; (println (format "(<= %s (/ %s (* %s %s))) => %s " (str u) (str h) (str c) (str candidate) (str keep?)))
         keep?))))
 
-
-(defn projected-period
+(defn projection-model
   [candidates]
-  (let [periods (->> (group-by :id candidates)
-                     (reduce (fn [coll [id candidates]]
-                               (->> coll
-                                    (assoc :id id
-                                           :c (apply max (map (fn [{:keys [candidate-density target-density]}] (/ target-density candidate-density)) candidates))
-                                           :candidates candidates)))
+  (let [periods (->> (reduce (fn [coll {:keys [id reject-ratio] :as candidate}]
+                               (-> coll
+                                   (update-in [id :candidates] conj candidate)
+                                   (update-in [id :c] (fnil max 1) reject-ratio)))
+                             {}
+                             candidates)
+                     (reduce (fn [coll [k {:keys [c candidates]}]]
+                               (-> coll
+                                   (assoc-in [k :c] c)
+                                   (assoc-in [k :candidates] (vec candidates))))
                              {}))]
     (fn [period-id]
-      (let [{:keys [c candidates]} (get periods period-id)]
+      (if-let [{:keys [c candidates]} (get periods period-id)]
         (loop [counter 0]
-          (let [{:keys [candidate-density target-density] :as r} (rand-nth candidates)
+          (let [{:keys [reject-ratio] :as candidate} (rand-nth candidates)
                 u (rand)]
-            (if (or (<= u (/ target-density (* c candidate-density))) (> counter 100000))
-              r
-              (recur (inc counter)))))))))
+            (if (or (<= u (* c reject-ratio)) (> counter 100000))
+              candidate
+              (recur (inc counter)))))
+        (println "Couldn't complete" period-id)))))
 
-(defn simulated-period
+(defn simulation-model
   [candidates]
-  (let [periods (->> (group-by :admission-age candidates)
-                     (reduce (fn [coll [admission-age candidates]]
-                               (->> coll
-                                    (assoc :admission-age
-                                           :c (apply max (map (fn [{:keys [candidate-density target-density]}] (/ target-density candidate-density)) candidates))
-                                           :candidates candidates)))
+  (let [periods (->> (reduce (fn [coll {:keys [admission-age reject-ratio] :as candidate}]
+                               (-> coll
+                                   (update-in [admission-age :candidates] conj candidate)
+                                   (update-in [admission-age :c] (fnil max 1) reject-ratio)))
+                             {}
+                             candidates)
+                     (reduce (fn [coll [k {:keys [c candidates]}]]
+                               (-> coll
+                                   (assoc-in [k :c] c)
+                                   (assoc-in [k :candidates] (vec candidates))))
                              {}))]
     (fn [admission-age]
       (let [{:keys [c candidates]} (get periods admission-age)]
         (loop [counter 0]
-          (let [{:keys [candidate-density target-density] :as r} (rand-nth candidates)
+          (let [{:keys [reject-ratio] :as candidate} (rand-nth candidates)
                 u (rand)]
-            (if (or (<= u (/ target-density (* c candidate-density))) (> counter 100000))
-              r
+            (if (or (<= u (* c reject-ratio)) (> counter 100000))
+              (assoc candidate :iterations counter)
               (recur (inc counter)))))))))
