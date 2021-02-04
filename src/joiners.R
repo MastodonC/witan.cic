@@ -51,16 +51,16 @@ params.df <- data.frame(name = names(params), param = params)
 
 # FIXME: override trending with static data
 # Take a mean from the past 5 years
-mean_arrivals <- dat %>%
-        filter(quarter >= max(df$beginning) - years(1)) %>%
-    group_by(admission_age) %>%
-    summarise(n = mean(n))
-params.df <- data.frame(name = c("(Intercept)", "quarter",
-                                 paste0("admission_age", mean_arrivals$admission_age),
-                                 paste0("quarter:admission_age", mean_arrivals$admission_age)),
-                        param = c(0, 0,
-                                  log(mean_arrivals$n),
-                                  rep(0, nrow(mean_arrivals))))
+# mean_arrivals <- dat %>%
+#         filter(quarter >= max(df$beginning) - years(1)) %>%
+#     group_by(admission_age) %>%
+#     summarise(n = mean(n))
+# params.df <- data.frame(name = c("(Intercept)", "quarter",
+#                                  paste0("admission_age", mean_arrivals$admission_age),
+#                                  paste0("quarter:admission_age", mean_arrivals$admission_age)),
+#                         param = c(0, 0,
+#                                   log(mean_arrivals$n),
+#                                   rep(0, nrow(mean_arrivals))))
 
 write.csv(params.df, output, row.names = FALSE)
 
