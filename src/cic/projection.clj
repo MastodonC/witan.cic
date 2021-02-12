@@ -32,6 +32,8 @@
         start-time (time/without-time next-time)
         {:keys [episodes-edn admission-age-days duration iterations]} (simulation-model age)
         birthday (time/days-before start-time admission-age-days)
+        max-duration (dec (time/day-interval start-time (time/years-after birthday 18)))
+        duration (min duration max-duration)
         period {:beginning start-time
                 :birthday birthday
                 :episodes (read-string episodes-edn)

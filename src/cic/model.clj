@@ -419,12 +419,9 @@
                 ;; (recur total-duration last-placement all-episodes offset initial?)
 
                 (or terminal? (>= total-duration' max-duration))
-                (if (or (rejection-model admission-age total-duration' provenance)
-                        iterations-exceeded?)
-                  [(take-while #(< (:offset %) total-duration') episodes)
-                   total-duration'
-                   counter]
-                  (recur init-duration init-placement init-episodes init-offset init-initial? (inc counter)))
+                [(take-while #(< (:offset %) total-duration') episodes)
+                 total-duration'
+                 counter]
 
                 :else
                 (recur total-duration'

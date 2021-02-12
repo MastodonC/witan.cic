@@ -68,7 +68,7 @@
 
 (defn period-as-at
   [{:keys [episodes beginning end open? duration] :as period} as-at]
-  (if (or open? (time/>= end as-at))
+  (if (or open? (time/> end as-at))
     (let [duration (time/day-interval beginning as-at)]
       (-> period
           (assoc :open? true)
@@ -123,8 +123,12 @@
                                                           (time/month-end birth-month))]
                        (if (time/>= latest-birthday earliest-birthday)
                          (assoc period :birthday-bounds [earliest-birthday latest-birthday])
-                         (do (timbre/info (format "Birthday for %s can't be inferred, removing" period-id))
-                             nil)))))
+                         (do (timbre/info (format "Birthday for %s can't be inferred, assuming passed 18. Closing case and truncating at 18" period-id))
+                             (assoc period
+                                    :birthday-bounds [latest-birthday latest-birthday]
+                                    :open? false
+                                    :end (time/days-before (time/years-after latest-birthday 18) 1)
+                                    :duration (dec (time/day-interval latest-birthday (time/years-after latest-birthday 18)))))))))
               (keep identity))
         periods))
 
@@ -147,43 +151,45 @@
   [{:keys [beginning end birthday duration episodes open?]}]
   (let [max-date (time/years-after birthday 18)
         join-age-days (time/day-interval birthday beginning)]
-    (map
-     (fn [segment-time idx]
-       (let [reversed-episodes (reverse episodes)
-             ;; Duration is the shorter of the segment duration and the amount of time remaining
-             segment-duration (min (- duration segment-time) segment-interval)
-             from-age (time/year-interval birthday (time/days-after beginning segment-time))
-             [prior-episodes segment-episodes] (->> episodes
-                                                    (split-with (fn [{:keys [offset placement]}]
-                                                                  (<= offset segment-time))))
-             prior-episode (some-> (last prior-episodes)
-                                   (assoc :offset 0))
-             segment-episodes (concat (when prior-episode [prior-episode])
-                                      (->>  (take-while (fn [{:keys [offset placement]}]
-                                                          (<= offset (+ segment-time segment-interval)))
-                                                        segment-episodes)
-                                            (map (fn [placement]
-                                                   (update placement :offset - segment-time)))))
-             from-placement (->> segment-episodes first :placement)
-             to-placement (->> segment-episodes last :placement)
-             terminal? (< segment-duration segment-interval)]
-         {:date (time/days-after beginning segment-time)
-          :from-placement from-placement ;; starting placement
-          :to-placement to-placement
-          :age from-age ;; in years?
-          :care-days segment-time
-          :age-days (time/day-interval birthday (time/days-after beginning segment-time))
-          :join-age-days join-age-days
-          :initial? (zero? segment-time)
-          :terminal? terminal?
-          :duration segment-duration ;; duration may not be full segment if they leave
-          :episodes (episodes/simplify segment-episodes)
-          :aged-out? (and terminal? ;; Only set for terminal segment
-                          end
-                          (or (time/>= end max-date)
-                              (<= (time/day-interval end max-date) 50)))}))
-     (range 0 duration segment-interval)
-     (map inc (range)))))
+    (->> (map
+          (fn [segment-time idx]
+            (let [reversed-episodes (reverse episodes)
+                  ;; Duration is the shorter of the segment duration and the amount of time remaining
+                  segment-duration (min (- duration segment-time) segment-interval)
+                  from-age (time/year-interval birthday (time/days-after beginning segment-time))
+                  [prior-episodes segment-episodes] (->> episodes
+                                                         (split-with (fn [{:keys [offset placement]}]
+                                                                       (<= offset segment-time))))
+                  prior-episode (some-> (last prior-episodes)
+                                        (assoc :offset 0))
+                  segment-episodes (concat (when prior-episode [prior-episode])
+                                           (->>  (take-while (fn [{:keys [offset placement]}]
+                                                               (<= offset (+ segment-time segment-interval)))
+                                                             segment-episodes)
+                                                 (map (fn [placement]
+                                                        (update placement :offset - segment-time)))))
+                  from-placement (->> segment-episodes first :placement)
+                  to-placement (->> segment-episodes last :placement)
+                  terminal? (< segment-duration segment-interval)]
+              (when (pos? segment-duration) ;; No zero-length segments please!
+                {:date (time/days-after beginning segment-time)
+                 :from-placement from-placement ;; starting placement
+                 :to-placement to-placement
+                 :age from-age ;; in years?
+                 :care-days segment-time
+                 :age-days (time/day-interval birthday (time/days-after beginning segment-time))
+                 :join-age-days join-age-days
+                 :initial? (zero? segment-time)
+                 :terminal? terminal?
+                 :duration segment-duration ;; duration may not be full segment if they leave
+                 :episodes (episodes/simplify segment-episodes)
+                 :aged-out? (and terminal? ;; Only set for terminal segment
+                                 end
+                                 (or (time/>= end max-date)
+                                     (<= (time/day-interval end max-date) 50)))})))
+          (range 0 duration segment-interval)
+          (map inc (range)))
+         (keep identity))))
 
 (defn head-segment
   "Takes a segment and the number of days to take from the beginning"

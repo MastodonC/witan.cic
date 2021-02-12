@@ -43,12 +43,15 @@
                ;; :knn-closed-cases (read/knn-closed-cases knn-closed-cases-csv)
                :joiner-birthday-model (-> (read/zero-joiner-day-ages zero-joiner-day-ages-csv)
                                           (model/joiner-birthday-model))
-               :rejection-model (-> (read/rejection-proportions rejection-proportions-csv)
-                                    (model/rejection-model))
-               :projection-model (-> (read/period-candidates candidates-projection-csv)
-                                     (model/projection-model))
-               :simulation-model (-> (read/period-candidates candidates-simulation-csv)
-                                     (model/simulation-model))
+               :rejection-model
+               (-> (read/rejection-proportions rejection-proportions-csv)
+                   (model/rejection-model))
+               :projection-model
+               (-> (read/period-candidates candidates-projection-csv)
+                   (model/projection-model))
+               :simulation-model
+               (-> (read/period-candidates candidates-simulation-csv)
+                   (model/simulation-model))
                )))
   ([]
    (load-model-inputs {:episodes-csv (input-file "suffolk-scrubbed-episodes-20201203.csv")
@@ -60,8 +63,8 @@
                        ;; :survival-hazard-csv (input-file "survival-hazard.csv")
                        ;; :knn-closed-cases-csv (input-file "knn-closed-cases.csv")
                        :rejection-proportions-csv (input-file "rejection-proportions.csv")
-                       :candidates-projection-csv (input-file "candidates-projection.csv")
-                       :candidates-simulation-csv (input-file "candidates-simulation.csv")
+                       :candidates-projection-csv (input-file "candidates-projection-10.csv")
+                       :candidates-simulation-csv (input-file "candidates-simulation-10.csv")
                        })))
 
 (defn prepare-model-inputs
@@ -86,9 +89,7 @@
   "Main REPL function for writing a projection CSV"
   [rewind-years train-years project-years n-runs seed]
   (let [{:keys [project-from periods placement-costs duration-model joiner-birthday-model rejection-model projection-model simulation-model]} (prepare-model-inputs (load-model-inputs) rewind-years)
-        _ (println (str "Project from " project-from))
-        output-file (output-file (format "%s-projection-%s-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-universe.csv" (la-label) (time/date-as-string project-from) rewind-years train-years project-years n-runs seed))
-        ;; project-from (time/quarter-preceding (time/years-before project-from rewind-years))
+        output-file (output-file (format "%s-projection-%s-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-universe-5-trended.csv" (la-label) (time/date-as-string project-from) rewind-years train-years project-years n-runs seed))
         project-to (time/years-after project-from project-years)
         learn-from (time/years-before project-from train-years)
         model-seed {:periods periods
@@ -155,30 +156,32 @@
          (write/segments-table)
          (write/write-csv! output-file))))
 
-(defn output-generated-universe
-  [rewind-years train-years project-years n-samples seed]
+(defn output-generated-universe!
+  [rewind-years train-years n-samples seed]
   (let [{:keys [project-from periods placement-costs duration-model joiner-birthday-model rejection-proportions]} (prepare-model-inputs (load-model-inputs) rewind-years)
         _ (println (str "Project from " project-from))
         output-file (output-file (format "%s-periods-universe-%s-segment-interval-%s-rewind-%syr-train-%syr-samples-%s-seed-%s.csv" (la-label) (time/date-as-string project-from) periods/segment-interval rewind-years train-years n-samples seed))
-        ;; project-from (time/quarter-preceding (time/years-before project-from rewind-years))
         periods (rand/sample-birthdays periods (rand/seed seed))
         learn-from (time/years-before project-from train-years)
         period-completer (model/markov-placements-model periods (constantly true) learn-from project-from true)
         historic-periods (map #(assoc % :provenance "H" :iteration 0) (remove :open? periods))
-        open-periods (filter :open? periods)
+        open-periods (map #(assoc % :provenance "O") (filter :open? periods))
         candidate-periods (into [] (map (fn [iter]
-                                          (map #(assoc % :iteration iter)
+                                          (map #(assoc % :iteration iter :provenance "C")
                                                (rand/sample-birthdays open-periods (rand/seed (+ seed iter))))))
                                 (range n-samples))
+        _ (println "Finished candidates")
         completed-periods (into [] (comp cat
                                          (map #(assoc % :provenance "P"))
                                          (map period-completer))
                                 candidate-periods)
+        _ (println "Finished projected periods")
         simulated-periods (into [] (comp cat
                                          (map #(assoc % :provenance "S"))
                                          (map (comp period-completer #(periods/period-as-at-wayback % project-from))))
-                                candidate-periods)]
-    (->> (concat historic-periods completed-periods simulated-periods)
+                                candidate-periods)
+        _ (println "Finished simulated periods")]
+    (->> (apply concat historic-periods open-periods completed-periods simulated-periods candidate-periods)
          (write/periods-universe)
          (write/write-csv! output-file))))
 
@@ -306,8 +309,7 @@
   (let [{:keys [project-from periods placement-costs duration-model joiner-birthday-model knn-closed-cases
                 projection-model simulation-model] :as model-inputs} (prepare-model-inputs (load-model-inputs) rewind-years)
         _ (println (str "Project from " project-from))
-        output-file (output-file (format "%s-episodes-%s-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-universe.csv" (la-label) (time/date-as-string project-from) rewind-years train-years project-years n-runs seed))
-        _ (println output-file)
+        output-file (output-file (format "%s-episodes-%s-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-5-trended.csv" (la-label) (time/date-as-string project-from) rewind-years train-years project-years n-runs seed))
         project-to (time/years-after project-from project-years)
         learn-from (time/years-before project-from train-years)
         t0 (time/min-date (map :beginning periods))
