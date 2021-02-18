@@ -241,3 +241,8 @@
               (assoc :open? true)
               (update :episodes (partial take 1)))
           (lazy-seq (joiner-generator periods)))))
+
+
+(defn max-duration
+  [{:keys [birthday beginning]}]
+  (time/day-interval beginning (time/day-before-18th-birthday birthday)))

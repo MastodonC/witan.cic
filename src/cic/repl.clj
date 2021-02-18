@@ -31,7 +31,9 @@
   "A useful REPL function to load the data files and convert them to  model inputs"
   ([{:keys [episodes-csv placement-costs-csv duration-lower-csv duration-median-csv duration-upper-csv
             zero-joiner-day-ages-csv survival-hazard-csv rejection-proportions-csv
-            candidates-simulation-csv candidates-projection-csv]}]
+            candidates-simulation-csv candidates-projection-csv
+            age-out-proportions-csv
+            age-out-projected-candidates-csv age-out-simulated-candidates-csv]}]
    (let [episodes (-> (read/episodes episodes-csv)
                       (episodes/remove-f6))
          latest-event-date (->> (mapcat (juxt :report-date :ceased) episodes)
@@ -52,7 +54,15 @@
                :simulation-model
                (-> (read/period-candidates candidates-simulation-csv)
                    (model/simulation-model))
-               )))
+               :age-out-model
+               (-> (read/age-out-proportions age-out-proportions-csv)
+                   (model/age-out-model))
+               :age-out-projection-model
+               (-> (read/age-out-candidates age-out-projected-candidates-csv)
+                   (model/age-out-projection-model))
+               :age-out-simulation-model
+               (-> (read/age-out-candidates age-out-simulated-candidates-csv)
+                   (model/age-out-simulation-model)))))
   ([]
    (load-model-inputs {:episodes-csv (input-file "suffolk-scrubbed-episodes-20201203.csv")
                        :placement-costs-csv (input-file "placement-costs.csv")
@@ -65,6 +75,9 @@
                        :rejection-proportions-csv (input-file "rejection-proportions.csv")
                        :candidates-projection-csv (input-file "candidates-projection-10.csv")
                        :candidates-simulation-csv (input-file "candidates-simulation-10.csv")
+                       :age-out-proportions-csv (input-file "age-out-proportions.csv")
+                       :age-out-projected-candidates-csv (input-file "age-out-projection.csv")
+                       :age-out-simulated-candidates-csv (input-file "age-out-simulation.csv")
                        })))
 
 (defn prepare-model-inputs
@@ -88,8 +101,10 @@
 (defn generate-projection-csv!
   "Main REPL function for writing a projection CSV"
   [rewind-years train-years project-years n-runs seed]
-  (let [{:keys [project-from periods placement-costs duration-model joiner-birthday-model rejection-model projection-model simulation-model]} (prepare-model-inputs (load-model-inputs) rewind-years)
-        output-file (output-file (format "%s-projection-%s-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-universe-5-trended.csv" (la-label) (time/date-as-string project-from) rewind-years train-years project-years n-runs seed))
+  (let [{:keys [project-from periods placement-costs duration-model joiner-birthday-model
+                rejection-model projection-model simulation-model
+                age-out-model age-out-projection-model age-out-simulation-model]} (prepare-model-inputs (load-model-inputs) rewind-years)
+        output-file (output-file (format "%s-projection-%s-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-age-out.csv" (la-label) (time/date-as-string project-from) rewind-years train-years project-years n-runs seed))
         project-to (time/years-after project-from project-years)
         learn-from (time/years-before project-from train-years)
         model-seed {:periods periods
@@ -104,7 +119,10 @@
                     :project-from project-from
                     :project-to project-to
                     :projection-model projection-model
-                    :simulation-model simulation-model}
+                    :simulation-model simulation-model
+                    :age-out-model age-out-model
+                    :age-out-projection-model age-out-projection-model
+                    :age-out-simulation-model age-out-simulation-model}
         output-from (time/years-before learn-from 2)
         summary-seq (into []
                           (map format-actual-for-output)
@@ -160,7 +178,7 @@
   [rewind-years train-years n-samples seed]
   (let [{:keys [project-from periods placement-costs duration-model joiner-birthday-model rejection-proportions]} (prepare-model-inputs (load-model-inputs) rewind-years)
         _ (println (str "Project from " project-from))
-        output-file (output-file (format "%s-periods-universe-%s-segment-interval-%s-rewind-%syr-train-%syr-samples-%s-seed-%s.csv" (la-label) (time/date-as-string project-from) periods/segment-interval rewind-years train-years n-samples seed))
+        output-file (output-file (format "%s-periods-universe-%s-segment-interval-%s-rewind-%syr-train-%syr-samples-%s-seed-%s-age-out.csv" (la-label) (time/date-as-string project-from) periods/segment-interval rewind-years train-years n-samples seed))
         periods (rand/sample-birthdays periods (rand/seed seed))
         learn-from (time/years-before project-from train-years)
         period-completer (model/markov-placements-model periods (constantly true) learn-from project-from true)
@@ -175,10 +193,18 @@
                                          (map #(assoc % :provenance "P"))
                                          (map period-completer))
                                 candidate-periods)
+        completed-periods (into completed-periods (comp cat
+                                                        (map #(assoc % :provenance "P" :aged-out? true))
+                                                        (map #(period-completer % true)))
+                                candidate-periods)
         _ (println "Finished projected periods")
         simulated-periods (into [] (comp cat
                                          (map #(assoc % :provenance "S"))
                                          (map (comp period-completer #(periods/period-as-at-wayback % project-from))))
+                                candidate-periods)
+        simulated-periods (into simulated-periods (comp cat
+                                                        (map #(assoc % :provenance "S" :aged-out? true))
+                                                        (map (comp #(period-completer % true) #(periods/period-as-at-wayback % project-from))))
                                 candidate-periods)
         _ (println "Finished simulated periods")]
     (->> (apply concat historic-periods open-periods completed-periods simulated-periods candidate-periods)
@@ -328,7 +354,7 @@
 
 (comment
   
-  (def episodes (read/episodes (input-file "episodes.scrubbed.csv")))
+  (def episodes (read/episodes (input-file "suffolk-scrubbed-episodes-20201203.csv")))
   (def periods (periods/from-episodes episodes))
   (def project-from (-> (->> (mapcat (juxt :report-date :ceased) episodes)
                              (keep identity)

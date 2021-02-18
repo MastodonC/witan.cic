@@ -253,3 +253,24 @@
                    (println row)
                    (throw e))))))
    (println "Read period candidates")))
+
+(defn age-out-proportions
+  [filename]
+  (->> (load-csv filename)
+       (map (fn [row]
+              (-> row
+                  (update :admission-age parse-int)
+                  (update :p parse-double))))
+       (reduce (fn [coll {:keys [admission-age p]}]
+                 (assoc coll admission-age p))
+               {})))
+
+(defn age-out-candidates
+  [filename]
+  (->> (load-csv filename)
+       (map (fn [row]
+              (-> row
+                  (update :admission-age parse-int)
+                  (update :admission-age-days parse-int)
+                  (update :duration parse-int))))))
+

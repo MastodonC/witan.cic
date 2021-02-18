@@ -1,6 +1,7 @@
 (ns cic.random
   (:refer-clojure :exclude [rand-nth])
   (:require [cic.time :as time]
+            [cic.periods :as periods]
             [clojure.test.check.random :as r]
             [kixi.stats.distribution :as d]
             [kixi.stats.protocols :as p]))
@@ -48,15 +49,20 @@
           periods rngs)))
 
 (defn close-open-periods
-  [periods projection-model seed]
+  [periods projection-model age-out-model age-out-projection-model seed]
   (println "Closing open periods...")
-  (->> (for [{:keys [period-id beginning open?] :as period} periods]
+  (->> (for [{:keys [period-id beginning open? admission-age birthday] :as period} periods
+             :let [age-out? (age-out-model admission-age seed)]]
          (if open?
-           (when-let [{:keys [episodes-edn duration]} (projection-model period-id)]
-             (assoc period
-                    :episodes (read-string episodes-edn)
-                    :duration duration
-                    :end (time/days-after beginning duration)
-                    :provenance "P"))
+           (when-let [{:keys [episodes-edn duration]} (if age-out?
+                                                        (or (age-out-projection-model period-id)
+                                                            (projection-model period-id))
+                                                        (projection-model period-id))]
+             (let [duration (min duration (periods/max-duration period))]
+               (assoc period
+                      :episodes (read-string episodes-edn)
+                      :duration duration
+                      :end (time/days-after beginning duration)
+                      :provenance "P")))
            (assoc period :provenance "H")))
        (keep identity)))

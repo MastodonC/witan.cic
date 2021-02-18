@@ -15,6 +15,9 @@
             [kixi.stats.math :as m]
             [kixi.stats.protocols :as p]))
 
+(def three-months-in-days
+  91)
+
 (defn joiners-model
   "Given the date of a joiner at a particular age,
   returns the interval in days until the next joiner"
@@ -263,6 +266,8 @@
                                   segments)))
                   offsets)]
     (merge
+     (group-by (juxt :offset :from-placement :terminal?)
+               segments)
      (group-by (juxt :offset :from-placement)
                segments)
      (group-by (juxt :from-placement)
@@ -376,7 +381,7 @@
          (<= (d/draw dist) desired))))
 
 (defn markov-period
-  [{:keys [episodes birthday beginning duration period-id provenance] :as period} offset-segments rejection-model]
+  [{:keys [episodes birthday beginning duration period-id provenance] :as period} offset-segments rejection-model & [age-out?]]
   (assert provenance)
   (let [admission-age (time/year-interval birthday beginning)
         max-duration (dec (time/day-interval beginning (time/years-after birthday 18)))
@@ -400,7 +405,14 @@
                 care-days total-duration
                 {:keys [terminal? episodes duration to-placement aged-out?] :as sample}
                 (get-matched-segment (juxt :join-age-days :care-days) [join-age-days care-days]
-                                     (or (get offset-segments [offset last-placement])
+                                     (or (when age-out?
+                                           ;; Will the period we get from this match take us to within 3 months of 18th birthday?
+                                           (if (>= (- periods/segment-interval offset)
+                                                   (- max-duration total-duration three-months-in-days))
+                                             ;; If yes, make it a terminal segment. Else ensure it's not.
+                                             (get offset-segments [offset last-placement true])
+                                             (get offset-segments [offset last-placement false])))
+                                         (get offset-segments [offset last-placement])
                                          (get offset-segments [last-placement])
                                          (do (println "No sample found - ignoring")
                                              nil)))]
@@ -441,8 +453,11 @@
 (defn markov-placements-model
   [periods rejection-model learn-from learn-to close-open-periods?]
   (let [offset-segments (offset-groups periods learn-from learn-to close-open-periods?)]
-    (fn [{:keys [episodes birthday beginning duration period-id] :as period}]
-      (markov-period period offset-segments rejection-model))))
+    (fn
+      ([{:keys [episodes birthday beginning duration period-id] :as period}]
+       (markov-period period offset-segments rejection-model))
+      ([{:keys [episodes birthday beginning duration period-id] :as period} age-out?]
+       (markov-period period offset-segments rejection-model age-out?)))))
 
 (defn joiner-placements-model
   [periods]
@@ -527,3 +542,25 @@
             (if (or (<= u (* c reject-ratio)) (> counter 100000))
               (assoc candidate :iterations counter)
               (recur (inc counter)))))))))
+
+(defn age-out-model
+  [age-out-proportions]
+  ;; TODO don't ignore seed
+  (fn [admission-age seed]
+    (let [p (get age-out-proportions admission-age)]
+      ;; P is probability of aging out
+      ;; We return the age out probability
+      (<= (rand) p))))
+
+(defn age-out-projection-model
+  [candidates]
+  (let [periods (group-by :id candidates)]
+    (fn [period-id]
+      (when-let [candidates (get periods period-id)]
+        (rand-nth candidates)))))
+
+(defn age-out-simulation-model
+  [candidates]
+  (let [periods (group-by :admission-age candidates)]
+    (fn [admission-age]
+      (rand-nth (get periods admission-age)))))

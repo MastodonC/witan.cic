@@ -32,7 +32,7 @@
         start-time (time/without-time next-time)
         {:keys [episodes-edn admission-age-days duration iterations]} (simulation-model age)
         birthday (time/days-before start-time admission-age-days)
-        max-duration (dec (time/day-interval start-time (time/years-after birthday 18)))
+        max-duration (time/day-interval start-time (time/day-before-18th-birthday birthday))
         duration (min duration max-duration)
         period {:beginning start-time
                 :birthday birthday
@@ -85,14 +85,15 @@
 (defn train-model
   "Build stochastic helper models using R. Random seed ensures determinism."
   [{:keys [periods joiner-range episodes-range duration-model joiner-birthday-model project-to project-from segments-range markov-model
-           projection-model simulation-model] :as model-seed} random-seed]
+           projection-model simulation-model age-out-model
+           age-out-projection-model age-out-simulation-model] :as model-seed} random-seed]
   (println "Training model...")
   (let [[s1 s2 s3] (rand/split-n random-seed 3)
         [joiners-from joiners-to] joiner-range
         [episodes-from episodes-to] episodes-range
         [learn-from learn-to] segments-range
         all-periods (rand/sample-birthdays periods s1)
-        closed-periods (rand/close-open-periods all-periods projection-model s3)]
+        closed-periods (rand/close-open-periods all-periods projection-model age-out-model age-out-projection-model s3)]
     {:joiners-model (-> (filter #(time/between? (:beginning %) joiners-from joiners-to) closed-periods)
                         (model/joiners-model-gen project-to s2))
      :joiner-birthday-model joiner-birthday-model
@@ -102,7 +103,10 @@
      :periods closed-periods
      :project-from project-from
      :projection-model projection-model
-     :simulation-model simulation-model}))
+     :simulation-model (fn [admission-age]
+                         (or (when (age-out-model admission-age nil) ;; TODO Passing nil because seed isn't used yet
+                               (age-out-simulation-model admission-age))
+                             (simulation-model admission-age)))}))
 
 (defn project-1
   "Returns a single sequence of projected periods."
