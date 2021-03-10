@@ -54,15 +54,25 @@
   (->> (for [{:keys [period-id beginning open? admission-age birthday] :as period} periods
              :let [age-out? (age-out-model admission-age seed)]]
          (if open?
-           (when-let [{:keys [episodes-edn duration]} (if age-out?
-                                                        (or (age-out-projection-model period-id)
-                                                            (projection-model period-id))
-                                                        (projection-model period-id))]
-             (let [duration (min duration (periods/max-duration period))]
+           (if-let [{:keys [episodes-edn duration]} (if age-out?
+                                                      (or (age-out-projection-model period-id)
+                                                          (projection-model period-id))
+                                                      (projection-model period-id))]
+             (let [duration (if (or age-out? (>= (time/year-interval birthday (time/days-after beginning duration)) 17))
+                              ;; Either we wanted to age out, or they did by virtue of staying beyond 17th birthday
+                              (periods/max-duration period)
+                              (min duration (periods/max-duration period)))]
                (assoc period
                       :episodes (read-string episodes-edn)
                       :duration duration
                       :end (time/days-after beginning duration)
+                      :provenance "P"))
+             ;; If we can't close a case, it's almost certainly
+             ;; because they are an aged-out case. Set max duration
+             (let [duration (periods/max-duration period)]
+               (assoc period
+                      :duration duration
+                      :end (time/days-after beginning duration)
                       :provenance "P")))
            (assoc period :provenance "H")))
-       (keep identity)))
+       #_(keep identity)))

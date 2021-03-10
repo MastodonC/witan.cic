@@ -32,8 +32,11 @@
         start-time (time/without-time next-time)
         {:keys [episodes-edn admission-age-days duration iterations]} (simulation-model age)
         birthday (time/days-before start-time admission-age-days)
+        age-out? (>= (time/year-interval birthday (time/days-after start-time duration)) 17)
         max-duration (time/day-interval start-time (time/day-before-18th-birthday birthday))
-        duration (min duration max-duration)
+        duration (if age-out?
+                   max-duration
+                   (min duration max-duration))
         period {:beginning start-time
                 :birthday birthday
                 :episodes (read-string episodes-edn)
@@ -104,7 +107,7 @@
      :project-from project-from
      :projection-model projection-model
      :simulation-model (fn [admission-age]
-                         (or (when (age-out-model admission-age nil) ;; TODO Passing nil because seed isn't used yet
+                         (or (when (or (age-out-model admission-age nil) (= admission-age 17)) ;; TODO Passing nil because seed isn't used yet
                                (age-out-simulation-model admission-age))
                              (simulation-model admission-age)))}))
 

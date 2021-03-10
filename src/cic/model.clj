@@ -314,7 +314,7 @@
 
 (def max-age-days (* 365 18))
 
-(def jitter-scale 1) ;; Higher is more jittering
+(def jitter-scale 7) ;; Higher is more jittering
 
 (defn periods-simulations
   [periods offset-segments]
@@ -432,7 +432,7 @@
 
                 (or terminal? (>= total-duration' max-duration))
                 [(take-while #(< (:offset %) total-duration') episodes)
-                 total-duration'
+                 (jitter-binomial total-duration' max-duration jitter-scale)
                  counter]
 
                 :else
@@ -539,6 +539,8 @@
         (loop [counter 0]
           (let [{:keys [reject-ratio] :as candidate} (rand-nth candidates)
                 u (rand)]
+            (when-not (and c reject-ratio)
+              (println (format "*** No C or reject-ratio %s %s %s %s" admission-age c reject-ratio (count candidates))))
             (if (or (<= u (* c reject-ratio)) (> counter 100000))
               (assoc candidate :iterations counter)
               (recur (inc counter)))))))))
@@ -550,6 +552,7 @@
     (let [p (get age-out-proportions admission-age)]
       ;; P is probability of aging out
       ;; We return the age out probability
+      ;; (println (format "Age out proportion for age %s is %s" admission-age p))
       (<= (rand) p))))
 
 (defn age-out-projection-model
