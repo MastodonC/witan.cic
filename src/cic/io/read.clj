@@ -260,9 +260,15 @@
        (map (fn [row]
               (-> row
                   (update :admission-age parse-int)
+                  (update :current-age-days parse-int)
                   (update :p parse-double))))
-       (reduce (fn [coll {:keys [admission-age p]}]
-                 (assoc coll admission-age p))
+       (group-by :admission-age)
+       (reduce (fn [coll [admission-age rows]]
+                 (let [rows (sort-by :current-age-days rows)
+                       pairs (map (juxt :current-age-days :p) rows)]
+                   (assoc coll admission-age {:marginal (-> rows first :p)
+                                              :joint-pairs (reverse pairs)
+                                              :joint-indexed (into {} pairs)})))
                {})))
 
 (defn age-out-candidates

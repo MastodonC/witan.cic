@@ -51,32 +51,32 @@
 (defn close-open-periods
   [periods projection-model age-out-model age-out-projection-model seed]
   (println "Closing open periods...")
-  (->> (for [{:keys [period-id beginning open? admission-age birthday] :as period} periods
-             :let [age-out? (age-out-model admission-age seed)
-                   current-duration (:duration period)]]
+  (->> (for [{:keys [period-id beginning open? admission-age birthday duration] :as period} periods]
          (if open?
-           (loop [iter 1]
-             (if-let [{:keys [episodes-edn duration]} (if age-out?
-                                                        (or (age-out-projection-model period-id)
-                                                            (projection-model period-id))
-                                                        (projection-model period-id))]
-               (if (and (< duration current-duration) (< iter 1000))
-                 (recur (inc iter))
-                 (let [duration (if (or age-out? (>= (time/year-interval birthday (time/days-after beginning duration)) 17))
-                                  ;; Either we wanted to age out, or they did by virtue of staying beyond 17th birthday
-                                  (periods/max-duration period)
-                                  (min duration (periods/max-duration period)))]
+           (let [current-duration duration
+                 age-out? (age-out-model admission-age current-duration seed)]
+             (loop [iter 1]
+               (if-let [{:keys [episodes-edn duration]} (if age-out?
+                                                          (or (age-out-projection-model period-id)
+                                                              (projection-model period-id))
+                                                          (projection-model period-id))]
+                 (if (and (< duration current-duration) (< iter 1000))
+                   (recur (inc iter))
+                   (let [duration (if (or age-out? (>= (time/year-interval birthday (time/days-after beginning duration)) 17))
+                                    ;; Either we wanted to age out, or they did by virtue of staying beyond 17th birthday
+                                    (periods/max-duration period)
+                                    (min duration (periods/max-duration period)))]
+                     (assoc period
+                            :episodes (read-string episodes-edn)
+                            :duration duration
+                            :end (time/days-after beginning duration)
+                            :provenance "P")))
+                 ;; If we can't close a case, it's almost certainly
+                 ;; because they are an aged-out case. Set max duration
+                 (let [duration (periods/max-duration period)]
                    (assoc period
-                          :episodes (read-string episodes-edn)
                           :duration duration
                           :end (time/days-after beginning duration)
-                          :provenance "P")))
-               ;; If we can't close a case, it's almost certainly
-               ;; because they are an aged-out case. Set max duration
-               (let [duration (periods/max-duration period)]
-                 (assoc period
-                        :duration duration
-                        :end (time/days-after beginning duration)
-                        :provenance "P"))))
+                          :provenance "P")))))
            (assoc period :provenance "H")))
        #_(keep identity)))
