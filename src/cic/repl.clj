@@ -117,7 +117,7 @@
   (let [{:keys [project-from periods placement-costs duration-model joiner-birthday-model
                 rejection-model projection-model simulation-model
                 age-out-model age-out-projection-model age-out-simulation-model]} (prepare-model-inputs (load-model-inputs) rewind-years)
-        output-file (output-file (format "%s-projection-%s-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-uniform-resampling.csv" (la-label) (time/date-as-string project-from) rewind-years train-years project-years n-runs seed))
+        output-file (output-file (format "%s-projection-%s-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-marginal-age-out.csv" (la-label) (time/date-as-string project-from) rewind-years train-years project-years n-runs seed))
          project-to (time/years-after project-from project-years) ;; project-to (time/days-after project-from 100) ;;
         learn-from (time/years-before project-from train-years)
         model-seed {:periods periods
@@ -349,7 +349,7 @@
                 projection-model simulation-model
                 age-out-model age-out-projection-model age-out-simulation-model] :as model-inputs} (prepare-model-inputs (load-model-inputs) rewind-years)
         _ (println (str "Project from " project-from))
-        output-file (output-file (format "%s-episodes-%s-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-uniform-resampling.csv" (la-label) (time/date-as-string project-from) rewind-years train-years project-years n-runs seed))
+        output-file (output-file (format "%s-episodes-%s-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-marginal-age-out.csv" (la-label) (time/date-as-string project-from) rewind-years train-years project-years n-runs seed))
         project-to (time/years-after project-from project-years)
         learn-from (time/years-before project-from train-years)
         t0 (time/min-date (map :beginning periods))
