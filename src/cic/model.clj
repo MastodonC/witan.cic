@@ -29,8 +29,9 @@
             a (get model-coefs (str "admission_age" age) 0.0)
             b (get model-coefs "quarter")
             c (get model-coefs (str "quarter:admission_age" age) 0.0)
-            n-per-quarter (m/exp (+ intercept a (* b day) (* c day)))
-            n-per-day (max (/ n-per-quarter 91.3125) (/ 1 365.25)) ;; Rate per day
+            n-per-quarter (d/draw (d/poisson {:lambda (m/exp (+ intercept a (* b day) (* c day)))}))
+            ;; We must protect against divide by zeros
+            n-per-day (max (/ n-per-quarter 84) (/ 1 365.0)) ;; The R code assumes a quarter is 3 * 28 days
             sample (+ sample-adjustment (p/sample-1 (d/exponential {:rate n-per-day}) seed))
             join-date (time/days-after previous-joiner sample)]
         (if (time/>= join-date join-after)

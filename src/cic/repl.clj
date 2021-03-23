@@ -17,7 +17,9 @@
 
   (def ccc "data/ccc/2020-06-09/%s")
   (def ncc "data/ncc/2020-06-09/%s")
-  (def scc "data/scc/2021-02-24/%s")
+(def scc "data/scc/2021-02-24/%s")
+
+  (def projection-label "no-joiner-trending")
 
 (def input-format
   scc)
@@ -117,7 +119,7 @@
   (let [{:keys [project-from periods placement-costs duration-model joiner-birthday-model
                 rejection-model projection-model simulation-model
                 age-out-model age-out-projection-model age-out-simulation-model]} (prepare-model-inputs (load-model-inputs) rewind-years)
-        output-file (output-file (format "%s-projection-%s-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-marginal-age-out.csv" (la-label) (time/date-as-string project-from) rewind-years train-years project-years n-runs seed))
+        output-file (output-file (format "%s-projection-%s-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-no-trend.csv" (la-label) (time/date-as-string project-from) rewind-years train-years project-years n-runs seed))
          project-to (time/years-after project-from project-years) ;; project-to (time/days-after project-from 100) ;;
         learn-from (time/years-before project-from train-years)
         model-seed {:periods periods
@@ -154,7 +156,7 @@
   [rewind-years train-years n-samples seed]
   (let [{:keys [project-from periods placement-costs duration-model joiner-birthday-model rejection-proportions]} (prepare-model-inputs (load-model-inputs) rewind-years)
         _ (println (str "Project from " project-from))
-        output-file (output-file (format "%s-distribution-%s-segment-interval-%s-rewind-%syr-train-%syr-samples-%s-seed-%s.csv" (la-label) (time/date-as-string project-from) periods/segment-interval rewind-years train-years n-samples seed))
+        output-file (output-file (format "%s-distribution-%s-segment-interval-%s-rewind-%syr-train-%syr-samples-%s-seed-%s-%s.csv" (la-label) (time/date-as-string project-from) periods/segment-interval rewind-years train-years n-samples seed projection-label))
         ;; project-from (time/quarter-preceding (time/years-before project-from rewind-years))
         periods (rand/sample-birthdays periods (rand/seed seed))
         learn-from (time/years-before project-from train-years)
@@ -349,7 +351,7 @@
                 projection-model simulation-model
                 age-out-model age-out-projection-model age-out-simulation-model] :as model-inputs} (prepare-model-inputs (load-model-inputs) rewind-years)
         _ (println (str "Project from " project-from))
-        output-file (output-file (format "%s-episodes-%s-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-marginal-age-out.csv" (la-label) (time/date-as-string project-from) rewind-years train-years project-years n-runs seed))
+        output-file (output-file (format "%s-episodes-%s-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-%s.csv" (la-label) (time/date-as-string project-from) rewind-years train-years project-years n-runs seed projection-label))
         project-to (time/years-after project-from project-years)
         learn-from (time/years-before project-from train-years)
         t0 (time/min-date (map :beginning periods))
