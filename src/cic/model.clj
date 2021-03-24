@@ -15,32 +15,52 @@
             [kixi.stats.math :as m]
             [kixi.stats.protocols :as p]))
 
-(def three-months-in-days
-  91)
+(def period-in-days
+  84)
 
 (defn joiners-model
   "Given the date of a joiner at a particular age,
   returns the interval in days until the next joiner"
-  [{:keys [model-coefs]}]
-  (fn [age join-after previous-joiner seed]
-    (loop [seed seed sample-adjustment 0]
-      (let [day (t/in-days (t/interval (t/epoch) previous-joiner))
-            intercept (get model-coefs "(Intercept)")
-            a (get model-coefs (str "admission_age" age) 0.0)
-            b (get model-coefs "quarter")
-            c (get model-coefs (str "quarter:admission_age" age) 0.0)
-            n-per-quarter (d/draw (d/poisson {:lambda (m/exp (+ intercept a (* b day) (* c day)))}))
-            ;; We must protect against divide by zeros
-            n-per-day (max (/ n-per-quarter 84) (/ 1 365.0)) ;; The R code assumes a quarter is 3 * 28 days
-            sample (+ sample-adjustment (p/sample-1 (d/exponential {:rate n-per-day}) seed))
-            join-date (time/days-after previous-joiner sample)]
-        (if (time/>= join-date join-after)
-          sample
-          (recur (second (rand/split seed)) sample-adjustment))))))
+  [{:keys [model-coefs]} project-from project-to]
+  (println model-coefs)
+  ;; Work out a sample rate for every future day
+  (let [ ;; Our current modelling is based on a joiners per 84 days
+        periods (time/day-seq project-from project-to period-in-days)
+        min-period (first periods)
+        max-period (time/days-before (last periods) 1)
+        day-rate-lookup (->> (for [[period-from period-to] (partition 2 1 periods)
+                                   age spec/ages]
+                               (let [day (t/in-days (t/interval (t/epoch) (time/halfway-between period-from period-to)))
+                                     intercept (get model-coefs "(Intercept)")
+                                     a (get model-coefs (str "admission_age" age) 0.0)
+                                     b (get model-coefs "quarter")
+                                     c (get model-coefs (str "quarter:admission_age" age) 0.0)
+                                     _ (println intercept a b c day)
+                                     n-per-quarter (d/draw (d/poisson {:lambda (m/exp (+ intercept a (* b day) (* c day)))}))
+                                     ;; We must protect against divide by zeros
+                                     n-per-day (max (/ n-per-quarter period-in-days) (/ 1 365.0)) ;; The R code assumes a quarter is 3 * 28 days
+                                     ]
+                                 (for [day (time/day-seq period-from period-to)]
+                                   {:age age :day day :n-per-day n-per-day})))
+                             (apply concat)
+                             (reduce (fn [coll {:keys [age day n-per-day]}]
+                                       (assoc coll [age day] n-per-day))
+                                     {}))]
+    (fn [age join-after previous-joiner seed]
+      (loop [seed seed sample-adjustment 0]
+        (let [n-per-day (or (get day-rate-lookup [age previous-joiner])
+                            (when (time/< previous-joiner min-period)
+                              (get day-rate-lookup [age min-period]))
+                            (get day-rate-lookup [age max-period]))
+              sample (+ sample-adjustment (p/sample-1 (d/exponential {:rate n-per-day}) seed))
+              join-date (time/days-after previous-joiner sample)]
+          (if (time/>= join-date join-after)
+            sample
+            (recur (second (rand/split seed)) sample-adjustment)))))))
 
 (defn joiners-model-gen
   "Wraps R to trend joiner rates into the future."
-  [periods project-to seed]
+  [periods project-from project-to seed]
   (let [script "src/joiners.R"
         input (str (rscript/write-periods! periods))
         output (str (write/temp-file "file" ".csv"))
@@ -50,7 +70,7 @@
                   (time/date-as-string project-to)
                   (str (Math/abs seed-long)))
     (-> (read/joiner-csv output)
-        (joiners-model))))
+        (joiners-model project-from project-to))))
 
 (defn sample-ci
   "Given a 95% lower bound, median and 95% upper bound,
@@ -409,7 +429,7 @@
                                      (or (when age-out?
                                            ;; Will the period we get from this match take us to within 3 months of 18th birthday?
                                            (if (>= (- periods/segment-interval offset)
-                                                   (- max-duration total-duration three-months-in-days))
+                                                   (- max-duration total-duration period-in-days))
                                              ;; If yes, make it a terminal segment. Else ensure it's not.
                                              (get offset-segments [offset last-placement true])
                                              (get offset-segments [offset last-placement false])))

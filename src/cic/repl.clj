@@ -19,7 +19,7 @@
   (def ncc "data/ncc/2020-06-09/%s")
 (def scc "data/scc/2021-02-24/%s")
 
-  (def projection-label "no-joiner-trending")
+  (def projection-label "periodic-joiner-sampling")
 
 (def input-format
   scc)
@@ -119,7 +119,7 @@
   (let [{:keys [project-from periods placement-costs duration-model joiner-birthday-model
                 rejection-model projection-model simulation-model
                 age-out-model age-out-projection-model age-out-simulation-model]} (prepare-model-inputs (load-model-inputs) rewind-years)
-        output-file (output-file (format "%s-projection-%s-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-no-trend.csv" (la-label) (time/date-as-string project-from) rewind-years train-years project-years n-runs seed))
+        output-file (output-file (format "%s-projection-%s-rewind-%syr-train-%syr-project-%syr-runs-%s-seed-%s-%s.csv" (la-label) (time/date-as-string project-from) rewind-years train-years project-years n-runs seed projection-label))
          project-to (time/years-after project-from project-years) ;; project-to (time/days-after project-from 100) ;;
         learn-from (time/years-before project-from train-years)
         model-seed {:periods periods
@@ -128,7 +128,7 @@
                     ;; :knn-closed-cases knn-closed-cases
                     :learn-from learn-from
                     :joiner-birthday-model joiner-birthday-model
-                    :joiner-range [learn-from project-from]
+                    :joiner-range [(time/years-before project-from 1) project-from]
                     :episodes-range [learn-from project-from]
                     :segments-range [(time/years-before learn-from 20) (time/years-after project-from 20)]
                     :project-from project-from
