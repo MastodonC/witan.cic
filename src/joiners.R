@@ -28,7 +28,7 @@ floor_days <- function(date, max_date, granularity) {
 }
 
 max_date <- max(df$beginning)
-granularity <- 28 
+granularity <- 28 * 3
 
 dat <- df %>%
     mutate(quarter = floor_days(beginning, max_date, granularity )) %>%
@@ -45,12 +45,14 @@ mod <- bayesglm(n ~ quarter * admission_age, data = dat, family = poisson(link =
 params <- mvrnorm(1, coef(mod), vcov(mod))
 params.df <- data.frame(name = names(params), param = params)
 
-?bayesglm
 # FIXME: override trending with static data
 # Take a mean of arrivals
 mean_arrivals <- dat %>%
     group_by(admission_age) %>%
-    summarise(n = mean(n))
+    dplyr::mutate(c = n()) %>%
+    sample_n(c, replace = TRUE) %>%
+    dplyr::summarise(n = mean(n))
+
 params.df <- data.frame(name = c("(Intercept)", "quarter",
                                  paste0("admission_age", mean_arrivals$admission_age),
                                  paste0("quarter:admission_age", mean_arrivals$admission_age)),

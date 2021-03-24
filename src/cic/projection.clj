@@ -98,7 +98,7 @@
         all-periods (rand/sample-birthdays periods s1)
         closed-periods (rand/close-open-periods all-periods projection-model age-out-model age-out-projection-model s3)]
     {:joiners-model (-> (filter #(time/between? (:beginning %) joiners-from joiners-to) all-periods)
-                        (model/joiners-model-gen project-to s2))
+                        (model/joiners-model-gen project-from project-to s2))
      :joiner-birthday-model joiner-birthday-model
      :placements-model (model/periods->placements-model closed-periods episodes-from episodes-to)
      :markov-model markov-model
