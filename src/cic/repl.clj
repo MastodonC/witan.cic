@@ -17,9 +17,9 @@
 
   (def ccc "data/ccc/2020-06-09/%s")
   (def ncc "data/ncc/2020-06-09/%s")
-(def scc "data/scc/2021-02-24/%s")
+  (def scc "data/scc/2021-04-08/%s")
 
-  (def projection-label "periodic-joiner-sampling")
+  (def projection-label "latest-version")
 
 (def input-format
   scc)
@@ -128,7 +128,7 @@
                     ;; :knn-closed-cases knn-closed-cases
                     :learn-from learn-from
                     :joiner-birthday-model joiner-birthday-model
-                    :joiner-range [(time/years-before project-from 1) project-from]
+                    :joiner-range [learn-from project-from]
                     :episodes-range [learn-from project-from]
                     :segments-range [(time/years-before learn-from 20) (time/years-after project-from 20)]
                     :project-from project-from
