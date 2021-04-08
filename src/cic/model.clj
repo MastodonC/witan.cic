@@ -21,14 +21,15 @@
 (defn joiners-model
   "Given the date of a joiner at a particular age,
   returns the interval in days until the next joiner"
-  [{:keys [model-coefs]} project-from project-to]
+  [{:keys [model-coefs]} project-from project-to seed]
   (println model-coefs)
   ;; Work out a sample rate for every future day
   (let [ ;; Our current modelling is based on a joiners per 84 days
         periods (time/day-seq project-from project-to period-in-days)
+        seeds (rand/split-n seed (count periods))
         min-period (first periods)
         max-period (time/days-before (last periods) 1)
-        day-rate-lookup (->> (for [[period-from period-to] (partition 2 1 periods)
+        day-rate-lookup (->> (for [[[period-from period-to] seed] (map vector (partition 2 1 periods) seeds)
                                    age spec/ages]
                                (let [day (t/in-days (t/interval (t/epoch) (time/halfway-between period-from period-to)))
                                      intercept (get model-coefs "(Intercept)")
@@ -36,7 +37,7 @@
                                      b (get model-coefs "quarter")
                                      c (get model-coefs (str "quarter:admission_age" age) 0.0)
                                      _ (println intercept a b c day)
-                                     n-per-quarter (d/draw (d/poisson {:lambda (m/exp (+ intercept a (* b day) (* c day)))}))
+                                     n-per-quarter (p/sample-1 (d/poisson {:lambda (m/exp (+ intercept a (* b day) (* c day)))}) seed)
                                      ;; We must protect against divide by zeros
                                      n-per-day (max (/ n-per-quarter period-in-days) (/ 1 365.0)) ;; The R code assumes a quarter is 3 * 28 days
                                      ]
@@ -56,21 +57,23 @@
               join-date (time/days-after previous-joiner sample)]
           (if (time/>= join-date join-after)
             sample
-            (recur (second (rand/split seed)) sample-adjustment)))))))
+            (recur (rand/next-seed seed) sample-adjustment)))))))
 
 (defn joiners-model-gen
   "Wraps R to trend joiner rates into the future."
-  [periods project-from project-to seed]
+  [periods project-from project-to trend-joiners? seed]
   (let [script "src/joiners.R"
         input (str (rscript/write-periods! periods))
         output (str (write/temp-file "file" ".csv"))
-        seed-long (rand/rand-long seed)]
-    (println script input output (time/date-as-string project-to) (str (Math/abs seed-long)))
+        [s1 s2] (rand/split seed)
+        seed-long (rand/rand-long s1)]
+    (println script input output (time/date-as-string project-to) trend-joiners? (str (Math/abs seed-long)))
     (rscript/exec script input output
                   (time/date-as-string project-to)
+                  (str trend-joiners?)
                   (str (Math/abs seed-long)))
     (-> (read/joiner-csv output)
-        (joiners-model project-from project-to))))
+        (joiners-model project-from project-to s2))))
 
 (defn sample-ci
   "Given a 95% lower bound, median and 95% upper bound,
@@ -147,28 +150,6 @@
             coll
             (apply c/cartesian-product ks))))
 
-(defn phase-duration-quantiles-model
-  [coefs]
-  (fn [first-phase?]
-    (let [quantiles (if first-phase?
-                      (:first coefs)
-                      (:rest coefs))]
-      (rand-nth quantiles))))
-
-(defn phase-transitions-model
-  [coefs]
-  (fn [first-transition? age placement]
-    (let [params  (get coefs {:first-transition first-transition?
-                              :transition-age age
-                              :transition-from placement})]
-      (if params
-        (let [[ks alphas] (apply map vector params)
-              category-probs (zipmap ks (d/draw (d/dirichlet {:alphas alphas})))]
-          #_(println "Found phase transition params for age" age "placement" placement "first transition" first-transition?)
-          (d/draw (d/categorical category-probs)))
-        (do #_(println "Didn't find phase transition params for age" age "placement" placement "first transition" first-transition?)
-            placement)))))
-
 (defn period->phases
   [{:keys [birthday beginning end episodes] :as period} episodes-from episodes-to]
   (for [[{offset-a :offset from :placement} {offset-b :offset to :placement}] (partition-all 2 1 episodes)
@@ -224,7 +205,8 @@
 
 (defn periods->placements-model
   [periods episodes-from episodes-to]
-  (let [age-groups (group-by :admission-age periods)]
+  (println "Deprecated")
+  #_(let [age-groups (group-by :admission-age periods)]
     (fn [{:keys [beginning birthday]} seed]
       (let [age (min (time/year-interval birthday beginning) 17)
             period (-> (get age-groups age)
@@ -321,10 +303,10 @@
       (+ x (d/draw dist)))))
 
 (defn jitter-binomial
-  [x n scale]
+  [x n scale seed]
   (let [p (/ x n)
         dist (d/binomial {:n (/ n scale) :p p})]
-    (long (* scale (d/draw dist)))))
+    (long (* scale (p/sample-1 dist seed)))))
 
 (defn get-matched-segment
   [feature-fn feature-vec segments]
@@ -337,38 +319,6 @@
 
 (def jitter-scale 7) ;; Higher is more jittering
 
-(defn periods-simulations
-  [periods offset-segments]
-  (into [] (comp (filter :open?)
-                 (map (fn [{:keys [birthday beginning snapshot-date duration episodes] :as period}]
-                        (assoc period
-                               :join-age-days (time/day-interval birthday beginning)
-                               :age-days (time/day-interval birthday snapshot-date)
-                               :care-days (time/day-interval beginning snapshot-date)
-                               :max-duration (dec (time/day-interval beginning (time/days-after birthday max-age-days)))
-                               :offset (rem duration periods/segment-interval)
-                               :last-placement (-> episodes last :placement)
-                               :initial? (< duration periods/segment-interval))))
-                 (mapcat (fn [{:keys [age-days care-days duration max-duration offset last-placement initial? join-age-days] :as period}]
-                           (into [] (map (fn [simulation]
-                                           (let [join-age-days (jitter-binomial join-age-days max-age-days jitter-scale)
-                                                 care-days (jitter-binomial duration max-duration jitter-scale)
-                                                 segment (get-matched-segment (juxt :join-age-days :care-days) [join-age-days care-days]
-                                                                              (get offset-segments [offset last-placement]))]
-                                             (when segment
-                                               (assoc period
-                                                      :combined-duration (+ duration (:duration segment))
-                                                      :care-weeks (quot (+ duration (:duration segment)) 7)
-                                                      :segment-simulation simulation
-                                                      :segment-terminal? (:terminal? segment)
-                                                      :segment-duration (:duration segment)
-                                                      :segment-age-days (:age-days segment)
-                                                      :segment-care-days (:care-days segment)
-                                                      :last-placement (-> segment :episodes last :placement)
-                                                      :segment-aged-out? (:aged-out? segment))))))
-                                 (range 100))))
-                 (remove nil?))
-        periods))
 
 (defn admission-age-care-weeks-pdf
   [sample]
@@ -402,7 +352,7 @@
          (<= (d/draw dist) desired))))
 
 (defn markov-period
-  [{:keys [episodes birthday beginning duration period-id provenance] :as period} offset-segments rejection-model & [age-out?]]
+  [{:keys [episodes birthday beginning duration period-id provenance seed] :as period} offset-segments rejection-model & [age-out?]]
   (assert provenance)
   (let [admission-age (time/year-interval birthday beginning)
         max-duration (dec (time/day-interval beginning (time/years-after birthday 18)))
@@ -411,17 +361,19 @@
         init-episodes episodes
         init-offset (rem duration periods/segment-interval)
         init-initial? (< duration periods/segment-interval)
-        [episodes total-duration iterations]
+        [episodes total-duration iterations next-seed]
         (loop [total-duration init-duration
                last-placement init-placement
                all-episodes init-episodes
                offset init-offset
                initial? init-initial?
-               counter 0]
-          (let [age-days (time/day-interval birthday (time/days-after beginning total-duration))
-                age-days (jitter-binomial age-days max-age-days jitter-scale)
+               counter 0
+               seed seed]
+          (let [[s1 s2 s3] (rand/split-n seed 3)
+                age-days (time/day-interval birthday (time/days-after beginning total-duration))
+                age-days (jitter-binomial age-days max-age-days jitter-scale s1)
                 join-age-days (time/day-interval birthday beginning)
-                join-age-days (jitter-binomial join-age-days max-age-days jitter-scale)
+                join-age-days (jitter-binomial join-age-days max-age-days jitter-scale s2)
                 ;; care-days (jitter-binomial total-duration max-duration jitter-scale)
                 care-days total-duration
                 {:keys [terminal? episodes duration to-placement aged-out?] :as sample}
@@ -453,8 +405,9 @@
 
                 (or terminal? (>= total-duration' max-duration))
                 [(take-while #(< (:offset %) total-duration') episodes)
-                 (jitter-binomial total-duration' max-duration jitter-scale)
-                 counter]
+                 (jitter-binomial total-duration' max-duration jitter-scale s3)
+                 counter
+                 (rand/next-seed seed)]
 
                 :else
                 (recur total-duration'
@@ -462,9 +415,11 @@
                        episodes
                        0               ;; Zero offset
                        (boolean false) ;; Always return false
-                       (inc counter))))))]
+                       (inc counter)
+                       (rand/next-seed seed))))))]
     (when (and episodes total-duration)
       (-> period
+          (assoc :seed next-seed)
           (assoc :episodes (episodes/simplify episodes))
           (assoc :duration total-duration)
           (assoc :open? false)
@@ -482,15 +437,17 @@
 
 (defn joiner-placements-model
   [periods]
-  (let [coefs (reduce (fn [acc {:keys [admission-age episodes]}]
+  (println "Deprecated")
+  #_(let [coefs (reduce (fn [acc {:keys [admission-age episodes]}]
                         (update-in acc [admission-age (-> episodes first :placement)] (fnil inc 0)))
                       periods)]
-    (fn [age]
+    (fn [age seed]
       (let [params (get coefs age)]
         (if params
           (let [[ks alphas] (apply map vector params)
-                category-probs (zipmap ks (d/draw (d/dirichlet {:alphas alphas})))]
-            (d/draw (d/categorical category-probs)))
+                [s1 s2] (rand/split seed)
+                category-probs (zipmap ks (d/draw (d/dirichlet {:alphas alphas}) {:seed s1}))]
+            (d/draw (d/categorical category-probs) {:seed s2}))
           spec/unknown-placement ;; Fallback - never seen a joiner of this age
           )))))
 
@@ -532,14 +489,16 @@
                                    (assoc-in [k :c] c)
                                    (assoc-in [k :candidates] (vec candidates))))
                              {}))]
-    (fn [period-id]
+    (fn [period-id seed]
       (if-let [{:keys [c candidates]} (get periods period-id)]
-        (loop [counter 0]
-          (let [{:keys [reject-ratio] :as candidate} (rand-nth candidates)
-                u (rand)]
+        (loop [counter 0
+               seed seed]
+          (let [[s1 s2] (rand/split seed)
+                {:keys [reject-ratio] :as candidate} (rand/rand-nth candidates s1)
+                u (rand/rand-double s2)]
             (if (or (<= u (* c reject-ratio)) (> counter 100000))
               candidate
-              (recur (inc counter)))))
+              (recur (inc counter) (rand/next-seed s1)))))
         (println "Couldn't complete" period-id)))))
 
 (defn simulation-model
@@ -555,16 +514,18 @@
                                    (assoc-in [k :c] c)
                                    (assoc-in [k :candidates] (vec candidates))))
                              {}))]
-    (fn [admission-age]
+    (fn [admission-age seed]
       (let [{:keys [c candidates]} (get periods admission-age)]
-        (loop [counter 0]
-          (let [{:keys [reject-ratio] :as candidate} (rand-nth candidates)
-                u (rand)]
+        (loop [counter 0
+               seed seed]
+          (let [[s1 s2] (rand/split seed)
+                {:keys [reject-ratio] :as candidate} (rand/rand-nth candidates s1)
+                u (rand/rand-double s2)]
             (when-not (and c reject-ratio)
               (println (format "*** No C or reject-ratio %s %s %s %s" admission-age c reject-ratio (count candidates))))
             (if (or (<= u (* c reject-ratio)) (> counter 100000))
               (assoc candidate :iterations counter)
-              (recur (inc counter)))))))))
+              (recur (inc counter) (rand/next-seed s1)))))))))
 
 (defn age-out-model
   [age-out-proportions]
@@ -575,24 +536,24 @@
        ;; P is probability of aging out
        ;; We return the age out probability
        ;; (println (format "Age out proportion for age %s is %s" admission-age p))
-       (<= (rand) p)))
+       (<= (rand/rand-double seed) p)))
     ([admission-age current-age-days seed]
      (let [p (or (get-in age-out-proportions [admission-age :joint-indexed current-age-days])
                  (some (fn [[test-age-days p]]
                          (when (<= test-age-days current-age-days)
                            p))
                        (get-in age-out-proportions [admission-age :joint-pairs])))]
-       (<= (rand) p)))))
+       (<= (rand/rand-double seed) p)))))
 
 (defn age-out-projection-model
   [candidates]
   (let [periods (group-by :id candidates)]
-    (fn [period-id]
+    (fn [period-id seed]
       (when-let [candidates (get periods period-id)]
-        (rand-nth candidates)))))
+        (rand/rand-nth candidates seed)))))
 
 (defn age-out-simulation-model
   [candidates]
   (let [periods (group-by :admission-age candidates)]
-    (fn [admission-age]
-      (rand-nth (get periods admission-age)))))
+    (fn [admission-age seed]
+      (rand/rand-nth (get periods admission-age) seed))))

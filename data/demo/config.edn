@@ -1,0 +1,28 @@
+{:input-directory "data/inputs/"
+ :output-directory "data/outputs/"
+ :file-inputs {:episodes #join [#ref [:input-directory] "scrubbed-episodes.csv"]
+               :placement-costs #join [#ref [:input-directory] "placement-costs.csv"]
+               :zero-joiner-day-ages #join [#ref [:input-directory] "zero-joiner-day-ages.csv"]
+               :age-out-proportions #join [#ref [:input-directory] "age-out-proportions.csv"]
+               :candidates-simulation #join [#ref [:input-directory] "simulated-candidates.csv"]
+               :candidates-projection #join [#ref [:input-directory] "projected-candidates.csv"]
+               :candidates-age-out-projection #join [#ref [:input-directory] "projected-age-out-candidates.csv"]
+               :candidates-age-out-simulation #join [#ref [:input-directory] "simulated-age-out-candidates.csv"]
+               }
+
+ :projection-parameters {:simulations 1
+                         :random-seed 42
+                         :rewind-years 1
+                         :train-years 3
+                         :project-years 5
+                         :episodes-extract-date #date "2020-03-31"
+                         :train-joiner-years 3
+                         :trend-joiners? false
+                         :candidate-variations 100 ;; Used in pre-step creating candidate periods
+                         }
+
+ :output-parameters {:output-projection-episodes? true
+                     :output-projection-summary? true
+                     :output-file-inputs? true
+                     }
+ }

@@ -1,6 +1,7 @@
 (ns cic.periods
   (:require [cic.time :as time]
             [cic.episodes :as episodes]
+            [cic.random :as rand]
             [clojure.set :as cs]
             [taoensso.timbre :as timbre]))
 
@@ -216,33 +217,60 @@
           (assoc :from-placement (-> episodes first :placement))
           (assoc :episodes episodes)))))
 
-(defn period-generator
-  [periods project-from]
-  (let [period (rand-nth periods)
-        {:keys [open? beginning end]} period
-        interval (time/day-interval beginning (or end project-from))
-        as-at (time/days-after beginning (rand-int interval))]
-    (cons (period-as-at period as-at)
-          (lazy-seq (period-generator periods project-from)))))
-
 (defn period-as-at-wayback
   [period project-from]
-  (let [{:keys [open? beginning end]} period
+  (let [{:keys [open? beginning end seed]} period
         interval (time/day-interval beginning (or end project-from))
-        as-at (time/days-after beginning (rand-int interval))]
-    (period-as-at period as-at)))
+        as-at (time/days-after beginning (rand/rand-int interval seed))]
+    (-> (period-as-at period as-at)
+        (update :seed rand/next-seed))))
 
 (defn joiner-generator
-  [periods]
-  (let [period (rand-nth periods)]
+  [periods seed]
+  (let [period (rand/rand-nth periods seed)]
     (cons (-> period
               (assoc :duration 0)
               (dissoc :end)
               (assoc :open? true)
               (update :episodes (partial take 1)))
-          (lazy-seq (joiner-generator periods)))))
-
+          (lazy-seq (joiner-generator periods (rand/next-seed seed))))))
 
 (defn max-duration
   [{:keys [birthday beginning]}]
   (time/day-interval beginning (time/day-before-18th-birthday birthday)))
+
+(defn close-open-periods
+  [periods projection-model age-out-model age-out-projection-model seed]
+  (println "Closing open periods...")
+  (->> (for [{:keys [period-id beginning open? admission-age birthday duration] :as period} periods]
+         (if open?
+           (let [[s1 s2] (rand/split seed)
+                 current-duration duration
+                 age-out? (age-out-model admission-age current-duration s1)]
+             (loop [iter 1
+                    seed s2]
+               (let [[s1 s2 s3] (rand/split-n seed 3)]
+                 (if-let [{:keys [episodes-edn duration]} (if age-out?
+                                                            (or (age-out-projection-model period-id s1)
+                                                                (projection-model period-id s2))
+                                                            (projection-model period-id s3))]
+                   (if (and (< duration current-duration) (< iter 1000))
+                     (recur (inc iter) (rand/next-seed s1))
+                     (let [duration (if (or age-out? (>= (time/year-interval birthday (time/days-after beginning duration)) 17))
+                                      ;; Either we wanted to age out, or they did by virtue of staying beyond 17th birthday
+                                      (max-duration period)
+                                      (min duration (max-duration period)))]
+                       (assoc period
+                              :episodes (read-string episodes-edn)
+                              :duration duration
+                              :end (time/days-after beginning duration)
+                              :provenance "P")))
+                   ;; If we can't close a case, it's almost certainly
+                   ;; because they are an aged-out case. Set max duration
+                   (let [duration (max-duration period)]
+                     (assoc period
+                            :duration duration
+                            :end (time/days-after beginning duration)
+                            :provenance "P"))))))
+           (assoc period :provenance "H")))
+       #_(keep identity)))

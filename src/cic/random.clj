@@ -1,7 +1,6 @@
 (ns cic.random
-  (:refer-clojure :exclude [rand-nth])
+  (:refer-clojure :exclude [rand-nth rand-int])
   (:require [cic.time :as time]
-            [cic.periods :as periods]
             [clojure.test.check.random :as r]
             [kixi.stats.distribution :as d]
             [kixi.stats.protocols :as p]))
@@ -12,15 +11,27 @@
 
 (def split r/split)
 
+(def next-seed (comp first split))
+
+(defn nth-seed
+  [seed n])
+
 (def split-n r/split-n)
 
 (def rand-long r/rand-long)
 
+(def rand-double r/rand-double)
+
+(defn rand-int
+  [max-val seed]
+  (p/sample-1 (d/uniform {:a 0 :b max-val}) seed))
+
 (defn rand-nth
   [coll seed]
-  (when (seq coll)
-    (let [i (int (p/sample-1 (d/uniform {:a 0 :b (count coll)}) seed))]
-      (nth coll i))))
+  ;; (assert vector? coll)
+  (let [length (count coll)
+        n (p/sample-1 (d/uniform {:a 0 :b length}) seed)]
+    (nth coll n)))
 
 (let [letters (map char (range 65 90))]
   (defn rand-id
@@ -47,36 +58,3 @@
                     (assoc :admission-age (time/year-interval birthday beginning))
                     (assoc :admission-age-days (time/day-interval birthday beginning))))))
           periods rngs)))
-
-(defn close-open-periods
-  [periods projection-model age-out-model age-out-projection-model seed]
-  (println "Closing open periods...")
-  (->> (for [{:keys [period-id beginning open? admission-age birthday duration] :as period} periods]
-         (if open?
-           (let [current-duration duration
-                 age-out? (age-out-model admission-age current-duration seed)]
-             (loop [iter 1]
-               (if-let [{:keys [episodes-edn duration]} (if age-out?
-                                                          (or (age-out-projection-model period-id)
-                                                              (projection-model period-id))
-                                                          (projection-model period-id))]
-                 (if (and (< duration current-duration) (< iter 1000))
-                   (recur (inc iter))
-                   (let [duration (if (or age-out? (>= (time/year-interval birthday (time/days-after beginning duration)) 17))
-                                    ;; Either we wanted to age out, or they did by virtue of staying beyond 17th birthday
-                                    (periods/max-duration period)
-                                    (min duration (periods/max-duration period)))]
-                     (assoc period
-                            :episodes (read-string episodes-edn)
-                            :duration duration
-                            :end (time/days-after beginning duration)
-                            :provenance "P")))
-                 ;; If we can't close a case, it's almost certainly
-                 ;; because they are an aged-out case. Set max duration
-                 (let [duration (periods/max-duration period)]
-                   (assoc period
-                          :duration duration
-                          :end (time/days-after beginning duration)
-                          :provenance "P")))))
-           (assoc period :provenance "H")))
-       #_(keep identity)))

@@ -13,7 +13,8 @@ args = commandArgs(trailingOnly=TRUE)
 input <- args[1]
 output <- args[2]
 project.to <- as.Date(parse_date_time(args[3], "%Y-%m-%d"))
-seed.long <- args[4]
+trended <- as.logical(args[4])
+seed.long <- args[5]
 set.seed(seed.long)
 
 df <- read.csv(input, header = TRUE, stringsAsFactors = FALSE, na.strings ='')
@@ -41,23 +42,23 @@ dat <- df %>%
 
 dat <- dat[duplicated(dat$admission_age),] # Remove the first period, likely to be incomplete
 
-mod <- bayesglm(n ~ quarter * admission_age, data = dat, family = poisson(link = "log"))
-params <- mvrnorm(1, coef(mod), vcov(mod))
-params.df <- data.frame(name = names(params), param = params)
+if (trended) {
+    mod <- bayesglm(n ~ quarter * admission_age, data = dat, family = poisson(link = "log"))
+    params <- mvrnorm(1, coef(mod), vcov(mod))
+    params.df <- data.frame(name = names(params), param = params)
+} else {
+    mean_arrivals <- dat %>%
+        group_by(admission_age) %>%
+        dplyr::mutate(c = n()) %>%
+        sample_n(c, replace = TRUE) %>%
+        dplyr::summarise(n = mean(n))
 
-# FIXME: override trending with static data
-# Take a mean of arrivals
-mean_arrivals <- dat %>%
-    group_by(admission_age) %>%
-    dplyr::mutate(c = n()) %>%
-    sample_n(c, replace = TRUE) %>%
-    dplyr::summarise(n = mean(n))
-
-params.df <- data.frame(name = c("(Intercept)", "quarter",
-                                 paste0("admission_age", mean_arrivals$admission_age),
-                                 paste0("quarter:admission_age", mean_arrivals$admission_age)),
-                        param = c(0, 0,
-                                  log(mean_arrivals$n),
-                                  rep(0, nrow(mean_arrivals))))
+    params.df <- data.frame(name = c("(Intercept)", "quarter",
+                                     paste0("admission_age", mean_arrivals$admission_age),
+                                     paste0("quarter:admission_age", mean_arrivals$admission_age)),
+                            param = c(0, 0,
+                                      log(mean_arrivals$n),
+                                      rep(0, nrow(mean_arrivals))))
+}
 
 write.csv(params.df, output, row.names = FALSE)
