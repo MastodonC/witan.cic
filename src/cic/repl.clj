@@ -19,7 +19,7 @@
   (def ncc "data/ncc/2020-06-09/%s")
   (def scc "data/scc/2021-04-08/%s")
 
-  (def projection-label "latest-version")
+  (def projection-label "latest-version-untrended")
 
 (def input-format
   scc)
