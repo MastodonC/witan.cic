@@ -8,10 +8,12 @@
                  [org.clojure/data.csv "0.1.4"]
                  [org.clojure/math.combinatorics "0.1.6"]
                  [org.clojure/spec.alpha "0.2.176"]
+                 [aero "1.1.6"]
                  [camel-snake-kebab "0.4.0"]
                  [kixi/stats "0.5.2"]
                  [clj-time "0.15.0"]
                  [com.taoensso/timbre "4.10.0"]
                  [net.cgrand/xforms "0.19.2"]]
   :target-path "target/%s"
+  :main cic.main
   :profiles {:uberjar {:aot :all}})

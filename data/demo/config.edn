@@ -1,0 +1,23 @@
+{:file-inputs {:episodes "data/episodes.csv"
+               :placement-costs "data/placement-costs.csv"
+               :zero-joiner-day-ages "data/zero-joiner-day-ages.csv"
+               :candidates-projection "data/projected-candidates.csv"
+               :candidates-simulation "data/simulated-candidates.csv"
+               :candidates-age-out-projection "data/projected-age-out-candidates.csv"
+               :candidates-age-out-simulation "data/simulated-age-out-candidates.csv"
+               }
+
+ :projection-parameters {:simulations 100
+                         :random-seed 42
+                         :rewind-years 1
+                         :train-years 3
+                         :project-years 5
+                         :episodes-extract-date #inst "2019-03-31T00:00:00.000-00:00"
+                         :train-joiner-range [-3 0]
+                         }
+
+ :output-parameters {:output-episodes-csv true
+                     :output-projection-csv true
+                     :output-dir "data/results"
+                     }
+ }
