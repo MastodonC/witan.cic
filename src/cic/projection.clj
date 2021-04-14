@@ -25,12 +25,12 @@
 (defn joiners-seq
   "Return a lazy sequence of projected joiners for a particular age of admission."
   [joiners-model duration-model joiner-placements-model markov-model placements-model simulation-model joiner-birthday-model last-joiner previous-offset age end seed]
-  (let [[seed-1 seed-2 seed-3 seed-4 seed-5 seed-6] (rand/split-n seed 6)
+  (let [[seed-1 seed-2 seed-3 seed-4 seed-5] (rand/split-n seed 5)
         interval (joiners-model (time/days-after last-joiner previous-offset) seed-1)
         new-offset (+ previous-offset interval)
         next-time (time/days-after last-joiner new-offset)
         start-time (time/without-time next-time)
-        {:keys [episodes-edn admission-age-days duration iterations]} (simulation-model age)
+        {:keys [episodes-edn admission-age-days duration iterations]} (simulation-model age seed-2)
         birthday (time/days-before start-time admission-age-days)
         age-out? (>= (time/year-interval birthday (time/days-after start-time duration)) 17)
         max-duration (time/day-interval start-time (time/day-before-18th-birthday birthday))
@@ -46,7 +46,7 @@
                 :provenance "S"
                 :admission-age age
                 :dob (time/year birthday)
-                :period-id (rand/rand-id 8 seed-4)}]
+                :period-id (rand/rand-id 8 seed-3)}]
     (when (time/< next-time end)
       (if period
         (cons period
@@ -106,10 +106,10 @@
      :periods closed-periods
      :project-from project-from
      :projection-model projection-model
-     :simulation-model (fn [admission-age]
-                         (or (when (or (age-out-model admission-age nil) (= admission-age 17)) ;; TODO Passing nil because seed isn't used yet
-                               (age-out-simulation-model admission-age))
-                             (simulation-model admission-age)))}))
+     :simulation-model (fn [admission-age seed]
+                         (or (when (or (age-out-model admission-age seed) (= admission-age 17)) ;; TODO Passing nil because seed isn't used yet
+                               (age-out-simulation-model admission-age seed))
+                             (simulation-model admission-age seed)))}))
 
 (defn project-1
   "Returns a single sequence of projected periods."

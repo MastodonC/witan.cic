@@ -7,7 +7,7 @@
                :candidates-age-out-simulation "data/simulated-age-out-candidates.csv"
                }
 
- :projection-parameters {:simulations 100
+ :projection-parameters {:simulations 1
                          :random-seed 42
                          :rewind-years 1
                          :train-years 3

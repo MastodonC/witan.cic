@@ -12,15 +12,20 @@
 
 (def split r/split)
 
+(def next-seed (comp first split))
+
 (def split-n r/split-n)
 
 (def rand-long r/rand-long)
 
+(def rand-double r/rand-double)
+
 (defn rand-nth
   [coll seed]
-  (when (seq coll)
-    (let [i (int (p/sample-1 (d/uniform {:a 0 :b (count coll)}) seed))]
-      (nth coll i))))
+  ;; (assert vector? coll)
+  (let [length (count coll)
+        n (p/sample-1 (d/uniform {:a 0 :b length}) seed)]
+    (nth coll n)))
 
 (let [letters (map char (range 65 90))]
   (defn rand-id
@@ -53,15 +58,17 @@
   (println "Closing open periods...")
   (->> (for [{:keys [period-id beginning open? admission-age birthday duration] :as period} periods]
          (if open?
-           (let [current-duration duration
-                 age-out? (age-out-model admission-age current-duration seed)]
-             (loop [iter 1]
+           (let [[s1 s2] (split seed)
+                 current-duration duration
+                 age-out? (age-out-model admission-age current-duration s1)]
+             (loop [iter 1
+                    seed s2]
                (if-let [{:keys [episodes-edn duration]} (if age-out?
-                                                          (or (age-out-projection-model period-id)
-                                                              (projection-model period-id))
-                                                          (projection-model period-id))]
+                                                          (or (age-out-projection-model period-id seed)
+                                                              (projection-model period-id seed))
+                                                          (projection-model period-id seed))]
                  (if (and (< duration current-duration) (< iter 1000))
-                   (recur (inc iter))
+                   (recur (inc iter) (next-seed s2))
                    (let [duration (if (or age-out? (>= (time/year-interval birthday (time/days-after beginning duration)) 17))
                                     ;; Either we wanted to age out, or they did by virtue of staying beyond 17th birthday
                                     (periods/max-duration period)
