@@ -149,28 +149,6 @@
             coll
             (apply c/cartesian-product ks))))
 
-(defn phase-duration-quantiles-model
-  [coefs]
-  (fn [first-phase?]
-    (let [quantiles (if first-phase?
-                      (:first coefs)
-                      (:rest coefs))]
-      (rand-nth quantiles))))
-
-(defn phase-transitions-model
-  [coefs]
-  (fn [first-transition? age placement]
-    (let [params  (get coefs {:first-transition first-transition?
-                              :transition-age age
-                              :transition-from placement})]
-      (if params
-        (let [[ks alphas] (apply map vector params)
-              category-probs (zipmap ks (d/draw (d/dirichlet {:alphas alphas})))]
-          #_(println "Found phase transition params for age" age "placement" placement "first transition" first-transition?)
-          (d/draw (d/categorical category-probs)))
-        (do #_(println "Didn't find phase transition params for age" age "placement" placement "first transition" first-transition?)
-            placement)))))
-
 (defn period->phases
   [{:keys [birthday beginning end episodes] :as period} episodes-from episodes-to]
   (for [[{offset-a :offset from :placement} {offset-b :offset to :placement}] (partition-all 2 1 episodes)
@@ -541,11 +519,12 @@
       (if-let [{:keys [c candidates]} (get periods period-id)]
         (loop [counter 0
                seed seed]
-          (let [{:keys [reject-ratio] :as candidate} (rand/rand-nth candidates seed)
-                u (rand)]
+          (let [[s1 s2] (rand/split seed)
+                {:keys [reject-ratio] :as candidate} (rand/rand-nth candidates s1)
+                u (rand/rand-double s2)]
             (if (or (<= u (* c reject-ratio)) (> counter 100000))
               candidate
-              (recur (inc counter) (rand/next-seed seed)))))
+              (recur (inc counter) (rand/next-seed s1)))))
         (println "Couldn't complete" period-id)))))
 
 (defn simulation-model
@@ -567,7 +546,7 @@
                seed seed]
           (let [[s1 s2] (rand/split seed)
                 {:keys [reject-ratio] :as candidate} (rand/rand-nth candidates s1)
-                u (rand)]
+                u (rand/rand-double s2)]
             (when-not (and c reject-ratio)
               (println (format "*** No C or reject-ratio %s %s %s %s" admission-age c reject-ratio (count candidates))))
             (if (or (<= u (* c reject-ratio)) (> counter 100000))

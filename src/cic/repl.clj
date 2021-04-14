@@ -59,9 +59,6 @@
                ;; :knn-closed-cases (read/knn-closed-cases knn-closed-cases-csv)
                :joiner-birthday-model (-> (read/zero-joiner-day-ages zero-joiner-day-ages-csv)
                                           (model/joiner-birthday-model))
-               ;;:rejection-model
-               #_(-> (read/rejection-proportions rejection-proportions-csv)
-                   (model/rejection-model))
                :projection-model
                (-> (read/period-candidates candidates-projection-csv)
                    (model/projection-model))
@@ -158,14 +155,15 @@
         _ (println (str "Project from " project-from))
         output-file (output-file (format "%s-distribution-%s-segment-interval-%s-rewind-%syr-train-%syr-samples-%s-seed-%s-%s.csv" (la-label) (time/date-as-string project-from) periods/segment-interval rewind-years train-years n-samples seed projection-label))
         ;; project-from (time/quarter-preceding (time/years-before project-from rewind-years))
-        periods (rand/sample-birthdays periods (rand/seed seed))
+        [s1 s2] (rand/split (rand/seed seed))
+        periods (rand/sample-birthdays periods s1)
         learn-from (time/years-before project-from train-years)
         period-completer (model/markov-placements-model periods (constantly true) learn-from project-from true)
         simulated-periods (into []
                                 (comp (map #(assoc % :provenance "S"))
                                       (map period-completer)
                                       (take n-samples))
-                                (periods/joiner-generator periods))]
+                                (periods/joiner-generator periods s2))]
     (->> (periods/period-generator periods project-from)
          (into simulated-periods
                (comp (map #(assoc % :provenance "P"))

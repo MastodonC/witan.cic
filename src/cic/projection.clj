@@ -2,6 +2,7 @@
   (:require [clojure.core.async :as a]
             [cic.model :as model]
             [cic.random :as rand]
+            [cic.periods :as periods]
             [cic.spec :as spec]
             [cic.summary :as summary]
             [cic.time :as time]
@@ -96,7 +97,7 @@
         [episodes-from episodes-to] episodes-range
         [learn-from learn-to] segments-range
         all-periods (rand/sample-birthdays periods s1)
-        closed-periods (rand/close-open-periods all-periods projection-model age-out-model age-out-projection-model s3)]
+        closed-periods (periods/close-open-periods all-periods projection-model age-out-model age-out-projection-model s3)]
     {:joiners-model (-> (filter #(time/between? (:beginning %) joiners-from joiners-to) all-periods)
                         (model/joiners-model-gen project-from project-to s2))
      :joiner-birthday-model joiner-birthday-model
@@ -114,9 +115,9 @@
 (defn project-1
   "Returns a single sequence of projected periods."
   [model-seed end seed]
-  (let [[s1 s2 s3 s4] (rand/split-n seed 4)
+  (let [[s1 s2] (rand/split seed)
         model (train-model model-seed s1)]
-    (concat (:periods model) (project-joiners model end s3))))
+    (concat (:periods model) (project-joiners model end s2))))
 
 (defn projection-chan
   [model-seed project-dates seed n-runs]
