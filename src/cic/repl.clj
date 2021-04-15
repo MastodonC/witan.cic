@@ -144,9 +144,11 @@
                       (:output-projection-episodes? output-parameters)
                       (conj :projection-episodes))]
     (fs/mkdir output-directory)
-    (when (:copy-file-inputs? output-parameters)
-      (fs/copy-dir-into input-directory output-directory)
-      (fs/copy config-file (fs/file output-directory (fs/base-name config-file))))
+    (when (:output-file-inputs? output-parameters)
+      (fs/copy config-file (fs/file output-directory (fs/base-name config-file)))
+      (fs/mkdir (fs/file output-directory "inputs"))
+      (doseq [input-file (vals file-inputs)]
+        (fs/copy input-file (fs/file output-directory "inputs" (fs/base-name input-file)))))
     (when (:output-projection-summary? output-parameters)
       (a/go
         (->> (projection/projection projection-mult project-dates placement-costs)
