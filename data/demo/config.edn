@@ -1,19 +1,21 @@
-{:file-inputs {:episodes "data/episodes.csv"
-               :placement-costs "data/placement-costs.csv"
-               :zero-joiner-day-ages "data/zero-joiner-day-ages.csv"
-               :candidates-projection "data/projected-candidates.csv"
-               :candidates-simulation "data/simulated-candidates.csv"
-               :candidates-age-out-projection "data/projected-age-out-candidates.csv"
-               :candidates-age-out-simulation "data/simulated-age-out-candidates.csv"
+{:input-directory "data/model-inputs/"
+ :file-inputs {:episodes #join [#ref [:input-directory] "scrubbed-episodes.csv"]
+               :placement-costs #join [#ref [:input-directory] "placement-costs.csv"]
+               :zero-joiner-day-ages #join [#ref [:input-directory] "zero-joiner-day-ages.csv"]
+               :age-out-proportions #join [#ref [:input-directory] "age-out-proportions.csv"]
+               :candidates-simulation #join [#ref [:input-directory] "simulated-candidates.csv"]
+               :candidates-projection #join [#ref [:input-directory] "projected-candidates.csv"]
+               :candidates-age-out-projection #join [#ref [:input-directory] "projected-age-out-candidates.csv"]
+               :candidates-age-out-simulation #join [#ref [:input-directory] "simulated-age-out-candidates.csv"]
                }
 
  :projection-parameters {:simulations 1
-                         :random-seed 42
+                         :random-seed 43
                          :rewind-years 1
                          :train-years 3
                          :project-years 5
-                         :episodes-extract-date #inst "2019-03-31T00:00:00.000-00:00"
-                         :train-joiner-range [-3 0]
+                         :episodes-extract-date #date "2020-03-31"
+                         :train-joiner-years 3
                          }
 
  :output-parameters {:output-episodes-csv true

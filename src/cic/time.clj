@@ -105,6 +105,10 @@
   [date]
   (f/unparse date-string date))
 
+(defn string-as-date
+  [s]
+  (f/parse date-string s))
+
 (defn quarter-following
   [date]
   (let [test (t/minus date (t/days 1))
