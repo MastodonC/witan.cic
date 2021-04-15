@@ -104,7 +104,7 @@
 
 (defn generate-projection-csv!
   "Main REPL function for writing a projection CSV"
-  [{{:keys [rewind-years train-years project-years simulations random-seed train-joiner-years episodes-extract-date]} :projection-parameters
+  [{{:keys [rewind-years train-years project-years simulations random-seed train-joiner-years episodes-extract-date trend-joiners?]} :projection-parameters
     file-inputs :file-inputs
     output-parameters :output-parameters
     input-directory :input-directory
@@ -126,7 +126,8 @@
                     :simulation-model simulation-model
                     :age-out-model age-out-model
                     :age-out-projection-model age-out-projection-model
-                    :age-out-simulation-model age-out-simulation-model}
+                    :age-out-simulation-model age-out-simulation-model
+                    :trend-joiners? trend-joiners?}
         output-from (time/years-before project-from (+ train-joiner-years 2))
         summary-seq (into []
                           (map format-actual-for-output)

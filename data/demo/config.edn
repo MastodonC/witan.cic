@@ -17,6 +17,7 @@
                          :project-years 5
                          :episodes-extract-date #date "2020-03-31"
                          :train-joiner-years 3
+                         :trend-joiners? true
                          }
 
  :output-parameters {:output-projection-episodes? true
