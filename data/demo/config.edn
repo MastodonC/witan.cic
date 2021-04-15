@@ -1,4 +1,5 @@
-{:input-directory "data/model-inputs/"
+{:input-directory "data/inputs/"
+ :output-directory "data/outputs/"
  :file-inputs {:episodes #join [#ref [:input-directory] "scrubbed-episodes.csv"]
                :placement-costs #join [#ref [:input-directory] "placement-costs.csv"]
                :zero-joiner-day-ages #join [#ref [:input-directory] "zero-joiner-day-ages.csv"]
@@ -18,8 +19,8 @@
                          :train-joiner-years 3
                          }
 
- :output-parameters {:output-episodes-csv true
-                     :output-projection-csv true
-                     :output-dir "data/results"
+ :output-parameters {:output-projection-episodes? true
+                     :output-projection-summary? true
+                     :copy-file-inputs? true
                      }
  }

@@ -93,35 +93,35 @@
     (concat (:periods model) (project-joiners model end s2))))
 
 (defn projection-chan
-  [model-seed project-dates seed n-runs]
-  (let [max-date (time/max-date project-dates)
+  [out-chan model-seed project-dates seed n-runs]
+  (let [
+        max-date (time/max-date project-dates)
         [s1 s2] (rand/split-n (rand/seed seed) 2)
         model-seed (init-model model-seed s1)
         parallelism (* 3 (quot (.availableProcessors (Runtime/getRuntime)) 4)) ;; use 3/4 the cores
         in-chan (a/to-chan! (map-indexed vector (rand/split-n s2 n-runs)))
-        out-chan (a/chan 1024)
-        simulation-number (atom 0)
         projection-xf (map (fn [[iteration seed]]
                              (into []
                                    (map #(assoc % :simulation-number (inc iteration)))
-                                   (project-1 model-seed max-date seed))))
-        _ (a/pipeline-blocking parallelism out-chan projection-xf in-chan)]
-    out-chan))
+                                   (project-1 model-seed max-date seed))))]
+    (a/pipeline-blocking parallelism out-chan projection-xf in-chan)))
+
+(defn project-n
+  [projection-chan]
+  (let [in-chan (a/chan 1024)]
+    (a/tap projection-chan in-chan)
+    (a/<!! (a/into [] in-chan))))
 
 (defn projection
-  [model-seed project-dates placement-costs seed n-runs]
-  (let [out-chan (a/chan 1024 (map #(summary/periods-summary % project-dates placement-costs)))
-        _ (a/pipe (projection-chan model-seed project-dates seed n-runs)
-                  out-chan)
+  [projection-chan project-dates placement-costs]
+  (let [in-chan (a/chan 1024)
+        out-chan (a/chan 1024 (map #(summary/periods-summary % project-dates placement-costs)))
+        _ (a/tap projection-chan in-chan)
+        _ (a/pipe in-chan out-chan)
         ]
     (summary/grand-summary
      (a/<!!
       (a/into [] out-chan)))))
-
-(defn project-n
-  [model-seed project-dates seed n-runs]
-  (let [out-chan (projection-chan model-seed project-dates seed n-runs)]
-    (a/<!! (a/into [] out-chan))))
 
 (defn cost-projection
   [projection-seed model-seed project-until placement-costs seed n-runs]

@@ -12,7 +12,8 @@
 
 (defn run-cic
   [config-file]
-  (let [config (read-config config-file)]
+  (let [config (-> (read-config config-file)
+                   (assoc :config-file config-file))]
     (cic/run-cic-workflow config)))
 
 (defn -main
