@@ -150,14 +150,14 @@
       (doseq [input-file (vals file-inputs)]
         (fs/copy input-file (fs/file output-directory "inputs" (fs/base-name input-file)))))
     (when (:output-projection-summary? output-parameters)
-      (a/go
+      (a/thread
         (->> (projection/projection projection-mult project-dates placement-costs)
              (concat summary-seq)
              (write/projection-table)
              (write/write-csv! projection-summary-output))
         (a/>! result-chan :projection-summary)))
     (when (:output-projection-episodes? output-parameters)
-      (a/go
+      (a/thread
         (->> (projection/project-n projection-mult)
              (write/episodes-table t0 project-to)
              (write/write-csv! projection-episodes-output))
