@@ -49,7 +49,7 @@
   (t/minus date (t/days days)))
 
 (defn day-seq
-  "Create a sequence of dates with a 7-day interval between two dates"
+  "Create a sequence of dates with an n-day interval between two dates"
   ([beginning end]
    (day-seq beginning end 1))
   ([beginning end days]
@@ -105,6 +105,10 @@
   [date]
   (f/unparse date-string date))
 
+(defn string-as-date
+  [s]
+  (f/parse date-string s))
+
 (defn quarter-following
   [date]
   (let [test (t/minus date (t/days 1))
@@ -133,3 +137,12 @@
   [date]
   (p/periodic-seq (financial-year-end date)
                   (t/years 1)))
+
+(defn day-before-18th-birthday
+  [birthday]
+  (t/minus (t/plus birthday (t/years 18)) (t/days 1)))
+
+(defn halfway-between
+  [a b]
+  (let [d (quot (day-interval a b) 2)]
+    (days-after a d)))

@@ -7,47 +7,58 @@ library(fitdistrplus)
 library(FAdist)
 library(glm2)
 library(arm)
+library(tidyr)
 
 args = commandArgs(trailingOnly=TRUE)
-# args = c("/var/folders/tw/tzkjfqd11md5hdjcyjxgmf740000gn/T/file14146548989716177472.csv","/var/folders/tw/tzkjfqd11md5hdjcyjxgmf740000gn/T/file346105388764673154.csv","2023-01-01","907901448")
 input <- args[1]
 output <- args[2]
 project.to <- as.Date(parse_date_time(args[3], "%Y-%m-%d"))
-seed.long <- args[4]
+trended <- as.logical(args[4])
+seed.long <- args[5]
 set.seed(seed.long)
 
 df <- read.csv(input, header = TRUE, stringsAsFactors = FALSE, na.strings ='')
 df$beginning <- as.Date(parse_date_time(df$beginning, '%Y-%m-%d %H:%M:%S'))
-df$admission_age <- as.factor(as.character(df$admission_age))
+df$admission_age <- as.character(df$admission_age)
 
-quarters.between <- function(from, to) {
-    seq(floor_date(min(from), "3 months"),
-        floor_date(max(to), "3 months"),
-        "3 months")
+floor_days <- function(date, max_date, granularity) {
+    # Function assumes max_date is the end of the final group,
+    # groups dates into ranges of `granularity` days.
+    # Function maps each date to the middle of its corresponding range.
+    ((max_date + 1) - ((as.numeric(max_date - date) %/% granularity) + 1) * granularity) + (granularity %/% 2)
 }
 
-# Ensure every age is represented every quarter
-defaults <- expand.grid(quarter = quarters.between(min(df$beginning), max(df$beginning)), admission_age = levels(df$admission_age))
+max_date <- max(df$beginning)
+granularity <- 28 * 3
 
-# Count the joiners per age and quarter
 dat <- df %>%
-    mutate(quarter = floor_date(beginning, "3 months")) %>%
+    mutate(quarter = floor_days(beginning, max_date, granularity )) %>%
     group_by(admission_age, quarter) %>%
-    summarise(n = n()) %>%
+    dplyr::summarise(n = n()) %>%
+    ungroup %>%
+    complete(admission_age, quarter, fill = list(n = 0)) %>%
+    arrange(admission_age, quarter) %>%
     as.data.frame
 
-# Data including zero counts
-dat <- defaults %>%
-    left_join(dat) %>%
-    mutate(n = coalesce(n, as.integer(0)))
+dat <- dat[duplicated(dat$admission_age),] # Remove the first period, likely to be incomplete
 
-mod <- bayesglm(n ~ quarter * admission_age, data = dat, family = poisson(link = "log"))
-params <- mvrnorm(1, coef(mod), vcov(mod))
-params.df <- data.frame(name = names(params), param = params)
+if (trended) {
+    mod <- bayesglm(n ~ quarter * admission_age, data = dat, family = poisson(link = "log"))
+    params <- mvrnorm(1, coef(mod), vcov(mod))
+    params.df <- data.frame(name = names(params), param = params)
+} else {
+    mean_arrivals <- dat %>%
+        group_by(admission_age) %>%
+        dplyr::mutate(c = n()) %>%
+        sample_n(c, replace = TRUE) %>%
+        dplyr::summarise(n = mean(n))
 
-# rand <- as.integer(runif(1, 1000, 9999))
-# write.csv(df, sprintf("/Users/henry/Mastodon C/witan.cic/data/testing/input-%s.csv", rand), row.names = FALSE)
-# write.csv(params.df, sprintf("/Users/henry/Mastodon C/witan.cic/data/testing/params-%s.csv", rand), row.names = FALSE)
+    params.df <- data.frame(name = c("(Intercept)", "quarter",
+                                     paste0("admission_age", mean_arrivals$admission_age),
+                                     paste0("quarter:admission_age", mean_arrivals$admission_age)),
+                            param = c(0, 0,
+                                      log(mean_arrivals$n),
+                                      rep(0, nrow(mean_arrivals))))
+}
 
 write.csv(params.df, output, row.names = FALSE)
-

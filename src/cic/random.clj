@@ -1,5 +1,5 @@
 (ns cic.random
-  (:refer-clojure :exclude [rand-nth])
+  (:refer-clojure :exclude [rand-nth rand-int])
   (:require [cic.time :as time]
             [clojure.test.check.random :as r]
             [kixi.stats.distribution :as d]
@@ -11,15 +11,27 @@
 
 (def split r/split)
 
+(def next-seed (comp first split))
+
+(defn nth-seed
+  [seed n])
+
 (def split-n r/split-n)
 
 (def rand-long r/rand-long)
 
+(def rand-double r/rand-double)
+
+(defn rand-int
+  [max-val seed]
+  (p/sample-1 (d/uniform {:a 0 :b max-val}) seed))
+
 (defn rand-nth
   [coll seed]
-  (when (seq coll)
-    (let [i (int (p/sample-1 (d/uniform {:a 0 :b (count coll)}) seed))]
-      (nth coll i))))
+  ;; (assert vector? coll)
+  (let [length (count coll)
+        n (p/sample-1 (d/uniform {:a 0 :b length}) seed)]
+    (nth coll n)))
 
 (let [letters (map char (range 65 90))]
   (defn rand-id
@@ -43,14 +55,6 @@
                     birthday (time/days-after earliest-birthday birthday-offset)]
                 (-> period
                     (assoc :birthday birthday)
-                    (assoc :admission-age (time/year-interval birthday beginning))))))
+                    (assoc :admission-age (time/year-interval birthday beginning))
+                    (assoc :admission-age-days (time/day-interval birthday beginning))))))
           periods rngs)))
-
-(defn close-open-periods
-  [periods markov-model seed]
-  (println "Closing open periods...")
-  (for [period periods
-        :let [open-offset (time/day-interval (:beginning period) (:snapshot-date period))]]
-    (if (:open? period)
-      (assoc (markov-model period) :provenance "P")
-      (assoc period :provenance "H"))))

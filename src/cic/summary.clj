@@ -21,27 +21,19 @@
   "Takes inferred future periods and calculates the total CiC"
   [periods dates placement-costs]
   (let [placements-zero (zipmap spec/placements (repeat 0))
-        ages-zero (zipmap spec/ages (repeat 0))
-        placement-ages-zero (zipmap (for [placement spec/placements age spec/ages]
-                                      (placement-age placement age))
-                                    (repeat 0))]
+        ages-zero (zipmap spec/ages (repeat 0))]
     (reduce (fn [output date]
               (let [in-care (filter (periods/in-care? date) periods)
                     by-placement (->> (map #(:placement (periods/episode-on % date)) in-care)
                                       (frequencies))
                     by-age (->> (map #(periods/age-on % date) in-care)
                                 (frequencies))
-                    by-placement-age (->> (map (fn [period]
-                                                 (placement-age (:placement (periods/episode-on period date))
-                                                                (periods/age-on period date)))
-                                               in-care)
-                                          (frequencies))
                     cost (placements-cost placement-costs by-placement)]
                 (assoc output date {:count (count in-care)
                                     :cost cost
                                     :placements (merge-with + placements-zero by-placement)
                                     :ages (merge-with + ages-zero by-age)
-                                    :placement-ages (merge-with + placement-ages-zero by-placement-age)})))
+                                    })))
             {} dates)))
 
 
@@ -87,9 +79,7 @@
                :placements (-> (rf-for-keys histogram-rf spec/placements)
                                (redux/pre-step :placements))
                :ages (-> (rf-for-keys histogram-rf spec/ages)
-                         (redux/pre-step :ages))
-               :placement-ages (-> (rf-for-keys histogram-rf spec/placement-ages)
-                                   (redux/pre-step :placement-ages))}))
+                         (redux/pre-step :ages))}))
 
 (defn grand-summary
   "A function to transduce over all runs.
