@@ -104,7 +104,7 @@
 
 (defn generate-projection-csv!
   "Main REPL function for writing a projection CSV"
-  [{{:keys [rewind-years train-years project-years simulations random-seed train-joiner-years episodes-extract-date trend-joiners?]} :projection-parameters
+  [{{:keys [rewind-years project-years simulations random-seed train-joiner-years episodes-extract-date trend-joiners?]} :projection-parameters
     file-inputs :file-inputs
     output-parameters :output-parameters
     input-directory :input-directory
@@ -155,13 +155,13 @@
              (concat summary-seq)
              (write/projection-table)
              (write/write-csv! projection-summary-output))
-        (a/>! result-chan :projection-summary)))
+        (a/>!! result-chan :projection-summary)))
     (when (:output-projection-episodes? output-parameters)
       (a/thread
         (->> (projection/project-n projection-mult)
              (write/episodes-table t0 project-to)
              (write/write-csv! projection-episodes-output))
-        (a/>! result-chan :projection-episodes)))
+        (a/>!! result-chan :projection-episodes)))
     (projection/projection-chan projection-chan
                                 model-seed project-dates
                                 random-seed simulations)
@@ -170,41 +170,51 @@
         (when-not (= completed to-complete)
           (recur completed))))))
 
-(defn output-generated-universe!
-  [rewind-years train-years n-samples seed]
-  (let [{:keys [project-from periods]} (prepare-model-inputs (load-preparation-inputs) rewind-years)
-        _ (println (str "Project from " project-from))
-        output-file (output-file (format "%s-periods-universe-%s-segment-interval-%s-rewind-%syr-train-%syr-samples-%s-seed-%s-age-out-jitter-7.csv" (la-label) (time/date-as-string project-from) periods/segment-interval rewind-years train-years n-samples seed))
-        periods (rand/sample-birthdays periods (rand/seed seed))
+(defn generate-candidates!
+  [{{:keys [rewind-years train-years project-years simulations random-seed train-joiner-years episodes-extract-date trend-joiners? candidate-variations]} :projection-parameters
+    file-inputs :file-inputs
+    output-parameters :output-parameters
+    input-directory :input-directory
+    output-directory :output-directory
+    config-file :config-file}]
+  (let [{:keys [project-from periods]} (prepare-model-inputs (load-model-inputs file-inputs) episodes-extract-date rewind-years)
+        periods-universe-output (fs/file output-directory "generated-candidates.csv")
+        [s1 s2] (rand/split (rand/seed random-seed))
+        periods (rand/sample-birthdays periods s1)
         learn-from (time/years-before project-from train-years)
         period-completer (model/markov-placements-model periods (constantly true) learn-from project-from true)
         historic-periods (map #(assoc % :provenance "H" :iteration 0) (remove :open? periods))
         open-periods (map #(assoc % :provenance "O") (filter :open? periods))
-        candidate-periods (into [] (map (fn [iter]
-                                          (map #(assoc % :iteration iter :provenance "C")
-                                               (rand/sample-birthdays open-periods (rand/seed (+ seed iter))))))
-                                (range n-samples))
+        candidate-periods (into [] (comp (map (fn [[iter seed]]
+                                                (map (fn [period seed]
+                                                       (assoc period
+                                                              :iteration iter
+                                                              :provenance "C"
+                                                              :seed seed))
+                                                     (rand/sample-birthdays open-periods seed)
+                                                     (rand/split-n seed (count open-periods)))))
+                                         cat)
+                                (map vector (range candidate-variations) (rand/split-n s2 candidate-variations)))
         _ (println "Finished candidates")
-        completed-periods (into [] (comp cat
-                                         (map #(assoc % :provenance "P"))
+        completed-periods (into [] (comp (map #(assoc % :provenance "P"))
                                          (map period-completer))
                                 candidate-periods)
-        completed-periods (into completed-periods (comp cat
-                                                        (map #(assoc % :provenance "P" :aged-out? true))
+        candidate-periods (map #(update % :seed rand/next-seed) candidate-periods)
+        completed-periods (into completed-periods (comp (map #(assoc % :provenance "P" :aged-out? true))
                                                         (map #(period-completer % true)))
                                 candidate-periods)
         _ (println "Finished projected periods")
-        simulated-periods (into [] (comp cat
-                                         (map #(assoc % :provenance "S"))
+        candidate-periods (map #(update % :seed rand/next-seed) candidate-periods)
+        simulated-periods (into [] (comp (map #(assoc % :provenance "S"))
                                          (map (comp period-completer #(periods/period-as-at-wayback % project-from))))
                                 candidate-periods)
-        simulated-periods (into simulated-periods (comp cat
-                                                        (map #(assoc % :provenance "S" :aged-out? true))
+        candidate-periods (map #(update % :seed rand/next-seed) candidate-periods)
+        simulated-periods (into simulated-periods (comp (map #(assoc % :provenance "S" :aged-out? true))
                                                         (map (comp #(period-completer % true) #(periods/period-as-at-wayback % project-from))))
                                 candidate-periods)
         _ (println "Finished simulated periods")]
     (->> (apply concat historic-periods open-periods completed-periods simulated-periods candidate-periods)
          (write/periods-universe)
-         (write/write-csv! output-file))))
+         (write/write-csv! periods-universe-output))))
 
 

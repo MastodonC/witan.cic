@@ -217,21 +217,13 @@
           (assoc :from-placement (-> episodes first :placement))
           (assoc :episodes episodes)))))
 
-(defn period-generator
-  [periods project-from]
-  (let [period (rand-nth periods)
-        {:keys [open? beginning end]} period
-        interval (time/day-interval beginning (or end project-from))
-        as-at (time/days-after beginning (rand-int interval))]
-    (cons (period-as-at period as-at)
-          (lazy-seq (period-generator periods project-from)))))
-
 (defn period-as-at-wayback
   [period project-from]
-  (let [{:keys [open? beginning end]} period
+  (let [{:keys [open? beginning end seed]} period
         interval (time/day-interval beginning (or end project-from))
-        as-at (time/days-after beginning (rand-int interval))]
-    (period-as-at period as-at)))
+        as-at (time/days-after beginning (rand/rand-int interval seed))]
+    (-> (period-as-at period as-at)
+        (update :seed rand/next-seed))))
 
 (defn joiner-generator
   [periods seed]

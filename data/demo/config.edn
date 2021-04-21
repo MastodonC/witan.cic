@@ -11,13 +11,14 @@
                }
 
  :projection-parameters {:simulations 1
-                         :random-seed 43
+                         :random-seed 42
                          :rewind-years 1
                          :train-years 3
                          :project-years 5
                          :episodes-extract-date #date "2020-03-31"
                          :train-joiner-years 3
                          :trend-joiners? false
+                         :candidate-variations 100 ;; Used in pre-step creating candidate periods
                          }
 
  :output-parameters {:output-projection-episodes? true

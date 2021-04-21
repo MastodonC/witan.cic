@@ -303,10 +303,10 @@
       (+ x (d/draw dist)))))
 
 (defn jitter-binomial
-  [x n scale]
+  [x n scale seed]
   (let [p (/ x n)
         dist (d/binomial {:n (/ n scale) :p p})]
-    (long (* scale (d/draw dist)))))
+    (long (* scale (p/sample-1 dist seed)))))
 
 (defn get-matched-segment
   [feature-fn feature-vec segments]
@@ -319,38 +319,6 @@
 
 (def jitter-scale 7) ;; Higher is more jittering
 
-(defn periods-simulations
-  [periods offset-segments]
-  (into [] (comp (filter :open?)
-                 (map (fn [{:keys [birthday beginning snapshot-date duration episodes] :as period}]
-                        (assoc period
-                               :join-age-days (time/day-interval birthday beginning)
-                               :age-days (time/day-interval birthday snapshot-date)
-                               :care-days (time/day-interval beginning snapshot-date)
-                               :max-duration (dec (time/day-interval beginning (time/days-after birthday max-age-days)))
-                               :offset (rem duration periods/segment-interval)
-                               :last-placement (-> episodes last :placement)
-                               :initial? (< duration periods/segment-interval))))
-                 (mapcat (fn [{:keys [age-days care-days duration max-duration offset last-placement initial? join-age-days] :as period}]
-                           (into [] (map (fn [simulation]
-                                           (let [join-age-days (jitter-binomial join-age-days max-age-days jitter-scale)
-                                                 care-days (jitter-binomial duration max-duration jitter-scale)
-                                                 segment (get-matched-segment (juxt :join-age-days :care-days) [join-age-days care-days]
-                                                                              (get offset-segments [offset last-placement]))]
-                                             (when segment
-                                               (assoc period
-                                                      :combined-duration (+ duration (:duration segment))
-                                                      :care-weeks (quot (+ duration (:duration segment)) 7)
-                                                      :segment-simulation simulation
-                                                      :segment-terminal? (:terminal? segment)
-                                                      :segment-duration (:duration segment)
-                                                      :segment-age-days (:age-days segment)
-                                                      :segment-care-days (:care-days segment)
-                                                      :last-placement (-> segment :episodes last :placement)
-                                                      :segment-aged-out? (:aged-out? segment))))))
-                                 (range 100))))
-                 (remove nil?))
-        periods))
 
 (defn admission-age-care-weeks-pdf
   [sample]
@@ -384,7 +352,7 @@
          (<= (d/draw dist) desired))))
 
 (defn markov-period
-  [{:keys [episodes birthday beginning duration period-id provenance] :as period} offset-segments rejection-model & [age-out?]]
+  [{:keys [episodes birthday beginning duration period-id provenance seed] :as period} offset-segments rejection-model & [age-out?]]
   (assert provenance)
   (let [admission-age (time/year-interval birthday beginning)
         max-duration (dec (time/day-interval beginning (time/years-after birthday 18)))
@@ -393,17 +361,19 @@
         init-episodes episodes
         init-offset (rem duration periods/segment-interval)
         init-initial? (< duration periods/segment-interval)
-        [episodes total-duration iterations]
+        [episodes total-duration iterations next-seed]
         (loop [total-duration init-duration
                last-placement init-placement
                all-episodes init-episodes
                offset init-offset
                initial? init-initial?
-               counter 0]
-          (let [age-days (time/day-interval birthday (time/days-after beginning total-duration))
-                age-days (jitter-binomial age-days max-age-days jitter-scale)
+               counter 0
+               seed seed]
+          (let [[s1 s2 s3] (rand/split-n seed 3)
+                age-days (time/day-interval birthday (time/days-after beginning total-duration))
+                age-days (jitter-binomial age-days max-age-days jitter-scale s1)
                 join-age-days (time/day-interval birthday beginning)
-                join-age-days (jitter-binomial join-age-days max-age-days jitter-scale)
+                join-age-days (jitter-binomial join-age-days max-age-days jitter-scale s2)
                 ;; care-days (jitter-binomial total-duration max-duration jitter-scale)
                 care-days total-duration
                 {:keys [terminal? episodes duration to-placement aged-out?] :as sample}
@@ -435,8 +405,9 @@
 
                 (or terminal? (>= total-duration' max-duration))
                 [(take-while #(< (:offset %) total-duration') episodes)
-                 (jitter-binomial total-duration' max-duration jitter-scale)
-                 counter]
+                 (jitter-binomial total-duration' max-duration jitter-scale s3)
+                 counter
+                 (rand/next-seed seed)]
 
                 :else
                 (recur total-duration'
@@ -444,9 +415,11 @@
                        episodes
                        0               ;; Zero offset
                        (boolean false) ;; Always return false
-                       (inc counter))))))]
+                       (inc counter)
+                       (rand/next-seed seed))))))]
     (when (and episodes total-duration)
       (-> period
+          (assoc :seed next-seed)
           (assoc :episodes (episodes/simplify episodes))
           (assoc :duration total-duration)
           (assoc :open? false)

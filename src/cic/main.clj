@@ -3,7 +3,8 @@
   (:require [cic.cic :as cic]
             [cic.time :as time]
             [clojure.java.io :as io]
-            [aero.core :as aero]))
+            [aero.core :as aero]
+            [clojure.tools.cli :as cli]))
 
 (defn read-config
   [config-file]
@@ -16,6 +17,24 @@
                    (assoc :config-file config-file))]
     (cic/run-cic-workflow config)))
 
+(defn run-generate-candidates
+  [config-file]
+  (let [config (-> (read-config config-file)
+                   (assoc :config-file config-file))]
+    (cic/run-generate-candidates-workflow config)))
+
+(def cli-options
+  [
+   ["-c" "--config FILE" "Config file"
+    :default "data/demo/config.edn"
+    :id :config-file]])
+
 (defn -main
-  ([] (-main "data/demo/config.edn"))
-  ([config-file] (run-cic config-file)))
+  [& args]
+  (let [{:keys [options arguments]} (cli/parse-opts args cli-options)
+        {:keys [config-file]} options
+        [task] arguments]
+    (case task
+      "generate-candidates" (run-generate-candidates config-file)
+      "projection" (run-cic config-file)
+      nil (run-cic config-file))))

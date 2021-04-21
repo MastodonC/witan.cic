@@ -1,5 +1,5 @@
 (ns cic.random
-  (:refer-clojure :exclude [rand-nth])
+  (:refer-clojure :exclude [rand-nth rand-int])
   (:require [cic.time :as time]
             [clojure.test.check.random :as r]
             [kixi.stats.distribution :as d]
@@ -13,11 +13,18 @@
 
 (def next-seed (comp first split))
 
+(defn nth-seed
+  [seed n])
+
 (def split-n r/split-n)
 
 (def rand-long r/rand-long)
 
 (def rand-double r/rand-double)
+
+(defn rand-int
+  [max-val seed]
+  (p/sample-1 (d/uniform {:a 0 :b max-val}) seed))
 
 (defn rand-nth
   [coll seed]

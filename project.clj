@@ -14,7 +14,8 @@
                  [clj-time "0.15.0"]
                  [clj-commons/fs "1.6.307"]
                  [com.taoensso/timbre "4.10.0"]
-                 [net.cgrand/xforms "0.19.2"]]
+                 [net.cgrand/xforms "0.19.2"]
+                 [org.clojure/tools.cli "1.0.206"]]
   :target-path "target/%s"
   :main cic.main
   :profiles {:uberjar {:aot :all}})
