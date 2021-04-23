@@ -1,0 +1,241 @@
+---
+title: "Sibling EDA "
+output: html_document
+---
+
+## Sibling EDA
+
+```{r}
+
+library(lubridate)
+library(dplyr)
+library(ggplot2)
+source("helpers.R")
+
+colnames(historic_episodes)
+
+historic_episodes <- read.csv('../data/outputs/inputs/scrubbed-episodes.csv',
+                              colClasses = c(NA, NA, NA, "Date", "Date", NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA))
+
+
+projected_episodes <- read.csv('../data/outputs/projection-episodes.csv',
+                               colClasses = c(NA, NA, NA, NA, NA, "Date", "Date", "Date", NA, NA, NA, NA, NA, "Date", NA, "Date", NA, NA, NA, NA))
+
+```
+
+```{r}
+
+historic_periods <- historic_episodes %>%
+  group_by(period_id) %>%
+  summarise(period_start = min(report_date), period_end = max(ceased), DOB = DOB[1])
+
+projected_periods <- projected_episodes %>%
+  group_by(ID, Simulation) %>%
+  summarise(period_start = min(Period.Start), period_end = max(Period.End),
+            birthday = Birthday[1], provenance = Provenance[1]) %>%
+  rename(id = ID, simulation = Simulation)
+
+```
+
+How often do children arrive simultaneously in the historic data?
+
+```{r}
+historic_periods %>%
+  group_by(period_start) %>%
+  summarise(n = n()) %>%
+  ggplot(aes(n)) +
+  geom_bar() +
+  scale_y_log10()
+
+```
+Let's take just 5 years of historic data
+```{r}
+historic_periods %>%
+  filter(period_start >= max(period_start) - years(5)) %>%
+  group_by(period_start) %>%
+  summarise(n = n()) %>%
+  ggplot(aes(n)) +
+  geom_bar() +
+  scale_y_log10()
+
+```
+
+
+And how much in the simulated data?
+
+```{r}
+
+library(ggthemes)
+
+# We need equal ranges of both data sets
+
+projected_periods %>%
+  filter(period_start >= max(historic_periods$period_start) - years(5)) %>%
+  mutate(provenance = if_else(provenance == "P", "H", provenance)) %>%
+  group_by(simulation, period_start, provenance) %>%
+  summarise(n = n()) %>%
+  ggplot(aes(n, fill = provenance)) +
+  geom_bar(position = position_dodge2(width = 0.9, preserve = "single")) +
+  scale_y_log10() +
+  scale_fill_manual(values = tableau_color_pal("Tableau 20")(20)) +
+  geom_vline(linetype = 2, color = "orange", aes(xintercept = 5.5))
+```
+```{r}
+projected_periods %>%
+  filter(period_start >= max(historic_periods$period_start) - years(5)) %>%
+  filter(simulation <= 16) %>%
+  mutate(provenance = if_else(provenance == "P", "H", provenance)) %>%
+  group_by(simulation, period_start, provenance) %>%
+  summarise(n = n()) %>%
+  ggplot(aes(n, fill = provenance)) +
+  geom_bar(position = position_dodge2(width = 0.9, preserve = "single"), show.legend = FALSE) +
+  scale_y_log10() +
+  scale_fill_manual(values = tableau_color_pal("Tableau 20")(20)) +
+  geom_vline(linetype = 2, color = "orange", aes(xintercept = 5.5)) +
+  facet_wrap(vars(simulation))
+```
+
+What do the arrivals in groups of more than 5 look like?
+
+```{r}
+historic_periods %>%
+  group_by(period_start) %>%
+  filter(n() > 5) %>%
+  mutate(join_age = month_diff(as.Date(paste0(DOB, "-01")), period_start) / 12.0,
+         group_id = group_indices())  %>%
+  arrange(group_id) %>%
+  mutate(fill_type = group_id %% 2) %>%
+  ggplot(aes(group_id, join_age, colour = as.logical(fill_type))) +
+  geom_point(show.legend = FALSE) +
+  scale_colour_manual(values = tableau_color_pal("Tableau 20")(20)) +
+  scale_y_continuous(breaks = seq(0, 18, by = 9/12), minor_breaks = NULL)
+  
+```
+```{r}
+projected_periods %>%
+  filter(provenance == "S") %>%
+  group_by(simulation, period_start) %>%
+  filter(n() > 5) %>%
+  mutate(join_age = month_diff(birthday, period_start) / 12.0,
+         group_id = group_indices())  %>%
+  arrange(group_id) %>%
+  mutate(fill_type = group_id %% 2) %>%
+  ggplot(aes(group_id, join_age, colour = as.logical(fill_type))) +
+  geom_point(show.legend = FALSE) +
+  scale_colour_manual(values = tableau_color_pal("Tableau 20")(20)) +
+  scale_y_continuous(breaks = seq(0, 18, by = 9/12), minor_breaks = NULL)
+```
+
+```{r}
+
+comparison <- rbind(
+projected_periods %>%
+  filter(provenance == "S") %>%
+  group_by(simulation, period_start) %>%
+  filter(n() > 5) %>%
+  mutate(join_age = month_diff(birthday, period_start) / 12.0) %>%
+  arrange(simulation, period_start, join_age) %>%
+  mutate(age_interval = join_age - lag(join_age)) %>%
+  ungroup %>%
+  mutate(provenance = "S") %>%
+  dplyr::select(provenance, join_age, age_interval)
+,
+historic_periods %>%
+  group_by(period_start) %>%
+  filter(n() > 5) %>%
+  mutate(join_age = month_diff(as.Date(paste0(DOB, "-01")), period_start) / 12.0)  %>%
+  arrange(period_start, join_age) %>%
+  mutate(age_interval = join_age - lag(join_age)) %>%
+  ungroup %>%
+  mutate(provenance = "H") %>%
+  dplyr::select(provenance, join_age, age_interval))
+
+c(
+print(ggplot(comparison, aes(join_age, fill = provenance)) +
+  geom_histogram(bins = 30, position = "dodge") +
+  scale_fill_manual(values = tableau_color_pal("Tableau 20")(20)))
+,
+print(ggplot(comparison, aes(join_age, colour = provenance)) +
+  stat_ecdf(geom = "step") +
+  scale_colour_manual(values = tableau_color_pal("Tableau 20")(20)))
+,
+print(ggplot(comparison, aes(age_interval, fill = provenance)) +
+  geom_histogram(bins = 30, position = "dodge") +
+  scale_fill_manual(values = tableau_color_pal("Tableau 20")(20)))
+,
+print(ggplot(comparison, aes(age_interval, colour = provenance)) +
+  stat_ecdf(geom = "step") +
+  scale_colour_manual(values = tableau_color_pal("Tableau 20")(20)))
+)
+  
+```
+
+```{r}
+
+comparison <- rbind(
+projected_periods %>%
+  filter(provenance == "S") %>%
+  group_by(simulation, period_start) %>%
+  filter(n() >= 5) %>%
+  mutate(join_age = month_diff(birthday, period_start) / 12.0) %>%
+  arrange(simulation, period_start, join_age) %>%
+  mutate(age_interval = join_age - lag(join_age)) %>%
+  ungroup %>%
+  mutate(provenance = "S") %>%
+  dplyr::select(provenance, join_age, age_interval)
+,
+historic_periods %>%
+  group_by(period_start) %>%
+  filter(n() >= 5) %>%
+  mutate(join_age = month_diff(as.Date(paste0(DOB, "-01")), period_start) / 12.0)  %>%
+  arrange(period_start, join_age) %>%
+  mutate(age_interval = join_age - lag(join_age)) %>%
+  ungroup %>%
+  mutate(provenance = "H") %>%
+  dplyr::select(provenance, join_age, age_interval))
+
+c(
+print(ggplot(comparison, aes(join_age, fill = provenance)) +
+  geom_histogram(bins = 30, position = "dodge") +
+  scale_fill_manual(values = tableau_color_pal("Tableau 20")(20)))
+,
+print(ggplot(comparison, aes(join_age, colour = provenance)) +
+  stat_ecdf(geom = "step") +
+  scale_colour_manual(values = tableau_color_pal("Tableau 20")(20)))
+,
+print(ggplot(comparison, aes(age_interval, fill = provenance)) +
+  geom_histogram(bins = 30, position = "dodge") +
+  scale_fill_manual(values = tableau_color_pal("Tableau 20")(20)))
+,
+print(ggplot(comparison, aes(age_interval, colour = provenance)) +
+  stat_ecdf(geom = "step") +
+  scale_colour_manual(values = tableau_color_pal("Tableau 20")(20)))
+)
+  
+```
+
+```{r}
+rbind(projected_periods %>%
+  filter(provenance == "S") %>%
+  group_by(simulation, period_start) %>%
+  mutate(arrivals = n()) %>%
+  mutate(join_age = month_diff(birthday, period_start) / 12.0) %>%
+  ungroup %>%
+  mutate(provenance = "S") %>%
+  dplyr::select(provenance, join_age, arrivals),
+  historic_periods %>%
+  filter(period_start >= max(historic_periods$period_start) - years(5)) %>%
+  group_by(period_start) %>%
+  mutate(arrivals = n()) %>%
+  mutate(join_age = month_diff(as.Date(paste0(DOB, "-01")), period_start) / 12.0)  %>%
+  ungroup %>%
+  mutate(provenance = "H") %>%
+  dplyr::select(provenance, join_age, arrivals)) %>%
+  ggplot(aes(join_age, colour = provenance)) +
+  stat_ecdf(geom = "step") +
+  facet_wrap(vars(arrivals)) +
+  scale_colour_manual(values = tableau_color_pal("Tableau 20")(20))
+```
+
+
+
