@@ -177,7 +177,9 @@
     input-directory :input-directory
     output-directory :output-directory
     config-file :config-file}]
-  (let [{:keys [project-from periods]} (prepare-model-inputs (load-model-inputs file-inputs) episodes-extract-date rewind-years)
+  (let [episodes-extract-date (if (string? episodes-extract-date)
+                                (clj-time.format/parse (clj-time.format/formatter "yyyy-MM-dd") episodes-extract-date)
+                                episodes-extract-date)
         {:keys [project-from periods]} (prepare-model-inputs (let [episodes (-> (:episodes file-inputs)
                                                                                 read/episodes
                                                                                 episodes/remove-f6)]
