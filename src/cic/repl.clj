@@ -178,6 +178,11 @@
     output-directory :output-directory
     config-file :config-file}]
   (let [{:keys [project-from periods]} (prepare-model-inputs (load-model-inputs file-inputs) episodes-extract-date rewind-years)
+        {:keys [project-from periods]} (prepare-model-inputs (let [episodes (-> (:episodes file-inputs)
+                                                                                read/episodes
+                                                                                episodes/remove-f6)]
+                                                               (hash-map :periods (periods/from-episodes episodes)))
+                                                             episodes-extract-date rewind-years)
         periods-universe-output (fs/file output-directory "generated-candidates.csv")
         [s1 s2] (rand/split (rand/seed random-seed))
         periods (rand/sample-birthdays periods s1)
