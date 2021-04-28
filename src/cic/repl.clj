@@ -180,10 +180,12 @@
   (let [episodes-extract-date (if (string? episodes-extract-date)
                                 (clj-time.format/parse (clj-time.format/formatter "yyyy-MM-dd") episodes-extract-date)
                                 episodes-extract-date)
-        {:keys [project-from periods]} (prepare-model-inputs (let [episodes (-> (:episodes file-inputs)
-                                                                                read/episodes
-                                                                                episodes/remove-f6)]
-                                                               (hash-map :periods (periods/from-episodes episodes)))
+        {:keys [project-from periods]} (prepare-model-inputs (->> file-inputs
+                                                                  :episodes
+                                                                  read/episodes
+                                                                  episodes/remove-f6
+                                                                  periods/from-episodes
+                                                                  (hash-map :periods))
                                                              episodes-extract-date rewind-years)
         periods-universe-output (fs/file output-directory "generated-candidates.csv")
         [s1 s2] (rand/split (rand/seed random-seed))
