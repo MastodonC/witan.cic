@@ -84,7 +84,7 @@
                        :candidates-age-out-simulation (input-file "simulated-age-out-candidates.csv")
                        })))
 
-(defn prepare-model-inputs
+(defn prepare-periods
   [{:keys [periods] :as model-inputs} episodes-extract-date rewind-years]
   (let [project-from (time/years-before episodes-extract-date rewind-years)
         periods (->> (periods/periods-as-at periods project-from)
@@ -112,7 +112,7 @@
     config-file :config-file}]
   (let [{:keys [project-from periods placement-costs duration-model
                 projection-model simulation-model
-                age-out-model age-out-projection-model age-out-simulation-model]} (prepare-model-inputs (load-model-inputs file-inputs) episodes-extract-date rewind-years)
+                age-out-model age-out-projection-model age-out-simulation-model]} (prepare-periods (load-model-inputs file-inputs) episodes-extract-date rewind-years)
         projection-summary-output (fs/file output-directory "projection-summary.csv")
         projection-episodes-output (fs/file output-directory "projection-episodes.csv")
         project-to (time/years-after project-from project-years)
@@ -180,13 +180,13 @@
   (let [episodes-extract-date (if (string? episodes-extract-date)
                                 (clj-time.format/parse (clj-time.format/formatter "yyyy-MM-dd") episodes-extract-date)
                                 episodes-extract-date)
-        {:keys [project-from periods]} (prepare-model-inputs (->> file-inputs
-                                                                  :episodes
-                                                                  read/episodes
-                                                                  episodes/remove-f6
-                                                                  periods/from-episodes
-                                                                  (hash-map :periods))
-                                                             episodes-extract-date rewind-years)
+        {:keys [project-from periods]} (prepare-periods (->> file-inputs
+                                                             :episodes
+                                                             read/episodes
+                                                             episodes/remove-f6
+                                                             periods/from-episodes
+                                                             (hash-map :periods))
+                                                        episodes-extract-date rewind-years)
         periods-universe-output (fs/file output-directory "generated-candidates.csv")
         [s1 s2] (rand/split (rand/seed random-seed))
         periods (rand/sample-birthdays periods s1)
