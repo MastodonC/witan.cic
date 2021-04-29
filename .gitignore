@@ -18,6 +18,5 @@ pom.xml.asc
 *.png
 offset-groups.edn
 *.csv
-*.edn
 *.log
 .nrepl-history
