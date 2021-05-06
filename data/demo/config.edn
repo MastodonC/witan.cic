@@ -21,8 +21,9 @@
                          :candidate-variations 100 ;; Used in pre-step creating candidate periods
                          }
 
- :output-parameters {:output-projection-episodes? true
-                     :output-projection-summary? true
-                     :output-file-inputs? true
+ :output-parameters {:output-historic-episodes? true
+                     :output-projection-episodes? false
+                     :output-projection-summary? false
+                     :output-file-inputs? false
                      }
  }

@@ -110,11 +110,13 @@
     input-directory :input-directory
     output-directory :output-directory
     config-file :config-file}]
-  (let [{:keys [project-from periods placement-costs duration-model
+  (let [model-inputs (load-model-inputs file-inputs)
+        {:keys [project-from periods placement-costs duration-model
                 projection-model simulation-model
-                age-out-model age-out-projection-model age-out-simulation-model]} (prepare-periods (load-model-inputs file-inputs) episodes-extract-date rewind-years)
+                age-out-model age-out-projection-model age-out-simulation-model]} (prepare-periods model-inputs episodes-extract-date rewind-years)
         projection-summary-output (fs/file output-directory "projection-summary.csv")
         projection-episodes-output (fs/file output-directory "projection-episodes.csv")
+        historic-episodes-output (fs/file output-directory "historic-episodes.csv")
         project-to (time/years-after project-from project-years)
         t0 (time/min-date (map :beginning periods))
         model-seed {:periods periods
@@ -149,6 +151,11 @@
       (fs/mkdir (fs/file output-directory "inputs"))
       (doseq [input-file (vals file-inputs)]
         (fs/copy input-file (fs/file output-directory "inputs" (fs/base-name input-file)))))
+    (when (:output-historic-episodes? output-parameters)
+      (let [{:keys [periods]} (prepare-periods model-inputs episodes-extract-date 0)
+            periods (map #(assoc % :provenance "H") (rand/sample-birthdays periods (rand/seed random-seed)))]
+        (->> (write/episodes-table t0 project-to [periods])
+             (write/write-csv! historic-episodes-output))))
     (when (:output-projection-summary? output-parameters)
       (a/thread
         (->> (projection/projection projection-mult project-dates placement-costs)
