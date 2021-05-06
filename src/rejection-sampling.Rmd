@@ -25,22 +25,13 @@ source("helpers.R")
 ```
 
 ```{r}
-# First create schema mastodon in database mastodon
-
-library(DBI)
-library(RPostgreSQL)
-drv <- dbDriver("PostgreSQL")
-conn <- dbConnect(drv, dbname = "mastodon")
-```
-
-```{r}
 
 extract_date <- as.Date("2020-03-31")
 input_csv <- "../data/scc/2021-04-08/suffolk-scrubbed-episodes-20210219.csv"
 # All of the periods we have simulated
-periods_universe_csv <- "../data/scc/2021-02-24/scc-periods-universe-2019-03-31-segment-interval-2190-rewind-1yr-train-3yr-samples-100-seed-42-age-out-jitter-7.csv"
+periods_universe_csv <- "/Users/Seb/code/witan.csc.suffolk/data/outputs/generated-candidates.csv"
 
-output_csv <- ".../data/scc/2021-04-08/target-distribution.csv"
+output_csv <- "../data/scc/2021-04-08/target-distribution.csv"
 age_out_proportions_output_csv <- "../data/scc/2021-04-08/age-out-proportions.csv"
 
 simulated_output_csv <- "../data/scc/2021-04-08/simulated-candidates.csv"
@@ -62,10 +53,10 @@ data.frame(xs = c(data$report_date, data$ceased)) %>%
 
 # data$ceased[data$ceased > extract_date] <- NA
 # data <- data[data$report_date <= extract_date,]
-# 
+#
 # data %>% filter(period_id == "881-1")
 # data %>% filter(period_id == "486-1")
-# 
+#
 # data %>% filter(period_id == "1815-1")
 ```
 
@@ -188,31 +179,9 @@ write.csv(age_out_proportions, file = age_out_proportions_output_csv, row.names 
 
 ```
 
-
-```{sql connection=conn}
--- Create the periods table containing the universe of all periods
-DROP TABLE IF EXISTS mastodon.periods;
-
-CREATE TABLE mastodon.periods (
-    provenance character varying(1),
-    id character varying(16),
-    sample_index integer,
-    admission_age integer,
-    admission_age_days integer,
-    duration integer,
-    episodes_edn text,
-    aged_out boolean
-);
-
-DROP TABLE IF EXISTS mastodon.target_distribution;
-
-CREATE TABLE mastodon.target_distribution (
-    admission_age integer,
-    duration_group integer,
-    density double precision
-);
-
-SELECT TRUE AS created_input_tables;
+```{r}
+library(RSQLite)
+db <- dbConnect(RSQLite::SQLite(), "mastodon.sqlite")
 ```
 
 ```{r}
@@ -221,101 +190,113 @@ periods_universe <- read.csv(periods_universe_csv)
 
 staged <- periods_universe
 colnames(staged) <- c("provenance", "id", "sample_index", "admission_age", "admission_age_days", "duration", "episodes_edn", "aged_out")
-dbWriteTable(conn, c("mastodon", "periods"), staged, append = TRUE, row.names = FALSE)
+dbWriteTable(db, "periods", staged, append = TRUE, row.names = FALSE)
 
 # Upload target distribution
 staged <- target_distribution[,c("admission_age", "duration_group", "density")]
-dbWriteTable(conn, c("mastodon", "target_distribution"), staged, append = TRUE, row.names = FALSE)
+dbWriteTable(db, "target_distribution", staged, append = TRUE, row.names = FALSE)
 ```
 
 We create versions of the input periods to try and get good coverage of the whole target distribution.
 This means adjusting the total duration by up to 10 weeks either way.
 We don't filter periods which go over 18 because we adjust the birthdays in the following section.
 
-```{sql connection=conn}
-DROP TABLE IF EXISTS mastodon.fuzzy_periods;
+```{r}
+noise <- data.frame(x = (seq(-10, 10) * 7))
+dbWriteTable(db, "noise", noise, append = FALSE, row.names = FALSE)
+```
 
-CREATE TABLE mastodon.fuzzy_periods AS
-WITH noise AS (
-  SELECT generate_series(-10, 10) * 7 AS noise
+```{sql connection=db}
+DROP TABLE IF EXISTS fuzzy_periods;
+```
+
+```{sql connection=db}
+CREATE TABLE fuzzy_periods AS
+WITH x AS (
+  SELECT x FROM noise
 )
 SELECT p.provenance, p.id, p.sample_index, p.admission_age, p.admission_age_days,
-  cast(p.duration + noise AS int) AS duration, CAST(duration + noise AS int) / 7 AS duration_group, episodes_edn
-FROM mastodon.periods AS p
-  CROSS JOIN noise
-WHERE (duration + noise >= 28 OR noise = 0)
-AND aged_out = FALSE;
+  cast(p.duration + x AS int) AS duration, CAST(duration + x AS int) / 7 AS duration_group, episodes_edn
+FROM periods AS p
+  CROSS JOIN x
+WHERE (duration + x >= 28 OR x = 0)
+AND aged_out = 'false';
+```
 
-INSERT INTO mastodon.fuzzy_periods
-WITH noise AS (
-  SELECT generate_series(-7, 7) AS noise
+```{sql connection=db}
+
+INSERT INTO fuzzy_periods
+WITH x AS (
+  SELECT x FROM noise
 )
 SELECT p.provenance, p.id, p.sample_index, p.admission_age, p.admission_age_days,
-  cast(p.duration + noise AS int) AS duration, CAST(duration + noise AS int) / 7 AS duration_group, episodes_edn
-FROM mastodon.periods AS p
-  CROSS JOIN noise
-WHERE duration + noise >= 0
-AND duration + noise < 28
-AND noise != 0
-AND aged_out = FALSE;
-
-SELECT TRUE AS inserted_fuzzy_periods;
+  cast(p.duration + x AS int) AS duration, CAST(duration + x AS int) / 7 AS duration_group, episodes_edn
+FROM periods AS p
+  CROSS JOIN x
+WHERE duration + x >= 0
+AND duration + x < 28
+AND x != 0
+AND aged_out = 'false';
 ```
 
 For all those who join aged at least 1, we create versions of all simulated and projected data with fuzzed birthdays: up to 5 weeks in either direction.
+```{r}
+noise <- data.frame(x = (seq(-5, 5) * 7))
+dbWriteTable(db, "noise", noise, overwrite = TRUE, row.names = FALSE)
+```
 
-```{sql connection=conn}
-WITH noise AS (
-  SELECT generate_series(-5, 5) * 7 AS noise
+```{sql connection=db}
+WITH x AS (
+  SELECT x FROM noise
 )
-INSERT INTO mastodon.fuzzy_periods
-SELECT p.provenance, p.id, p.sample_index, CAST(p.admission_age_days + noise AS int) / 365, CAST(p.admission_age_days + noise AS int) AS admission_age_days, p.duration, p.duration_group, episodes_edn
-FROM mastodon.fuzzy_periods AS p
-CROSS JOIN noise
-WHERE noise != 0 AND CAST(p.admission_age_days + noise AS int) / 365 >= 1
+INSERT INTO fuzzy_periods
+SELECT p.provenance, p.id, p.sample_index, CAST(p.admission_age_days + x AS int) / 365, CAST(p.admission_age_days + x AS int) AS admission_age_days, p.duration, p.duration_group, episodes_edn
+FROM fuzzy_periods AS p
+CROSS JOIN x
+WHERE x != 0 AND CAST(p.admission_age_days + x AS int) / 365 >= 1
 AND provenance IN ('S', 'P');
+```
+```{sql connection=db}
+DROP TABLE IF EXISTS candidate_distributions;
+```
 
-SELECT TRUE AS inserted_more_fuzzy_periods;
+```{sql connection=db}
+DROP TABLE IF EXISTS target_projected_distribution;
+```
+
+```{sql connection=db}
+CREATE TABLE candidate_distributions AS
+SELECT provenance, admission_age, duration_group, COUNT(*) AS density
+FROM fuzzy_periods
+GROUP BY provenance, admission_age, duration_group;
 ```
 
 
-```{sql connection=conn}
-DROP TABLE IF EXISTS mastodon.candidate_distributions;
-
-DROP TABLE IF EXISTS mastodon.target_projected_distribution;
-
-CREATE TABLE mastodon.candidate_distributions AS
-SELECT provenance, admission_age, duration_group, COUNT(*) AS density
-FROM mastodon.fuzzy_periods
-GROUP BY provenance, admission_age, duration_group;
-
-CREATE TABLE mastodon.target_projected_distribution AS
+```{sql connection=db}
+CREATE TABLE target_projected_distribution AS
 WITH open_period_durations AS (
   SELECT *, CAST(duration AS int) / 7 AS duration_group
-  FROM mastodon.periods
+  FROM periods
   WHERE provenance = 'C'
 ),
-target_projected_distribution AS (
+tpd AS (
   SELECT pp.admission_age, td.duration_group, CASE WHEN pp.duration_group = td.duration_group THEN density * (7 - (pp.duration % 7)) ELSE density END AS density
   FROM open_period_durations pp
-  INNER JOIN mastodon.target_distribution td
+  INNER JOIN target_distribution td
   ON pp.admission_age = td.admission_age
   AND td.duration_group >= pp.duration_group
 )
 SELECT admission_age, duration_group, SUM(density) AS density
-FROM target_projected_distribution
+FROM tpd
 GROUP BY admission_age, duration_group;
-
-SELECT TRUE AS created_candidate_and_target_distributions;
-
 ```
 
 We need to ensure that every ID to be projected has at least one period with a non-zero density in the target (otherwise it will never be chosen)
 
 ```{r}
 
-target_projected_duration_groups <- dbGetQuery(conn, "SELECT admission_age, duration_group, density
-                                  FROM mastodon.target_projected_distribution")
+target_projected_duration_groups <- dbGetQuery(db, "SELECT admission_age, duration_group, density
+                                  FROM target_projected_distribution")
 
 for (age in 0:16) {
   print(ggplot(target_projected_duration_groups %>% filter(admission_age == age), aes(duration_group, density)) +
@@ -323,17 +304,17 @@ for (age in 0:16) {
     facet_wrap(vars(admission_age), scales = "free_y"))
 }
 
-non_join_duration_groups <- dbGetQuery(conn, "WITH empty_ids AS (
+non_join_duration_groups <- dbGetQuery(db, "WITH empty_ids AS (
 SELECT fp.id
-FROM mastodon.fuzzy_periods fp
-LEFT OUTER JOIN mastodon.target_projected_distribution pd
+FROM fuzzy_periods fp
+LEFT OUTER JOIN target_projected_distribution pd
 ON fp.admission_age = pd.admission_age
 AND fp.duration_group = pd.duration_group
 WHERE fp.provenance = 'P'
 GROUP BY fp.id
 HAVING SUM(coalesce(pd.density, 0)) = 0
 )SELECT id, admission_age, duration_group, COUNT(*) AS density
-FROM mastodon.fuzzy_periods
+FROM fuzzy_periods
 WHERE id IN (SELECT id FROM empty_ids)
 AND provenance = 'P'
 GROUP BY id, admission_age, duration_group;")
@@ -341,7 +322,7 @@ GROUP BY id, admission_age, duration_group;")
 combined_duration_groups <- rbind(cbind(id = "target", target_projected_duration_groups),
       non_join_duration_groups) %>%
   group_by(id, admission_age) %>%
-  mutate(density = density / max(density)) 
+  mutate(density = density / max(density))
 
 library(ggthemes)
 
@@ -350,7 +331,7 @@ for (age in 0:17) {
   geom_bar(stat = "identity", position = "fill") +
   facet_wrap(vars(admission_age)) +
   scale_fill_manual(values = tableau_color_pal("Tableau 20")(20)))
-  
+
 }
 
 ## Shows they should all remain until 18
@@ -358,22 +339,26 @@ for (age in 0:17) {
 ```
 
 
-```{sql connection=conn}
-DROP TABLE IF EXISTS mastodon.simulated_candidates;
+```{sql connection=db}
+DROP TABLE IF EXISTS simulated_candidates;
+```
 
-DROP TABLE IF EXISTS mastodon.projected_candidates;
+```{sql connection=db}
+DROP TABLE IF EXISTS projected_candidates;
+```
 
+```{sql connection=db}
 -- Update destination if necessary
-CREATE TABLE mastodon.projected_candidates AS
+CREATE TABLE projected_candidates AS
 WITH source_periods AS (
   -- Update source periods if necessary
   SELECT *
-  FROM mastodon.fuzzy_periods
+  FROM fuzzy_periods
   WHERE provenance = 'P'
 ),
 target_distribution AS (
   -- Update target if necessary
-  SELECT * FROM mastodon.target_projected_distribution
+  SELECT * FROM target_projected_distribution
 ),
 candidate_distribution AS (
   SELECT admission_age, duration_group, COUNT(*) AS density
@@ -393,17 +378,19 @@ INNER JOIN reject_proportions rp
 ON fp.admission_age = rp.admission_age
 AND fp.duration_group = rp.duration_group
 WHERE random() <= 0.25;
+```
 
+```{sql connection=db}
 -- If no samples from a particular candidate made it through rejection sampling,
 -- bypass rejection sampling to add them in, because otherwise they will be dropped completely.
-INSERT INTO mastodon.projected_candidates
+INSERT INTO projected_candidates
 WITH missing_periods AS (
 SELECT *, row_number() OVER (PARTITION BY id ORDER BY random()) AS rand_id
-FROM mastodon.fuzzy_periods fp
+FROM fuzzy_periods fp
 WHERE fp.provenance = 'P'
 AND id NOT IN (
   SELECT DISTINCT id
-  FROM mastodon.projected_candidates
+  FROM projected_candidates
 )
 )
 -- Maybe we ought to set the duration to cause them to age out at 18 - this seem like their destiny.
@@ -411,18 +398,20 @@ AND id NOT IN (
 SELECT provenance, id, sample_index, admission_age, admission_age_days, duration, duration_group, episodes_edn, 1.0 AS reject_ratio
 FROM missing_periods
 WHERE rand_id <= 100;
+```
 
+```{sql connection=db}
 -- Update destination if necessary
-CREATE TABLE mastodon.simulated_candidates AS
+CREATE TABLE simulated_candidates AS
 WITH source_periods AS (
   -- Update source periods if necessary
   SELECT *
-  FROM mastodon.fuzzy_periods
+  FROM fuzzy_periods
   WHERE provenance = 'S'
 ),
-target_distribution AS (
+tgd AS (
   -- Update target if necessary
-  SELECT * FROM mastodon.target_distribution
+  SELECT * FROM target_distribution
 ),
 candidate_distribution AS (
   SELECT admission_age, duration_group, COUNT(*) AS density
@@ -431,7 +420,7 @@ candidate_distribution AS (
 ),
 reject_proportions AS (
   SELECT t.admission_age, t.duration_group, t.density / c.density AS reject_ratio
-  FROM target_distribution t
+  FROM tgd t
   LEFT JOIN candidate_distribution c
   ON c.admission_age = t.admission_age
   AND c.duration_group = t.duration_group
@@ -443,29 +432,27 @@ ON fp.admission_age = rp.admission_age
 AND fp.duration_group = rp.duration_group
 WHERE random() <= 0.25;
 
-SELECT TRUE AS created_simulated_and_projected_candidates;
-
 ```
 
 
 ```{r}
 
-staged <- dbGetQuery(conn, "SELECT * FROM mastodon.projected_candidates");
+staged <- dbGetQuery(db, "SELECT * FROM projected_candidates");
 write.csv(staged, file = projected_output_csv, row.names = FALSE)
 
-staged <- dbGetQuery(conn, "SELECT * FROM mastodon.simulated_candidates");
+staged <- dbGetQuery(db, "SELECT * FROM simulated_candidates");
 write.csv(staged, file = simulated_output_csv, row.names = FALSE)
 
-staged <- dbGetQuery(conn, "SELECT provenance, id, sample_index, admission_age, admission_age_days, duration, episodes_edn
-FROM mastodon.periods
+staged <- dbGetQuery(db, "SELECT provenance, id, sample_index, admission_age, admission_age_days, duration, episodes_edn
+FROM periods
 WHERE provenance = 'S'
 AND aged_out = TRUE
 AND admission_age_days + duration > (17 * 365)")
 write.csv(staged, file = simulated_age_out_output_csv, row.names = FALSE)
 
 
-staged <- dbGetQuery(conn, "SELECT provenance, id, sample_index, admission_age, admission_age_days, duration, episodes_edn
-FROM mastodon.periods
+staged <- dbGetQuery(db, "SELECT provenance, id, sample_index, admission_age, admission_age_days, duration, episodes_edn
+FROM periods
 WHERE provenance = 'P'
 AND aged_out = TRUE
 AND admission_age_days + duration > (17 * 365)")
