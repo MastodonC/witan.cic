@@ -27,9 +27,21 @@ CREATE SCHEMA mastodon;
 
 The R script will create all the database tables it needs.
 
-### Dictionary
+## Dictionary
 
 - Total time in care - the total length of time in care
 - Period - the length of contiguous time in care
 - Phase - the length of time in a placement type
 - Episode - the length of time spent in the same placement/placement provider/legal status/CIN
+
+### Provenance tag
+
+The episodes output contains a provenance field which contains a single character representing the source of the period.
+
+- *H: Historic* - historic joiners who leave before the projection start date
+- *O: Open* - historic joiners who have not left by the projection start date
+- *P: Projected closed* - O periods the model closes
+- *C: Candidate* - potential simulated joiners whose placements and age of entry is known but who do not have a start date
+- *S: Simulated* - joiners the model creates by assigning a start date
+
+The provenance is the same for all episodes in a period.
