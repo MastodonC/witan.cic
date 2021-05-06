@@ -222,7 +222,7 @@
                                                         (map (comp #(period-completer % true) #(periods/period-as-at-wayback % project-from))))
                                 candidate-periods)
         _ (println "Finished simulated periods")]
-    (->> (apply concat historic-periods open-periods completed-periods simulated-periods candidate-periods)
+    (->> (concat historic-periods open-periods completed-periods simulated-periods candidate-periods)
          (write/periods-universe)
          (write/write-csv! periods-universe-output))))
 
