@@ -70,14 +70,15 @@
   [{:keys [periods joiner-range project-to project-from
            projection-model simulation-model age-out-model
            age-out-projection-model age-out-simulation-model
-           joiner-model] :as model-seed} random-seed]
+           joiner-model-type scenario-joiner-rates] :as model-seed} random-seed]
   (println "Training model...")
   (let [[s1 s2 s3] (rand/split-n random-seed 3)
         [joiners-from joiners-to] joiner-range
         all-periods (rand/sample-birthdays periods s1)
-        closed-periods (periods/close-open-periods all-periods projection-model age-out-model age-out-projection-model s3)]
+        closed-periods (periods/close-open-periods all-periods projection-model age-out-model age-out-projection-model s3)
+        scenario-joiner-model (model/scenario-joiners-model scenario-joiner-rates project-from project-to)]
     {:joiners-model (-> (filter #(time/between? (:beginning %) joiners-from joiners-to) all-periods)
-                        (model/joiners-model-gen project-from project-to joiner-model s2))
+                        (model/joiners-model-gen project-from project-to joiner-model-type scenario-joiner-model s2))
      :periods closed-periods
      :project-from project-from
      :projection-model projection-model

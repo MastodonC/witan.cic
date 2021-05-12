@@ -59,23 +59,75 @@
             sample
             (recur (rand/next-seed seed) sample-adjustment)))))))
 
+(defn linear-interpolation
+  [a b n]
+  (let [d (/ (- b a) n)]
+    (take n (iterate (partial + d) a))))
+
+(defn scenario-joiners-model
+  [joiner-rates project-from project-to]
+  (let [scenario-dates (sort (map :date joiner-rates))
+        rates-by-age (reduce (fn [coll x]
+                               (assoc coll x
+                                      (map (juxt :date (keyword (str x))) joiner-rates))) {}
+                             (range 18))
+        rates-before (mapcat (fn [age]
+                               (let [[interpolation-start-date rate] (first (get rates-by-age age))]
+                                 (map (fn [date]
+                                        {:age age :day date :n-per-day (/ (* 12 rate) 365.25)})
+                                      (time/day-seq project-from interpolation-start-date))))
+                             (range 18))
+        rates-after (mapcat (fn [age]
+                              (let [[interpolation-end-date rate] (last (get rates-by-age age))]
+                                (map (fn [date]
+                                       {:age age :day date :n-per-day (/ (* 12 rate) 365.25)})
+                                     (time/day-seq interpolation-end-date (time/days-after project-to 2)))))
+                            (range 18))
+        rate-interpolation (mapcat (fn [[age dates-rates]]
+                                     (mapcat
+                                      (fn [[[d1 r1] [d2 r2]]]
+                                        (let [dates (time/day-seq d1 d2)
+                                              rates (linear-interpolation r1 r2 (count dates))]
+                                          (for [[date rate] (map vector dates rates)]
+                                            {:age age :day date :n-per-day (/ (* 12 rate) 365.25)})))
+                                      (partition 2 1 dates-rates)))
+                                   rates-by-age)
+        day-rate-lookup (->> (concat rates-before rate-interpolation rates-after)
+                             (reduce (fn [coll {:keys [age day n-per-day]}]
+                                       (assoc coll [age day] n-per-day))
+                                     {}))]
+    (fn [age join-after previous-joiner seed]
+      (loop [seed seed sample-adjustment 0]
+        (let [n-per-day (or (get day-rate-lookup [age previous-joiner])
+                            (when (time/< previous-joiner project-from)
+                              (get day-rate-lookup [age project-from]))
+                            (get day-rate-lookup [age project-to]))
+              sample (+ sample-adjustment (p/sample-1 (d/exponential {:rate n-per-day}) seed))
+              join-date (time/days-after previous-joiner sample)]
+          (if (time/>= join-date join-after)
+            sample
+            (recur (rand/next-seed seed) sample-adjustment)))))))
+
 (defn joiners-model-gen
   "Wraps R to trend joiner rates into the future."
-  [periods project-from project-to joiner-model seed]
-  (when (#{:trended :untrended} joiner-model)
+  [periods project-from project-to joiner-model-type joiner-scenario-model seed]
+  (cond
+    (#{:trended :untrended} joiner-model-type)
     (let [script "src/joiners.R"
           input (str (rscript/write-periods! periods))
           output (str (write/temp-file "file" ".csv"))
           [s1 s2] (rand/split seed)
           seed-long (rand/rand-long s1)
-          trend-joiners? (= joiner-model :trended)]
+          trend-joiners? (= joiner-model-type :trended)]
       (println script input output (time/date-as-string project-to) trend-joiners? (str (Math/abs seed-long)))
       (rscript/exec script input output
                     (time/date-as-string project-to)
                     (str trend-joiners?)
                     (str (Math/abs seed-long)))
       (-> (read/joiner-csv output)
-          (joiners-model project-from project-to s2)))))
+          (joiners-model project-from project-to s2)))
+    (= joiner-model-type :scenario)
+    joiner-scenario-model))
 
 (defn sample-ci
   "Given a 95% lower bound, median and 95% upper bound,

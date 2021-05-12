@@ -47,37 +47,39 @@
   "A useful REPL function to load the data files and convert them to  model inputs"
   ([{:keys [episodes age-out-proportions
             candidates-simulation candidates-projection
-            candidates-age-out-projection candidates-age-out-simulation]}]
+            candidates-age-out-projection candidates-age-out-simulation
+            scenario-joiner-rates]}]
    (let [episodes (-> (read/episodes episodes)
                       (episodes/remove-f6))
          latest-event-date (->> (mapcat (juxt :report-date :ceased) episodes)
                                 (keep identity)
                                 (time/max-date))]
-     (hash-map :periods (periods/from-episodes episodes)
-               ;; :knn-closed-cases (read/knn-closed-cases knn-closed-cases-csv)
-               :simulation-model
-               (-> (read/period-candidates candidates-simulation)
-                   (model/simulation-model))
-               :projection-model
-               (-> (read/period-candidates candidates-projection)
-                   (model/projection-model))
-               :age-out-model
-               (-> (read/age-out-proportions age-out-proportions)
-                   (model/age-out-model))
-               :age-out-projection-model
-               (-> (read/age-out-candidates candidates-age-out-projection)
-                   (model/age-out-projection-model))
-               :age-out-simulation-model
-               (-> (read/age-out-candidates candidates-age-out-simulation)
-                   (model/age-out-simulation-model)))))
+     (cond-> (hash-map :periods (periods/from-episodes episodes)
+                       ;; :knn-closed-cases (read/knn-closed-cases knn-closed-cases-csv)
+                       :simulation-model
+                       (-> (read/period-candidates candidates-simulation)
+                           (model/simulation-model))
+                       :projection-model
+                       (-> (read/period-candidates candidates-projection)
+                           (model/projection-model))
+                       :age-out-model
+                       (-> (read/age-out-proportions age-out-proportions)
+                           (model/age-out-model))
+                       :age-out-projection-model
+                       (-> (read/age-out-candidates candidates-age-out-projection)
+                           (model/age-out-projection-model))
+                       :age-out-simulation-model
+                       (-> (read/age-out-candidates candidates-age-out-simulation)
+                           (model/age-out-simulation-model)))
+       scenario-joiner-rates
+       (assoc :scenario-joiner-rates (read/scenario-joiner-rates scenario-joiner-rates)))))
   ([]
    (load-model-inputs {:episodes (input-file "suffolk-scrubbed-episodes-20210219.csv")
                        :age-out-proportions (input-file "age-out-proportions.csv")
                        :candidates-simulation (input-file "simulated-candidates.csv")
                        :candidates-projection (input-file "projected-candidates.csv")
                        :candidates-age-out-projection (input-file "projected-age-out-candidates.csv")
-                       :candidates-age-out-simulation (input-file "simulated-age-out-candidates.csv")
-                       })))
+                       :candidates-age-out-simulation (input-file "simulated-age-out-candidates.csv")})))
 
 (defn prepare-periods
   [{:keys [periods] :as model-inputs} episodes-extract-date rewind-years]
@@ -100,7 +102,7 @@
 
 (defn generate-projection-csv!
   "Main REPL function for writing a projection CSV"
-  [{{:keys [rewind-years project-years simulations random-seed episodes-extract-date] {joiner-model :model train-joiner-years :train-years} :joiners} :projection-parameters 
+  [{{:keys [rewind-years project-years simulations random-seed episodes-extract-date] {joiner-model-type :model train-joiner-years :train-years} :joiners} :projection-parameters
     file-inputs :file-inputs
     output-parameters :output-parameters
     input-directory :input-directory
@@ -109,7 +111,8 @@
   (let [model-inputs (load-model-inputs file-inputs)
         {:keys [project-from periods duration-model
                 projection-model simulation-model
-                age-out-model age-out-projection-model age-out-simulation-model]} (prepare-periods model-inputs episodes-extract-date rewind-years)
+                age-out-model age-out-projection-model age-out-simulation-model
+                scenario-joiner-rates]} (prepare-periods model-inputs episodes-extract-date rewind-years)
         projection-summary-output (fs/file output-directory "projection-summary.csv")
         projection-episodes-output (fs/file output-directory "projection-episodes.csv")
         historic-episodes-output (fs/file output-directory "historic-episodes.csv")
@@ -125,7 +128,8 @@
                     :age-out-model age-out-model
                     :age-out-projection-model age-out-projection-model
                     :age-out-simulation-model age-out-simulation-model
-                    :joiner-model joiner-model}
+                    :joiner-model-type joiner-model-type
+                    :scenario-joiner-rates scenario-joiner-rates}
         output-from (time/years-before project-from (+ train-joiner-years 2))
         summary-seq (into []
                           (map format-actual-for-output)
@@ -168,9 +172,8 @@
                                 model-seed project-dates
                                 random-seed simulations)
     (loop [completed #{}]
-      (let [completed (conj completed (a/<!! result-chan))]
-        (when-not (= completed to-complete)
-          (recur completed))))))
+      (when-not (= completed to-complete)
+        (recur (conj completed (a/<!! result-chan)))))))
 
 (defn generate-candidates!
   [{{:keys [rewind-years train-years project-years simulations random-seed episodes-extract-date candidate-variations]} :projection-parameters
