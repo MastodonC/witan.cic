@@ -97,9 +97,10 @@
       (update :ages #(into {} (map (fn [[k v]] (vector k {:median v}))) %))
       (update :placement-ages #(into {} (map (fn [[k v]] (vector k {:median v}))) %))))
 
+
 (defn generate-projection-csv!
   "Main REPL function for writing a projection CSV"
-  [{{:keys [rewind-years project-years simulations random-seed train-joiner-years episodes-extract-date trend-joiners?]} :projection-parameters
+  [{{:keys [rewind-years project-years simulations random-seed episodes-extract-date] {joiner-model :model train-joiner-years :train-years} :joiners} :projection-parameters 
     file-inputs :file-inputs
     output-parameters :output-parameters
     input-directory :input-directory
@@ -124,7 +125,7 @@
                     :age-out-model age-out-model
                     :age-out-projection-model age-out-projection-model
                     :age-out-simulation-model age-out-simulation-model
-                    :trend-joiners? trend-joiners?}
+                    :joiner-model joiner-model}
         output-from (time/years-before project-from (+ train-joiner-years 2))
         summary-seq (into []
                           (map format-actual-for-output)
@@ -172,7 +173,7 @@
           (recur completed))))))
 
 (defn generate-candidates!
-  [{{:keys [rewind-years train-years project-years simulations random-seed train-joiner-years episodes-extract-date trend-joiners? candidate-variations]} :projection-parameters
+  [{{:keys [rewind-years train-years project-years simulations random-seed episodes-extract-date candidate-variations]} :projection-parameters
     file-inputs :file-inputs
     output-parameters :output-parameters
     input-directory :input-directory
