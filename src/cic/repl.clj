@@ -81,7 +81,10 @@
 
 (defn prepare-periods
   [{:keys [periods] :as model-inputs} episodes-extract-date rewind-years]
-  (let [project-from (time/years-before episodes-extract-date rewind-years)
+  (let [episodes-extract-date (if (string? episodes-extract-date)
+                                (clj-time.format/parse (clj-time.format/formatter "yyyy-MM-dd") episodes-extract-date)
+                                episodes-extract-date)
+        project-from (time/years-before episodes-extract-date rewind-years)
         periods (->> (periods/periods-as-at periods project-from)
                      (periods/assoc-birthday-bounds))]
     (assoc model-inputs
