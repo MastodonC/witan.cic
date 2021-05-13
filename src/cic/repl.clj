@@ -9,7 +9,6 @@
             [cic.random :as rand]
             [cic.summary :as summary]
             [cic.time :as time]
-            [cic.validate :as validate]
             [clojure.set :as cs]
             [me.raynes.fs :as fs]
             [net.cgrand.xforms :as xf]
@@ -46,8 +45,7 @@
 
 (defn load-model-inputs
   "A useful REPL function to load the data files and convert them to  model inputs"
-  ([{:keys [episodes placement-costs
-            zero-joiner-day-ages age-out-proportions
+  ([{:keys [episodes age-out-proportions
             candidates-simulation candidates-projection
             candidates-age-out-projection candidates-age-out-simulation]}]
    (let [episodes (-> (read/episodes episodes)
@@ -56,7 +54,6 @@
                                 (keep identity)
                                 (time/max-date))]
      (hash-map :periods (periods/from-episodes episodes)
-               :placement-costs (read/costs-csv placement-costs)
                ;; :knn-closed-cases (read/knn-closed-cases knn-closed-cases-csv)
                :simulation-model
                (-> (read/period-candidates candidates-simulation)
@@ -75,8 +72,6 @@
                    (model/age-out-simulation-model)))))
   ([]
    (load-model-inputs {:episodes (input-file "suffolk-scrubbed-episodes-20210219.csv")
-                       :placement-costs (input-file "placement-costs.csv")
-                       :zero-joiner-day-ages (input-file "zero-joiner-day-ages.csv")
                        :age-out-proportions (input-file "age-out-proportions.csv")
                        :candidates-simulation (input-file "simulated-candidates.csv")
                        :candidates-projection (input-file "projected-candidates.csv")
@@ -111,7 +106,7 @@
     output-directory :output-directory
     config-file :config-file}]
   (let [model-inputs (load-model-inputs file-inputs)
-        {:keys [project-from periods placement-costs duration-model
+        {:keys [project-from periods duration-model
                 projection-model simulation-model
                 age-out-model age-out-projection-model age-out-simulation-model]} (prepare-periods model-inputs episodes-extract-date rewind-years)
         projection-summary-output (fs/file output-directory "projection-summary.csv")
@@ -134,8 +129,7 @@
         summary-seq (into []
                           (map format-actual-for-output)
                           (summary/periods-summary (rand/sample-birthdays periods (rand/seed random-seed))
-                                                   (time/day-seq output-from project-from 7)
-                                                   placement-costs))
+                                                   (time/day-seq output-from project-from 7)))
         project-dates (time/day-seq project-from project-to 7)
         projection-chan (a/chan 1024)
         projection-mult (a/mult projection-chan)
@@ -158,7 +152,7 @@
              (write/write-csv! historic-episodes-output))))
     (when (:output-projection-summary? output-parameters)
       (a/thread
-        (->> (projection/projection projection-mult project-dates placement-costs)
+        (->> (projection/projection projection-mult project-dates)
              (concat summary-seq)
              (write/projection-table)
              (write/write-csv! projection-summary-output))

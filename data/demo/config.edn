@@ -1,8 +1,6 @@
 {:input-directory "data/inputs/"
  :output-directory "data/outputs/"
  :file-inputs {:episodes #join [#ref [:input-directory] "scrubbed-episodes.csv"]
-               :placement-costs #join [#ref [:input-directory] "placement-costs.csv"]
-               :zero-joiner-day-ages #join [#ref [:input-directory] "zero-joiner-day-ages.csv"]
                :age-out-proportions #join [#ref [:input-directory] "age-out-proportions.csv"]
                :candidates-simulation #join [#ref [:input-directory] "simulated-candidates.csv"]
                :candidates-projection #join [#ref [:input-directory] "projected-candidates.csv"]

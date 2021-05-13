@@ -114,17 +114,12 @@
     (a/<!! (a/into [] in-chan))))
 
 (defn projection
-  [projection-chan project-dates placement-costs]
+  [projection-chan project-dates]
   (let [in-chan (a/chan 1024)
-        out-chan (a/chan 1024 (map #(summary/periods-summary % project-dates placement-costs)))
+        out-chan (a/chan 1024 (map #(summary/periods-summary % project-dates)))
         _ (a/tap projection-chan in-chan)
         _ (a/pipe in-chan out-chan)
         ]
     (summary/grand-summary
      (a/<!!
       (a/into [] out-chan)))))
-
-(defn cost-projection
-  [projection-seed model-seed project-until placement-costs seed n-runs]
-  (->> (project-n projection-seed model-seed [project-until] seed n-runs)
-       (summary/annual placement-costs)))
