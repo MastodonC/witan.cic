@@ -57,7 +57,7 @@ if (trended) {
                                      paste0("admission_age", mean_arrivals$admission_age),
                                      paste0("quarter:admission_age", mean_arrivals$admission_age)),
                             param = c(0, 0,
-                                      log(mean_arrivals$n),
+                                      log(pmax(mean_arrivals$n, 0.01)),
                                       rep(0, nrow(mean_arrivals))))
 }
 
