@@ -11,6 +11,7 @@ This workbook is responsible for creating some useful model inputs:
 
 ```{r}
 library(lubridate)
+library(fitdistrplus)
 library(survival)
 library(survminer)
 library(stringr)
@@ -18,6 +19,9 @@ library(reshape2)
 library(zoo)
 library(dplyr)
 library(tidyr)
+library(FAdist)
+library(glm2)
+library(arm)
 ```
 
 ```{r}
