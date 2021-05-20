@@ -6,21 +6,23 @@
                :candidates-projection #join [#ref [:input-directory] "projected-candidates.csv"]
                :candidates-age-out-projection #join [#ref [:input-directory] "projected-age-out-candidates.csv"]
                :candidates-age-out-simulation #join [#ref [:input-directory] "simulated-age-out-candidates.csv"]
+               :scenario-joiner-rates #join [#ref [:input-directory] "scenario-joiner-rates.csv"]
                }
 
- :projection-parameters {:simulations 1
+ :projection-parameters {:simulations 100
                          :random-seed 42
                          :rewind-years 1
                          :train-years 3
                          :project-years 5
                          :episodes-extract-date #date "2020-03-31"
-                         :train-joiner-years 3
-                         :trend-joiners? false
                          :candidate-variations 100 ;; Used in pre-step creating candidate periods
+                         :joiners {:model :scenario
+                                   :train-years 3
+                                   }
                          }
 
  :output-parameters {:output-historic-episodes? true
-                     :output-projection-episodes? false
+                     :output-projection-episodes? true
                      :output-projection-summary? false
                      :output-file-inputs? false
                      }

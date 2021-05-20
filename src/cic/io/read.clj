@@ -270,3 +270,12 @@
                   (update :admission-age-days parse-int)
                   (update :duration parse-int))))))
 
+(defn scenario-joiner-rates
+  [filename]
+  (->> (load-csv filename)
+       (map (fn [row]
+              (reduce (fn [coll x]
+                        (update coll x parse-double))
+                      (update row :date parse-date)
+                      (map (comp keyword str) (range 18)))))
+       (sort-by :date)))
