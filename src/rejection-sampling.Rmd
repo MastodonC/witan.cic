@@ -190,11 +190,11 @@ periods_universe <- read.csv(periods_universe_csv)
 
 staged <- periods_universe
 colnames(staged) <- c("provenance", "id", "sample_index", "admission_age", "admission_age_days", "duration", "episodes_edn", "aged_out")
-dbWriteTable(db, "periods", staged, append = TRUE, row.names = FALSE)
+dbWriteTable(db, "periods", staged, overwrite = TRUE, row.names = FALSE)
 
 # Upload target distribution
 staged <- target_distribution[,c("admission_age", "duration_group", "density")]
-dbWriteTable(db, "target_distribution", staged, append = TRUE, row.names = FALSE)
+dbWriteTable(db, "target_distribution", staged, overwrite = TRUE, row.names = FALSE)
 ```
 
 We create versions of the input periods to try and get good coverage of the whole target distribution.
@@ -203,7 +203,7 @@ We don't filter periods which go over 18 because we adjust the birthdays in the 
 
 ```{r}
 noise <- data.frame(x = (seq(-10, 10) * 7))
-dbWriteTable(db, "noise", noise, append = FALSE, row.names = FALSE)
+dbWriteTable(db, "noise", noise, overwrite = TRUE, row.names = FALSE)
 ```
 
 ```{sql connection=db}
@@ -446,7 +446,7 @@ write.csv(staged, file = simulated_output_csv, row.names = FALSE)
 staged <- dbGetQuery(db, "SELECT provenance, id, sample_index, admission_age, admission_age_days, duration, episodes_edn
 FROM periods
 WHERE provenance = 'S'
-AND aged_out = TRUE
+AND aged_out = 'true'
 AND admission_age_days + duration > (17 * 365)")
 write.csv(staged, file = simulated_age_out_output_csv, row.names = FALSE)
 
@@ -454,7 +454,7 @@ write.csv(staged, file = simulated_age_out_output_csv, row.names = FALSE)
 staged <- dbGetQuery(db, "SELECT provenance, id, sample_index, admission_age, admission_age_days, duration, episodes_edn
 FROM periods
 WHERE provenance = 'P'
-AND aged_out = TRUE
+AND aged_out = 'true'
 AND admission_age_days + duration > (17 * 365)")
 write.csv(staged, file = projected_age_out_output_csv, row.names = FALSE)
 
