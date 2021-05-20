@@ -446,7 +446,7 @@ write.csv(staged, file = simulated_output_csv, row.names = FALSE)
 staged <- dbGetQuery(db, "SELECT provenance, id, sample_index, admission_age, admission_age_days, duration, episodes_edn
 FROM periods
 WHERE provenance = 'S'
-AND aged_out = TRUE
+AND aged_out = 'true'
 AND admission_age_days + duration > (17 * 365)")
 write.csv(staged, file = simulated_age_out_output_csv, row.names = FALSE)
 
@@ -454,7 +454,7 @@ write.csv(staged, file = simulated_age_out_output_csv, row.names = FALSE)
 staged <- dbGetQuery(db, "SELECT provenance, id, sample_index, admission_age, admission_age_days, duration, episodes_edn
 FROM periods
 WHERE provenance = 'P'
-AND aged_out = TRUE
+AND aged_out = 'true'
 AND admission_age_days + duration > (17 * 365)")
 write.csv(staged, file = projected_age_out_output_csv, row.names = FALSE)
 
