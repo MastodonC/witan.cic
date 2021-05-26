@@ -231,4 +231,27 @@
          (write/periods-universe)
          (write/write-csv! periods-universe-output))))
 
-
+(defn simulate-candidates!
+  [{{:keys [rewind-years project-years simulations random-seed episodes-extract-date] {joiner-model-type :model train-joiner-years :train-years} :joiners} :projection-parameters
+    file-inputs :file-inputs
+    output-parameters :output-parameters
+    input-directory :input-directory
+    output-directory :output-directory
+    config-file :config-file
+    }
+   n]
+  (let [{:keys [simulation-model]} (load-model-inputs file-inputs)
+        seed (rand/seed random-seed)
+        generator (fn [admission-age]
+                    (println "Generating age" admission-age)
+                    (into []
+                          (map (partial simulation-model admission-age))
+                          (rand/split-n seed n)))
+        simulated-candidates-output (fs/file output-directory "simulated-candidates-1.csv")
+        parallelism (* 3 (quot (.availableProcessors (Runtime/getRuntime)) 4))
+        in-chan (a/to-chan! (range 17))
+        out-chan (a/chan 1024 cat)]
+    (a/pipeline-blocking parallelism out-chan (map generator) in-chan)
+    (->> (a/<!! (a/into [] out-chan)) ;; 0-16 because 17 ages out
+         (write/periods-universe)
+         (write/write-csv! simulated-candidates-output))))

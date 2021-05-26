@@ -8,3 +8,7 @@
 (defn run-generate-candidates-workflow
   [config]
   (repl/generate-candidates! config))
+
+(defn run-simulate-candidates-workflow
+  [config n]
+  (repl/simulate-candidates! config n))
