@@ -29,6 +29,12 @@
                    (assoc :config-file config-file))]
     (cic/run-simulate-candidates-workflow config n)))
 
+(defn run-project-candidates
+  [config-file n]
+  (let [config (-> (read-config config-file)
+                   (assoc :config-file config-file))]
+    (cic/run-project-candidates-workflow config n)))
+
 (def cli-options
   [
    ["-c" "--config FILE" "Config file"
@@ -50,4 +56,7 @@
       "simulate-candidates"
       (do (assert number)
           (run-simulate-candidates config-file number))
+      "project-candidates"
+      (do (assert number)
+          (run-project-candidates config-file number))
       nil (run-cic config-file))))

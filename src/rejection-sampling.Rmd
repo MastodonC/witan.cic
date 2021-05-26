@@ -27,17 +27,17 @@ source("helpers.R")
 ```{r}
 
 extract_date <- as.Date("2020-03-31")
-input_csv <- "../data/scc/2021-04-08/suffolk-scrubbed-episodes-20210219.csv"
+input_csv <- "../data/scc/2021-05-20/inputs/scrubbed-episodes.csv"
 # All of the periods we have simulated
-periods_universe_csv <- "/Users/Seb/code/witan.csc.suffolk/data/outputs/generated-candidates.csv"
+periods_universe_csv <- "../data/scc/2021-05-20/inputs-period-resampling/generated-candidates.csv"
 
-output_csv <- "../data/scc/2021-04-08/target-distribution.csv"
-age_out_proportions_output_csv <- "../data/scc/2021-04-08/age-out-proportions.csv"
+output_csv <- "../data/scc/2021-05-20/untrended-period-resampling-gte/target-distribution.csv"
+age_out_proportions_output_csv <- "../data/scc/2021-05-20/untrended-period-resampling-gte/age-out-proportions.csv"
 
-simulated_output_csv <- "../data/scc/2021-04-08/simulated-candidates.csv"
-projected_output_csv <- "../data/scc/2021-04-08/projected-candidates.csv"
-simulated_age_out_output_csv <- "../data/scc/2021-04-08/simulated-age-out-candidates.csv"
-projected_age_out_output_csv <- "../data/scc/2021-04-08/projected-age-out-candidates.csv"
+simulated_output_csv <- "../data/scc/2021-05-20/untrended-period-resampling-gte/simulated-candidates.csv"
+projected_output_csv <- "../data/scc/2021-05-20/untrended-period-resampling-gte/projected-candidates.csv"
+simulated_age_out_output_csv <- "../data/scc/2021-05-20/untrended-period-resampling-gte/simulated-age-out-candidates.csv"
+projected_age_out_output_csv <- "../data/scc/2021-05-20/untrended-period-resampling-gte/projected-age-out-candidates.csv"
 
 data <- read.csv(input_csv)
 data$report_date <- ymd(data$report_date)
@@ -130,11 +130,11 @@ quantiles <- dcast(admission_age ~ quantile, data = quantiles, drop = FALSE, val
 for (row in 1:nrow(quantiles)) {
   # I expect there's a better way of doing this
   age <- row - 1
-  max_days <- (18 - age) * 365
+  max_days <- (17 - age) * 365
   quantiles[row,is.na(quantiles[row,])] <- max_days
   quantiles[row,quantiles[row,] > max_days] <- max_days
 }
-quantiles <- cbind(quantiles, data.frame(`100` = 17:1*365))
+# quantiles <- cbind(quantiles, data.frame(`100` = 17:1*365))
 colnames(quantiles) <- c("admission_age", seq(0, 10000, length.out = ncol(quantiles) - 1))
 quantiles <- melt(quantiles, id.vars = "admission_age") %>%
   mutate(quantile = as.numeric(variable) / 10000.0,
@@ -356,28 +356,24 @@ WITH source_periods AS (
   FROM fuzzy_periods
   WHERE provenance = 'P'
 ),
-target_distribution AS (
-  -- Update target if necessary
-  SELECT * FROM target_projected_distribution
-),
 candidate_distribution AS (
-  SELECT admission_age, duration_group, COUNT(*) AS density
+  SELECT id, admission_age, duration_group, COUNT(*) AS density
   FROM source_periods
-  GROUP BY admission_age, duration_group
+  GROUP BY id, admission_age, duration_group
 ),
 reject_proportions AS (
-  SELECT t.admission_age, t.duration_group, t.density / c.density AS reject_ratio
+  SELECT c.id, t.admission_age, t.duration_group, t.density / c.density AS reject_ratio
   FROM target_distribution t
-  LEFT JOIN candidate_distribution c
+  INNER JOIN candidate_distribution c
   ON c.admission_age = t.admission_age
   AND c.duration_group = t.duration_group
 )
 SELECT fp.*, rp.reject_ratio
 FROM source_periods fp
 INNER JOIN reject_proportions rp
-ON fp.admission_age = rp.admission_age
-AND fp.duration_group = rp.duration_group
-WHERE random() <= 0.25;
+ON fp.id = rp.id
+AND fp.admission_age = rp.admission_age
+AND fp.duration_group = rp.duration_group;
 ```
 
 ```{sql connection=db}

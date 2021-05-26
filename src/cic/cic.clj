@@ -12,3 +12,7 @@
 (defn run-simulate-candidates-workflow
   [config n]
   (repl/simulate-candidates! config n))
+
+(defn run-project-candidates-workflow
+  [config n]
+  (repl/project-candidates! config n))

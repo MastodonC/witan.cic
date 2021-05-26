@@ -13,7 +13,8 @@
             [kixi.stats.core :as k]
             [kixi.stats.distribution :as d]
             [kixi.stats.math :as m]
-            [kixi.stats.protocols :as p]))
+            [kixi.stats.protocols :as p]
+            [taoensso.timbre :as log]))
 
 (def period-in-days
   84)
@@ -544,16 +545,19 @@
                                    (assoc-in [k :candidates] (vec candidates))))
                              {}))]
     (fn [period-id seed]
-      (if-let [{:keys [c candidates]} (get periods period-id)]
-        (loop [counter 0
-               seed seed]
-          (let [[s1 s2] (rand/split seed)
-                {:keys [reject-ratio] :as candidate} (rand/rand-nth candidates s1)
-                u (rand/rand-double s2)]
-            (if (or (<= u (* c reject-ratio)) (> counter 100000))
-              candidate
-              (recur (inc counter) (rand/next-seed s1)))))
-        (println "Couldn't complete" period-id)))))
+      (let [max-counter 1000000]
+        (if-let [{:keys [c candidates]} (get periods period-id)]
+          (loop [counter 0
+                 seed seed]
+            (let [[s1 s2] (rand/split seed)
+                  {:keys [reject-ratio] :as candidate} (rand/rand-nth candidates s1)
+                  u (rand/rand-double s2)]
+              (if (or (<= u (* c reject-ratio)) (> counter max-counter))
+                (do (when (> counter max-counter)
+                      (log/info "Skipping reject ratio" (pr-str candidate)))
+                    candidate)
+                (recur (inc counter) (rand/next-seed s1)))))
+          (println "Couldn't complete" period-id))))))
 
 (defn simulation-model
   [candidates]

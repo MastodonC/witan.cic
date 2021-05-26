@@ -279,3 +279,12 @@
                       (update row :date parse-date)
                       (map (comp keyword str) (range 18)))))
        (sort-by :date)))
+
+(defn reject-sampling-target
+  [filename]
+  (->> (load-csv filename)
+       (reduce (fn [coll {:keys [admission-age duration-group density]}]
+                 (assoc-in coll [admission-age duration-group] density))
+               {})))
+
+

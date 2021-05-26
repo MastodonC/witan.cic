@@ -255,3 +255,28 @@
     (->> (a/<!! (a/into [] out-chan)) ;; 0-16 because 17 ages out
          (write/periods-universe)
          (write/write-csv! simulated-candidates-output))))
+
+(defn project-candidates!
+  [{{:keys [rewind-years random-seed episodes-extract-date]} :projection-parameters
+    file-inputs :file-inputs
+    output-directory :output-directory
+    }
+   n]
+  (let [{:keys [projection-model] :as model-inputs} (load-model-inputs file-inputs)
+        {:keys [periods]} (prepare-periods model-inputs episodes-extract-date rewind-years)
+        open-period-ids (->> periods
+                             (filter :open?)
+                             (map :period-id))
+        seed (rand/seed random-seed)
+        generator (fn [period-id]
+                    (into []
+                          (map (partial projection-model period-id))
+                          (rand/split-n seed n)))
+        projected-candidates-output (fs/file output-directory "projected-candidates.csv")
+        parallelism (* 3 (quot (.availableProcessors (Runtime/getRuntime)) 4))
+        in-chan (a/to-chan! open-period-ids)
+        out-chan (a/chan 1024 cat)]
+    (a/pipeline-blocking parallelism out-chan (map generator) in-chan)
+    (->> (a/<!! (a/into [] out-chan)) ;; 0-16 because 17 ages out
+         (write/periods-universe)
+         (write/write-csv! projected-candidates-output))))
