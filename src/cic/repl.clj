@@ -247,7 +247,7 @@
                     (into []
                           (map (partial simulation-model admission-age))
                           (rand/split-n seed n)))
-        simulated-candidates-output (fs/file output-directory "simulated-candidates-1.csv")
+        simulated-candidates-output (fs/file output-directory "re-simulated-candidates.csv")
         parallelism (* 3 (quot (.availableProcessors (Runtime/getRuntime)) 4))
         in-chan (a/to-chan! (range 17))
         out-chan (a/chan 1024 cat)]
@@ -264,17 +264,17 @@
    n]
   (let [{:keys [projection-model] :as model-inputs} (load-model-inputs file-inputs)
         {:keys [periods]} (prepare-periods model-inputs episodes-extract-date rewind-years)
-        open-period-ids (->> periods
-                             (filter :open?)
-                             (map :period-id))
+        open-periods (filter :open? periods)
         seed (rand/seed random-seed)
-        generator (fn [period-id]
+        generator (fn [{:keys [period-id] :as period}]
                     (into []
-                          (map (partial projection-model period-id))
+                          (map (fn [seed]
+                                 (let [{:keys [episodes-edn duration] :as projected-period} (projection-model period-id seed)]
+                                   (merge period projected-period))))
                           (rand/split-n seed n)))
-        projected-candidates-output (fs/file output-directory "projected-candidates.csv")
+        projected-candidates-output (fs/file output-directory "re-projected-candidates.csv")
         parallelism (* 3 (quot (.availableProcessors (Runtime/getRuntime)) 4))
-        in-chan (a/to-chan! open-period-ids)
+        in-chan (a/to-chan! open-periods)
         out-chan (a/chan 1024 cat)]
     (a/pipeline-blocking parallelism out-chan (map generator) in-chan)
     (->> (a/<!! (a/into [] out-chan)) ;; 0-16 because 17 ages out
