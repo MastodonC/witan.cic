@@ -110,7 +110,7 @@
 
 (defn joiners-model-gen
   "Wraps R to trend joiner rates into the future."
-  [periods project-from project-to joiner-model-type joiner-scenario-model seed]
+  [periods project-from project-to joiner-model-type scenario-joiner-rates seed]
   (cond
     (#{:trended :untrended} joiner-model-type)
     (let [script "src/joiners.R"
@@ -127,7 +127,7 @@
       (-> (read/joiner-csv output)
           (joiners-model project-from project-to s2)))
     (= joiner-model-type :scenario)
-    joiner-scenario-model))
+    (scenario-joiners-model scenario-joiner-rates project-from project-to)))
 
 (defn sample-ci
   "Given a 95% lower bound, median and 95% upper bound,
