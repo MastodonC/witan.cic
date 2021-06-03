@@ -82,7 +82,7 @@
      :project-from project-from
      :projection-model projection-model
      :simulation-model (fn [admission-age seed]
-                         (or (when (or (age-out-model admission-age seed) (= admission-age 17)) ;; TODO Passing nil because seed isn't used yet
+                         (or (when (or (= admission-age 17) (age-out-model admission-age seed))
                                (age-out-simulation-model admission-age seed))
                              (simulation-model admission-age seed)))}))
 
