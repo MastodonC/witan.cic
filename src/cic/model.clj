@@ -583,21 +583,25 @@
 
 (defn age-out-model
   [age-out-proportions]
-  ;; TODO don't ignore seed
   (fn
     ([admission-age seed]
      (let [p (get-in age-out-proportions [admission-age :marginal])]
        ;; P is probability of aging out
        ;; We return the age out probability
        ;; (println (format "Age out proportion for age %s is %s" admission-age p))
-       (<= (rand/rand-double seed) p)))
+       (if (>= admission-age 17)
+         1.0
+         (<= (rand/rand-double seed) p))))
     ([admission-age current-age-days seed]
      (let [p (or (get-in age-out-proportions [admission-age :joint-indexed current-age-days])
                  (some (fn [[test-age-days p]]
                          (when (<= test-age-days current-age-days)
                            p))
-                       (get-in age-out-proportions [admission-age :joint-pairs])))]
-       (<= (rand/rand-double seed) p)))))
+                       (get-in age-out-proportions [admission-age :joint-pairs]))
+                 (get-in age-out-proportions [admission-age :marginal]))]
+       (if (>= admission-age 17)
+         1.0
+         (<= (rand/rand-double seed) p))))))
 
 (defn age-out-projection-model
   [candidates]

@@ -246,7 +246,8 @@
          (if open?
            (let [[s1 s2] (rand/split seed)
                  current-duration duration
-                 age-out? (age-out-model admission-age current-duration s1)]
+                 current-age-days (+ (time/day-interval birthday beginning) duration)
+                 age-out? (age-out-model admission-age current-age-days s1)]
              (loop [iter 1
                     seed s2]
                (let [[s1 s2 s3] (rand/split-n seed 3)]
