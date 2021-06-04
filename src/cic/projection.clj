@@ -72,7 +72,7 @@
            age-out-projection-model age-out-simulation-model
            joiner-model-type scenario-joiner-rates] :as model-seed} random-seed]
   (println "Training model...")
-  (let [[s1 s2 s3] (rand/split-n random-seed 3)
+  (let [[s1 s2 s3 s4 s5 s6] (rand/split-n random-seed 6)
         [joiners-from joiners-to] joiner-range
         all-periods (rand/sample-birthdays periods s1)
         closed-periods (periods/close-open-periods all-periods projection-model age-out-model age-out-projection-model s3)]
@@ -82,9 +82,9 @@
      :project-from project-from
      :projection-model projection-model
      :simulation-model (fn [admission-age seed]
-                         (or (when (or (= admission-age 17) (age-out-model admission-age seed))
-                               (age-out-simulation-model admission-age seed))
-                             (simulation-model admission-age seed)))}))
+                         (or (when (or (= admission-age 17) (age-out-model admission-age s4))
+                               (age-out-simulation-model admission-age s5))
+                             (simulation-model admission-age s6)))}))
 
 (defn project-1
   "Returns a single sequence of projected periods."
