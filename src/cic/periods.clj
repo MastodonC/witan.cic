@@ -241,7 +241,6 @@
 
 (defn close-open-periods
   [periods projection-model age-out-model age-out-projection-model seed]
-  (println "Closing open periods...")
   (into
    []
    (map (fn [[{:keys [period-id beginning open? admission-age birthday duration] :as period} seed]]

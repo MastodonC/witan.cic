@@ -50,7 +50,6 @@
    end seed]
   (let [previous-joiner-per-age (->> (group-by :admission-age periods)
                                      (reduce (fn [m [k v]] (assoc m k (time/max-date (map :beginning v)))) {}))]
-    (println "Previous joiner dates per age: " previous-joiner-per-age)
     (mapcat (fn [age seed]
               (let [previous-joiner-at-age (get previous-joiner-per-age age project-from)]
                 (joiners-seq (partial joiners-model age project-from)
@@ -72,7 +71,7 @@
            age-out-projection-model age-out-simulation-model
            joiner-model-type scenario-joiner-rates] :as model-seed} random-seed]
   (println "Training model...")
-  (let [[s1 s2 s3 s4 s5 s6] (rand/split-n random-seed 6)
+  (let [[s1 s2 s3] (rand/split-n random-seed 3)
         [joiners-from joiners-to] joiner-range
         all-periods (rand/sample-birthdays periods s1)
         closed-periods (periods/close-open-periods all-periods projection-model age-out-model age-out-projection-model s3)]
@@ -82,9 +81,10 @@
      :project-from project-from
      :projection-model projection-model
      :simulation-model (fn [admission-age seed]
-                         (or (when (or (= admission-age 17) (age-out-model admission-age s4))
-                               (age-out-simulation-model admission-age s5))
-                             (simulation-model admission-age s6)))}))
+                         (let [[s1 s2 s3] (rand/split-n seed 3)]
+                           (or (when (or (= admission-age 17) (age-out-model admission-age s1))
+                                 (age-out-simulation-model admission-age s2))
+                               (simulation-model admission-age s3))))}))
 
 (defn project-1
   "Returns a single sequence of projected periods."
