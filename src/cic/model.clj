@@ -22,7 +22,6 @@
   "Given the date of a joiner at a particular age,
   returns the interval in days until the next joiner"
   [{:keys [model-coefs]} project-from project-to seed]
-  (println model-coefs)
   ;; Work out a sample rate for every future day
   (let [ ;; Our current modelling is based on a joiners per 84 days
         periods (time/day-seq project-from project-to period-in-days)
@@ -36,7 +35,6 @@
                                      a (get model-coefs (str "admission_age" age) 0.0)
                                      b (get model-coefs "quarter")
                                      c (get model-coefs (str "quarter:admission_age" age) 0.0)
-                                     _ (println intercept a b c day)
                                      n-per-quarter (p/sample-1 (d/poisson {:lambda (m/exp (+ intercept a (* b day) (* c day)))}) seed)
                                      ;; We must protect against divide by zeros
                                      n-per-day (max (/ n-per-quarter period-in-days) (/ 1 365.0)) ;; The R code assumes a quarter is 3 * 28 days
@@ -119,7 +117,6 @@
           [s1 s2] (rand/split seed)
           seed-long (rand/rand-long s1)
           trend-joiners? (= joiner-model-type :trended)]
-      (println script input output (time/date-as-string project-to) trend-joiners? (str (Math/abs seed-long)))
       (rscript/exec script input output
                     (time/date-as-string project-to)
                     (str trend-joiners?)
