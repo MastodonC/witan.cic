@@ -42,18 +42,15 @@
 
 (defn format-episode
   [row]
-  (let [max-date (time/make-date 2020 3 31)]
-    (-> (cs/rename-keys row {:id :child-id :care-status :CIN :dob :birth-month})
-        (update :birth-month parse-month)
-        (update :report-date parse-date)
-        (update :ceased #(when-let [ceased (when-not (str/blank? %) (parse-date %))]
-                           (when (time/<= ceased max-date)
-                             ceased)))
-        (update :report-year #(Long/parseLong %))
-        (update :placement parse-placement)
-        (update :CIN keyword)
-        (update :legal-status keyword)
-        (update :uasc (comp boolean #{"True"})))))
+  (-> (cs/rename-keys row {:id :child-id :care-status :CIN :dob :birth-month})
+      (update :birth-month parse-month)
+      (update :report-date parse-date)
+      (update :ceased #(when-not (str/blank? %) (parse-date %)))
+      (update :report-year #(Long/parseLong %))
+      (update :placement parse-placement)
+      (update :CIN keyword)
+      (update :legal-status keyword)
+      (update :uasc (comp boolean #{"True"}))))
 
 (defn load-csv
   "Loads csv file with each row as a vector.
