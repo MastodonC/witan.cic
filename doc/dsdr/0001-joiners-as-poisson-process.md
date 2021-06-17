@@ -14,7 +14,7 @@ general population for each age as is done in witan.send.
 
 ## Status
 
-Accepted
+Accepted.
 
 ## Consequences
 
