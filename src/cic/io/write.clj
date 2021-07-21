@@ -228,3 +228,11 @@
           (map fields)
           periods)))
 
+(defn joiner-rates
+  [joiner-rates]
+  (let [headers ["age" "day" "rate"]
+        fields (juxt :age (comp date->str :day) (comp double :n-per-day))]
+    (into [headers]
+          (map fields)
+          joiner-rates)))
+

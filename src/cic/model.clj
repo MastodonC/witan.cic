@@ -28,23 +28,26 @@
         seeds (rand/split-n seed (count periods))
         min-period (first periods)
         max-period (time/days-before (last periods) 1)
-        day-rate-lookup (->> (for [[[period-from period-to] seed] (map vector (partition 2 1 periods) seeds)
-                                   age spec/ages]
-                               (let [day (t/in-days (t/interval (t/epoch) (time/halfway-between period-from period-to)))
-                                     intercept (get model-coefs "(Intercept)")
-                                     a (get model-coefs (str "admission_age" age) 0.0)
-                                     b (get model-coefs "quarter")
-                                     c (get model-coefs (str "quarter:admission_age" age) 0.0)
-                                     n-per-quarter (p/sample-1 (d/poisson {:lambda (m/exp (+ intercept a (* b day) (* c day)))}) seed)
-                                     ;; We must protect against divide by zeros
-                                     n-per-day (max (/ n-per-quarter period-in-days) (/ 1 365.0)) ;; The R code assumes a quarter is 3 * 28 days
-                                     ]
-                                 (for [day (time/day-seq period-from period-to)]
-                                   {:age age :day day :n-per-day n-per-day})))
-                             (apply concat)
-                             (reduce (fn [coll {:keys [age day n-per-day]}]
-                                       (assoc coll [age day] n-per-day))
-                                     {}))]
+        day-rate-rows (->> (for [[[period-from period-to] seed] (map vector (partition 2 1 periods) seeds)
+                                 age spec/ages]
+                             (let [day (t/in-days (t/interval (t/epoch) (time/halfway-between period-from period-to)))
+                                   intercept (get model-coefs "(Intercept)")
+                                   a (get model-coefs (str "admission_age" age) 0.0)
+                                   b (get model-coefs "quarter")
+                                   c (get model-coefs (str "quarter:admission_age" age) 0.0)
+                                   n-per-quarter (p/sample-1 (d/poisson {:lambda (m/exp (+ intercept a (* b day) (* c day)))}) seed)
+                                   ;; We must protect against divide by zeros
+                                   n-per-day (max (/ n-per-quarter period-in-days) (/ 1 365.0)) ;; The R code assumes a quarter is 3 * 28 days
+                                   ]
+                               (for [day (time/day-seq period-from period-to)]
+                                 {:age age :day day :n-per-day n-per-day})))
+                           (apply concat))
+        ;; _ (write/write-csv! "joiner-rates.csv" (write/joiner-rates day-rate-rows))
+        day-rate-lookup (reduce (fn [coll {:keys [age day n-per-day]}]
+                                  (assoc coll [age day] n-per-day))
+                                {}
+                                day-rate-rows)]
+
     (fn [age join-after previous-joiner seed]
       (loop [seed seed sample-adjustment 0]
         (let [n-per-day (or (get day-rate-lookup [age previous-joiner])
