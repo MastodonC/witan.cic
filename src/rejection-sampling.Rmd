@@ -173,11 +173,14 @@ colnames(quantiles) <- c("quantile", "exit_age", "admission_age")
 ggplot(quantiles %>% mutate(admission_age = factor(admission_age)), aes(exit_age, quantile)) +
   geom_line() +
   facet_wrap(vars(admission_age)) +
-  geom_vline(xintercept = 6565)
+  geom_vline(xintercept = 6565, linetype = 2, alpha = 0.2)
+
 
 age_out_proportions <- quantiles %>%
+  arrange(admission_age) %>%
   group_by(admission_age) %>%
   mutate(age_out_quantile = min(if_else(exit_age >= 6565, quantile, NA_real_), na.rm = TRUE)) %>%
+  mutate(age_out_quantile = if_else(is.infinite(age_out_quantile), 100, age_out_quantile)) %>%
   mutate(p = (100 - age_out_quantile) / (100 - quantile)) %>%
   mutate(p = pmin(p, 1.0)) %>%
   group_by(admission_age, exit_age) %>%
@@ -339,18 +342,22 @@ combined_duration_groups <- rbind(cbind(id = "target", target_projected_duration
 
 library(ggthemes)
 
-for (age in 0:17) {
+for (age in 0:16) {
   print(ggplot(combined_duration_groups %>% filter(admission_age == age), aes(duration_group, density, fill = id)) +
   geom_bar(stat = "identity", position = "fill") +
   facet_wrap(vars(admission_age)) +
   scale_fill_manual(values = tableau_color_pal("Tableau 20")(20)))
-
 }
 
 ## Shows they should all remain until 18
 
 ```
-
+```{sql connection=db}
+SELECT *
+  FROM fuzzy_periods
+  WHERE provenance = 'S'
+  AND admission_age = 17
+```
 
 ```{sql connection=db}
 DROP TABLE IF EXISTS simulated_candidates;
@@ -447,6 +454,22 @@ WHERE random() <= 0.25;
 
 ```
 
+```{sql connection=db}
+SELECT *
+  FROM simulated_candidates
+  WHERE admission_age = 17;
+
+```
+
+```{sql connection=db}
+
+INSERT INTO simulated_candidates
+SELECT *, 1 AS reject_ratio
+  FROM fuzzy_periods
+  WHERE provenance = 'S'
+  AND admission_age = 17;
+
+```
 
 ```{r}
 
@@ -460,7 +483,11 @@ staged <- dbGetQuery(db, "SELECT provenance, id, sample_index, admission_age, ad
 FROM periods
 WHERE provenance = 'S'
 AND aged_out = 'true'
-AND admission_age_days + duration > (17 * 365)")
+AND admission_age_days + duration > (17 * 365)
+UNION
+SELECT provenance, id, sample_index, admission_age, admission_age_days, duration, episodes_edn
+FROM fuzzy_periods
+WHERE provenance = 'S' AND admission_age = 17")
 write.csv(staged, file = simulated_age_out_output_csv, row.names = FALSE)
 
 
@@ -470,5 +497,14 @@ WHERE provenance = 'P'
 AND aged_out = 'true'
 AND admission_age_days + duration > (17 * 365)")
 write.csv(staged, file = projected_age_out_output_csv, row.names = FALSE)
+
+```
+
+
+```{sql connection=db}
+
+SELECT provenance, id, sample_index, admission_age, admission_age_days, duration, episodes_edn
+FROM fuzzy_periods
+WHERE provenance = 'S' AND admission_age = 17
 
 ```
