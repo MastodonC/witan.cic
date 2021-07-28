@@ -1,68 +1,65 @@
+library(dplyr)
+source("helpers.R")
+
+input_dir <- '/Users/henry/Mastodon C/witan.cic/data/bwd/2021-07-21/outputs/2021-train-pre-covid'
+
+historic_episodes_file <- "historic-episodes.csv"
+historic_episodes <- read.csv(file.path(input_dir, historic_episodes_file), na.strings = "") %>%
+  group_by(ID) %>% slice(1)
+historic_episodes$Period.Start <- as.Date(historic_episodes$Period.Start)
+
+# Calculate monthly joiners per age within range
+
+start <- as.Date("2015-04-01")
+end <- as.Date("2020-04-01")
+day_range <- day_diff(start, end)
+month_range <- day_range / 365.25 * 12
 
 
-print(mod)
-params <- mvrnorm(100, coef(mod), vcov(mod))
+historic_rates <- historic_episodes %>%
+  filter(Period.Start >= start & Period.Start < end) %>%
+  group_by(Admission.Age) %>%
+  dplyr::summarise(n = n() / month_range) %>%
+  mutate(p = n / sum(n))
 
-params_age <- function(params, age) {
-  if (age == 0) {
-    cbind(id = 1:nrow(params),
-          params[,c("(Intercept)", "quarter")],
-          "admission_age" = 0,
-          "quarter:admission_age" = 0) %>%
-      as.data.frame %>%
-      setNames(c("id", "intercept", "quarter", "admission_age", "quarter:admission_age"))
-  } else {
-    cbind(id = 1:nrow(params), params[,c("(Intercept)", "quarter", paste0("admission_age", age), paste0("quarter:admission_age", age))]) %>%
-      as.data.frame %>%
-      setNames(c("id", "intercept", "quarter", "admission_age", "quarter:admission_age"))
-  }
-}
+historic_rate <- historic_episodes %>%
+  filter(Period.Start >= start & Period.Start < end) %>%
+  mutate(month = format(Period.Start, "%Y-%m")) %>%
+  group_by(month) %>%
+  dplyr::summarise(n = n(), .groups = "drop_last") %>%
+  dplyr::summarise(md = median(n), mu = mean(n))
+  
 
+start <- as.Date("2020-04-01")
+end <- as.Date("2021-04-01")
+day_range <- day_diff(start, end)
+month_range <- day_range / 365.25 * 12
 
-params_age(params, 1)
+covid_rates <- historic_episodes %>%
+  filter(Period.Start >= start & Period.Start < end) %>%
+  group_by(Admission.Age) %>%
+  dplyr::summarise(n = n() / month_range)
 
-dat %>%
-  filter(admission_age == 0) %>%
-  ggplot(aes(quarter, n)) + geom_point()
+covid_rate <- historic_episodes %>%
+  filter(Period.Start >= start & Period.Start < end) %>%
+  mutate(month = format(Period.Start, "%Y-%m")) %>%
+  group_by(month) %>%
+  dplyr::summarise(n = n()) %>%
+  dplyr::summarise(md = median(n), mu = mean(n))
 
-dates <- data.frame(date = seq(min(dat$quarter), max(dat$quarter) + years(4), "84 days"))
+historic_rates %>%
+  left_join(covid_rates, by = "Admission.Age") %>%
+  mutate(n.y = coalesce(n.y, 0)) %>%
+  mutate(catchup_rate = n.x + (n.x - n.y))
 
-age <- 14
+historic_rate %>%
+  left_join(covid_rate, by = character()) %>%
+  mutate(md.y = coalesce(md.y, 0)) %>%
+  mutate(normal_rate = md.x, catchup_rate = md.x + (md.x - md.y)) %>%
+  inner_join(historic_rates, by = character(0)) %>%
+  mutate(normal_rate_per_age = normal_rate * p,
+         catchup_rate_per_age = catchup_rate * p) %>%
+  dplyr::select(Admission.Age, normal_rate_per_age, catchup_rate_per_age) %>%
+  write.csv("rates.csv")
 
-poisson <- Vectorize(function(lambda){
-  rpois(1, lambda)
-})
-
-for (age in 0:1) {
-  pp <- params_age(params, age)
-  pps <- sample_n(pp, 1)
-  print(ggplot(data = NULL) +
-          geom_point(data = dat %>% filter(admission_age == age), aes(quarter, n), colour = "orange", size = 10) +
-          geom_line(data = dates %>%
-                      inner_join(pp, by = character(0)) %>%
-                      mutate(n = exp(intercept + admission_age + as.numeric(date) * quarter + as.numeric(date) * `quarter:admission_age`)) %>%
-                      dplyr::select(id, date, n) %>%
-                      rename(quarter = date),
-                    aes(quarter, n, group = id),
-                    alpha = 0.25) +
-          geom_line(data = dates %>%
-                      inner_join(pps, by = character(0)) %>%
-                      mutate(n = exp(intercept + admission_age + as.numeric(date) * quarter + as.numeric(date) * `quarter:admission_age`)) %>%
-                      dplyr::select(id, date, n) %>%
-                      rename(quarter = date),
-                    aes(quarter, n, group = id),
-                    colour = "purple", size = 1) +
-          geom_point(data = dates %>%
-                       filter(date > max(dat$quarter)) %>%
-                       inner_join(pps, by = character(0)) %>%
-                       mutate(n = poisson(exp(intercept + admission_age + as.numeric(date) * quarter + as.numeric(date) * `quarter:admission_age`))) %>%
-                       dplyr::select(id, date, n) %>%
-                       rename(quarter = date),
-                     aes(quarter, n),
-                     size = 10, colour = "purple", shape = 1, stroke = 1.5,) +
-          labs(title = age))
-}
-
-rpois()
-
-
+catchup_rates <- data.frame(Admission.Age = 0:17, n = historic_rates$n + (historic_rates$n - covid_rates$n))
