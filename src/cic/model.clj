@@ -21,33 +21,41 @@
 (defn joiners-model
   "Given the date of a joiner at a particular age,
   returns the interval in days until the next joiner"
-  [{:keys [model-coefs]} project-from project-to seed]
+  [{:keys [model-coefs]} project-from project-to simulation-id seed]
   ;; Work out a sample rate for every future day
   (let [ ;; Our current modelling is based on a joiners per 84 days
         periods (time/day-seq project-from project-to period-in-days)
         seeds (rand/split-n seed (count periods))
         min-period (first periods)
         max-period (time/days-before (last periods) 1)
-        day-rate-rows (->> (for [[[period-from period-to] seed] (map vector (partition 2 1 periods) seeds)
-                                 age spec/ages]
-                             (let [day (t/in-days (t/interval (t/epoch) (time/halfway-between period-from period-to)))
-                                   intercept (get model-coefs "(Intercept)")
-                                   a (get model-coefs (str "admission_age" age) 0.0)
-                                   b (get model-coefs "quarter")
-                                   c (get model-coefs (str "quarter:admission_age" age) 0.0)
-                                   n-per-quarter (p/sample-1 (d/poisson {:lambda (m/exp (+ intercept a (* b day) (* c day)))}) seed)
-                                   ;; We must protect against divide by zeros
-                                   n-per-day (max (/ n-per-quarter period-in-days) (/ 1 365.0)) ;; The R code assumes a quarter is 3 * 28 days
-                                   ]
-                               (for [day (time/day-seq period-from period-to)]
-                                 {:age age :day day :n-per-day n-per-day})))
-                           (apply concat))
+        day-rate-rows (for [[[period-from period-to] seed] (map vector (partition 2 1 periods) seeds)
+                            age spec/ages]
+                        (let [day (t/in-days (t/interval (t/epoch) (time/halfway-between period-from period-to)))
+                              intercept (get model-coefs "(Intercept)")
+                              a (get model-coefs (str "admission_age" age) 0.0)
+                              b (get model-coefs "quarter")
+                              c (get model-coefs (str "quarter:admission_age" age) 0.0)
+                              n-per-quarter (p/sample-1 (d/poisson {:lambda (m/exp (+ intercept a (* b day) (* c day)))}) seed)
+                              ;; We must protect against divide by zeros
+                              n-per-day (max (/ n-per-quarter period-in-days) (/ 1 365.0)) ;; The R code assumes a quarter is 3 * 28 days
+                              ]
+                          {:period-from period-from
+                           :period-to period-to
+                           :age age
+                           :n-per-day n-per-day
+                           :simulation-id simulation-id}))
+        
         ;; _ (write/write-csv! "joiner-rates.csv" (write/joiner-rates day-rate-rows))
-        day-rate-lookup (reduce (fn [coll {:keys [age day n-per-day]}]
-                                  (assoc coll [age day] n-per-day))
-                                {}
-                                day-rate-rows)]
-
+        day-rate-lookup (->> (mapcat (fn [{:keys [period-from period-to age n-per-day]}]
+                                       (map (fn [day]
+                                              {:age age :day day :n-per-day n-per-day})
+                                            (time/day-seq period-from period-to)))
+                                     day-rate-rows)
+                             (reduce (fn [coll {:keys [age day n-per-day]}]
+                                       (assoc coll [age day] n-per-day))
+                                     {}))]
+    (tap> {:message-type :joiners
+           :message day-rate-rows})
     (fn [age join-after previous-joiner seed]
       (loop [seed seed sample-adjustment 0]
         (let [n-per-day (or (get day-rate-lookup [age previous-joiner])
@@ -111,7 +119,7 @@
 
 (defn joiners-model-gen
   "Wraps R to trend joiner rates into the future."
-  [periods project-from project-to joiner-model-type scenario-joiner-rates seed]
+  [periods project-from project-to joiner-model-type scenario-joiner-rates simulation-id seed]
   (cond
     (#{:trended :untrended} joiner-model-type)
     (let [script "src/joiners.R"
@@ -125,7 +133,7 @@
                     (str trend-joiners?)
                     (str (Math/abs seed-long)))
       (-> (read/joiner-csv output)
-          (joiners-model project-from project-to s2)))
+          (joiners-model project-from project-to simulation-id s2)))
     (= joiner-model-type :scenario)
     (scenario-joiners-model scenario-joiner-rates project-from project-to)))
 

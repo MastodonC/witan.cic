@@ -47,7 +47,7 @@
   [{:keys [joiners-model
            periods project-from
            simulation-model] :as model}
-   end seed]
+   end simulation-id seed]
   (let [previous-joiner-per-age (->> (group-by :admission-age periods)
                                      (reduce (fn [m [k v]] (assoc m k (time/max-date (map :beginning v)))) {}))]
     (mapcat (fn [age seed]
@@ -69,14 +69,14 @@
   [{:keys [periods joiner-range project-to project-from
            projection-model simulation-model age-out-model
            age-out-projection-model age-out-simulation-model
-           joiner-model-type scenario-joiner-rates] :as model-seed} random-seed]
+           joiner-model-type scenario-joiner-rates] :as model-seed} simulation-id random-seed]
   (println "Training model...")
   (let [[s1 s2 s3] (rand/split-n random-seed 3)
         [joiners-from joiners-to] joiner-range
         all-periods (rand/sample-birthdays periods s1)
         closed-periods (periods/close-open-periods all-periods projection-model age-out-model age-out-projection-model s3)]
     {:joiners-model (-> (filter #(time/between? (:beginning %) joiners-from joiners-to) all-periods)
-                        (model/joiners-model-gen project-from project-to joiner-model-type scenario-joiner-rates s2))
+                        (model/joiners-model-gen project-from project-to joiner-model-type scenario-joiner-rates simulation-id s2))
      :periods closed-periods
      :project-from project-from
      :projection-model projection-model
@@ -88,10 +88,10 @@
 
 (defn project-1
   "Returns a single sequence of projected periods."
-  [model-seed end seed]
+  [model-seed end simulation-id seed]
   (let [[s1 s2] (rand/split seed)
-        model (train-model model-seed s1)]
-    (concat (:periods model) (project-joiners model end s2))))
+        model (train-model model-seed simulation-id s1)]
+    (concat (:periods model) (project-joiners model end simulation-id s2))))
 
 (defn projection-chan
   [out-chan model-seed project-dates seed n-runs]
@@ -102,9 +102,10 @@
         parallelism (* 3 (quot (.availableProcessors (Runtime/getRuntime)) 4)) ;; use 3/4 the cores
         in-chan (a/to-chan! (map-indexed vector (rand/split-n s2 n-runs)))
         projection-xf (map (fn [[iteration seed]]
-                             (into []
-                                   (map #(assoc % :simulation-number (inc iteration)))
-                                   (project-1 model-seed max-date seed))))]
+                             (let [simulation-id (inc iteration)]
+                               (into []
+                                     (map #(assoc % :simulation-id (inc iteration)))
+                                     (project-1 model-seed max-date simulation-id seed)))))]
     (a/pipeline-blocking parallelism out-chan projection-xf in-chan)))
 
 (defn project-n
