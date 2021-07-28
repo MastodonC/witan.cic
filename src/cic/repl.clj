@@ -102,7 +102,7 @@
 
 (defn generate-projection-csv!
   "Main REPL function for writing a projection CSV"
-  [{{:keys [rewind-years project-years simulations random-seed episodes-extract-date] {joiner-model-type :model train-joiner-years :train-years} :joiners} :projection-parameters
+  [{{:keys [rewind-years project-years simulations random-seed episodes-extract-date] {joiner-model-type :model joiner-train-years :train-years joiner-train-date-range :train-date-range} :joiners} :projection-parameters
     file-inputs :file-inputs
     output-parameters :output-parameters
     input-directory :input-directory
@@ -118,9 +118,10 @@
         historic-episodes-output (fs/file output-directory "historic-episodes.csv")
         project-to (time/years-after project-from project-years)
         t0 (time/min-date (map :beginning periods))
+        joiner-train-date-range (or joiner-train-date-range  [(time/years-before project-from joiner-train-years) project-from])
         model-seed {:periods periods
                     :duration-model duration-model
-                    :joiner-range [(time/years-before project-from train-joiner-years) project-from]
+                    :joiner-range joiner-train-date-range
                     :project-from project-from
                     :project-to project-to
                     :projection-model projection-model
@@ -130,7 +131,7 @@
                     :age-out-simulation-model age-out-simulation-model
                     :joiner-model-type joiner-model-type
                     :scenario-joiner-rates scenario-joiner-rates}
-        output-from (time/years-before project-from (+ train-joiner-years 2))
+        output-from (time/years-before (first joiner-train-date-range) 2)
         summary-seq (into []
                           (map format-actual-for-output)
                           (summary/periods-summary (rand/sample-birthdays periods (rand/seed random-seed))
