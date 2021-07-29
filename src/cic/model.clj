@@ -19,6 +19,9 @@
 (def period-in-days
   84)
 
+(def min-exponential-rate
+  (/ 1.0 365.25))
+
 (def month->day-factor
   (/ 12 365.25))
 
@@ -48,14 +51,17 @@
                               a (get model-coefs (str "admission_age" age) 0.0)
                               b (get model-coefs "quarter")
                               c (get model-coefs (str "quarter:admission_age" age) 0.0)
-                              n-per-quarter (p/sample-1 (d/poisson {:lambda (m/exp (+ intercept a (* b day) (* c day)))}) seed)
+                              y (m/exp (+ intercept a (* b day) (* c day)))
+                              n-per-quarter (p/sample-1 (d/poisson {:lambda y}) seed)
                               ;; We must protect against divide by zeros
-                              n-per-day (max (/ n-per-quarter period-in-days) (/ 1 365.0)) ;; The R code assumes a quarter is 3 * 28 days
+                              n-per-day (/ n-per-quarter period-in-days) ;; The R code assumes a quarter is 3 * 28 days
                               ]
                           {:period-from period-from
                            :period-to period-to
                            :age age
                            :n-per-day n-per-day
+                           :n-per-period n-per-quarter
+                           :y-per-period y
                            :simulation-id simulation-id}))
         
         ;; _ (write/write-csv! "joiner-rates.csv" (write/joiner-rates day-rate-rows))
@@ -75,11 +81,12 @@
                             (when (time/< previous-joiner min-period)
                               (get day-rate-lookup [age min-period]))
                             (get day-rate-lookup [age max-period]))
-              sample (+ sample-adjustment (p/sample-1 (d/exponential {:rate n-per-day}) seed))
+              sample (+ sample-adjustment (p/sample-1 (d/exponential {:rate (max n-per-day min-exponential-rate)}) seed))
               join-date (time/days-after previous-joiner sample)]
           (if (time/>= join-date join-after)
-            sample
-            (recur (rand/next-seed seed) sample-adjustment)))))))
+            (do (tap> {:message-type :joiner-interval :message [{:simulation-id simulation-id :age age :join-date join-date :interval-days sample}]})
+                sample)
+            (recur (rand/next-seed seed) (inc sample-adjustment))))))))
 
 (defn linear-interpolation
   [a b n]
@@ -140,13 +147,14 @@
                               (get day-rate-lookup [age project-from]))
                             (get day-rate-lookup [age project-to]))
               
-              sample (p/sample-1 (d/exponential {:rate (max 0.001 n-per-day)}) seed)
+              sample (p/sample-1 (d/exponential {:rate (max n-per-day min-exponential-rate)}) seed)
               _ (log/info "age" age "n-per-day" n-per-day "interarrival" sample)
               ;;_ (log/info sample)
               sample (+ sample-adjustment sample)
               join-date (time/days-after previous-joiner sample)]
           (if (time/>= join-date join-after)
-            sample
+            (do (tap> {:message-type :joiner-interval :message [{:simulation-id simulation-id :age age :join-date join-date :interval-days sample}]})
+                sample)
             (do (log/info "looping...")
                 (recur (rand/next-seed seed) (inc sample-adjustment)))))))))
 

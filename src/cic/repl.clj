@@ -122,6 +122,7 @@
         ;; Log files
         joiner-rates-log-output (fs/file log-directory "joiner-rates-log.csv")
         joiner-scenario-log-output (fs/file log-directory "joiner-scenario-log.csv")
+        joiner-interval-log-output (fs/file log-directory "joiner-interval-log.csv")
         ;;
         project-to (time/years-after project-from project-years)
         t0 (time/min-date (map :beginning periods))
@@ -179,16 +180,22 @@
         (a/>!! result-chan :projection-episodes)))
     (fs/delete joiner-rates-log-output) ;; We're appending, so make sure we have a blank slate
     (fs/delete joiner-scenario-log-output)
+    (fs/delete joiner-interval-log-output)
     (with-open [joiner-rates-writer (io/writer joiner-rates-log-output :append true)
-                joiner-scenario-writer (io/writer joiner-scenario-log-output :append true)]
+                joiner-scenario-writer (io/writer joiner-scenario-log-output :append true)
+                joiner-interval-writer (io/writer joiner-interval-log-output :append true)]
       (csv/write-csv joiner-rates-writer (vector write/joiner-rates-headers))
       (add-tap (fn [{:keys [message-type message]}]
                  (when (= message-type :joiners)
                    (csv/write-csv joiner-rates-writer (write/joiner-rates-tap message)))))
-      (csv/write-csv joiner-scenario-writer (vector write/joiner-rate-headers))
+      (csv/write-csv joiner-scenario-writer (vector write/joiner-scenario-headers))
       (add-tap (fn [{:keys [message-type message]}]
                  (when (= message-type :scenario-joiners)
-                   (csv/write-csv joiner-scenario-writer (write/joiner-rate-tap message)))))
+                   (csv/write-csv joiner-scenario-writer (write/joiner-scenario-tap message)))))
+      (csv/write-csv joiner-interval-writer (vector write/joiner-interval-headers))
+      (add-tap (fn [{:keys [message-type message]}]
+                 (when (= message-type :joiner-interval)
+                   (csv/write-csv joiner-interval-writer (write/joiner-interval-tap message)))))
       (projection/projection-chan projection-chan
                                   model-seed project-dates
                                   random-seed simulations)
