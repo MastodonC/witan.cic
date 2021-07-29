@@ -121,6 +121,7 @@
         historic-episodes-output (fs/file output-directory "historic-episodes.csv")
         ;; Log files
         joiner-rates-log-output (fs/file log-directory "joiner-rates-log.csv")
+        joiner-scenario-log-output (fs/file log-directory "joiner-scenario-log.csv")
         ;;
         project-to (time/years-after project-from project-years)
         t0 (time/min-date (map :beginning periods))
@@ -177,11 +178,17 @@
              (write/write-csv! projection-episodes-output))
         (a/>!! result-chan :projection-episodes)))
     (fs/delete joiner-rates-log-output) ;; We're appending, so make sure we have a blank slate
-    (with-open [joiner-rates-writer (io/writer joiner-rates-log-output :append true)]
+    (fs/delete joiner-scenario-log-output)
+    (with-open [joiner-rates-writer (io/writer joiner-rates-log-output :append true)
+                joiner-scenario-writer (io/writer joiner-scenario-log-output :append true)]
       (csv/write-csv joiner-rates-writer (vector write/joiner-rates-headers))
       (add-tap (fn [{:keys [message-type message]}]
                  (when (= message-type :joiners)
                    (csv/write-csv joiner-rates-writer (write/joiner-rates-tap message)))))
+      (csv/write-csv joiner-scenario-writer (vector write/joiner-rate-headers))
+      (add-tap (fn [{:keys [message-type message]}]
+                 (when (= message-type :scenario-joiners)
+                   (csv/write-csv joiner-scenario-writer (write/joiner-rate-tap message)))))
       (projection/projection-chan projection-chan
                                   model-seed project-dates
                                   random-seed simulations)

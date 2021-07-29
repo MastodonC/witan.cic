@@ -110,11 +110,148 @@
                        placement-pathway
                        (date->str period-start)
                        period-duration
+                       (date->str period-end)
+                       period-offset
+                       match-offset
+                       matched-id
+                       matched-offset)))))
+
+(defn episodes-table
+  [t0 project-to projections]
+  (let [headers ["Simulation" "ID" "Episode" "Birth Year" "Admission Age" "Birthday" "Start" "End" "Placement" "Offset" "Provenance"
+                 "Placement Sequence" "Placement Pathway" "Period Start" "Period Duration" "Period End" "Period Offset"
+                 "Match Offset" "Matched ID" "Matched Offset"]]
+    (into [headers]
+          (comp cat
+                (mapcat (partial period->episodes t0))
+                (episodes->table-rows-xf project-to))
+          projections)))
+
+(defn validation-table
+  [validation]
+  (let [headers ["Type" "Metric" "Actual" "Projected" "Lower Quartile" "Upper Quartile"]
+        fields (juxt (comp date->str :date) :model :linear-regression :actual)]
+    (->> (for [[type comparison] validation
+               [value {:keys [actual projected q1 q3]}] comparison]
+           (vector (name type) value actual projected q1 q3))
+         (into [headers]))))
+
+(defn annual-report-table
+  [cost-projection]
+  (let [headers (concat ["Financial Year End" "Joiners Actual"]
+                        ["Cost Lower CI" "Cost Lower Quartile" "Cost Median" "Cost Upper Quartile" "Cost Upper CI"]
+                        ["Joiners Lower CI" "Joiners Lower Quartile" "Joiners Median" "Joiners Upper Quartile" "Joiners Upper CI"]
+                        (map name spec/placements)
+                        (map str spec/ages))
+        fields (apply juxt
+                      :year
+                      :actual-joiners
+                      (comp :lower :projected-cost)
+                      (comp :q1 :projected-cost)
+                      (comp :median :projected-cost)
+                      (comp :q3 :projected-cost)
+                      (comp :upper :projected-cost)
+                      (comp :lower :projected-joiners)
+                      (comp :q1 :projected-joiners)
+                      (comp :median :projected-joiners)
+                      (comp :q3 :projected-joiners)
+                      (comp :upper :projected-joiners)
+                      (concat (map #(comp % :placements) spec/placements)
+                              (map (fn [age] #(get-in % [:joiners-ages age])) spec/ages)))]
+    (into [headers]
+          (map fields)
+          cost-projection)))
+
+(defn duration-table
+  [periods]
+  (let [headers (concat ["Admission Age" "Duration" "Provenance"])
+        fields (juxt :admission-age :duration :provenance)]
+    (into [headers]
+          (map fields)
+          periods)))
+
+(defn placement-sequence-table
+  [{:keys [projected-age-sequence-totals projected-age-totals
+           actual-age-sequence-totals actual-age-totals]}]
+  (let [headers ["Actual / Projected" "Age" "Placement Sequence" "Proportion"]]
+    (-> (into [headers]
+              (map (fn [[[age sequence] count]]
+                     (vector "Projected" age sequence (double (/ count (get projected-age-totals age))))))
+              projected-age-sequence-totals)
+        (into (map (fn [[[age sequence] count]]
+                     (vector "Actual" age sequence (double (/ count (get actual-age-totals age))))))
+              actual-age-sequence-totals))))
+
+(defn write-csv!
+  [out-file tablular-data]
+  (with-open [writer (io/writer out-file)]
+    (data-csv/write-csv writer tablular-data)))
+
+(defn mapseq->csv!
+  [mapseq]
+  (let [path (temp-file "file" ".csv")
+        cols (-> mapseq first keys)]
+    (->> (into [(mapv name cols)]
+               (map (apply juxt cols))
+               mapseq)
+         (write-csv! path))
+    path))
+
+(defn periods->knn-closed-cases-csv
+  [periods]
+  (->> (periods/to-mapseq periods)
+       (map #(-> %
+                 (update :placement name)
+                 (update :beginning time/date-as-string)
+                 (update :end (fn [end] (when end (time/date-as-string end))))
+                 (update :birthday time/date-as-string)
+                 (update :snapshot-date time/date-as-string)
+                 (update :report-date time/date-as-string)
+                 (set/rename-keys {:report-date :report_date :snapshot-date :snapshot_date :period-id :period_id})))
+       (mapseq->csv!)
+       (str)))
+
+(defn segments-table
+  [segments]
+  (let [headers (concat ["Age" "Duration" "Date" "From Placement" "To Placement" "Age Days" "Offset" "Aged Out" "Care Days" "Initial" "Terminal" "Join Age Days"])
+        fields (juxt :age :duration (comp date->str :date) :from-placement :to-placement :age-days
+                     :offset :aged-out :care-days :initial? :terminal? :join-age-days)]
+    (into [headers]
+          (map fields)
+          segments)))
+
+(defn periods-universe
+  [periods]
+  (let [headers ["Provenance" "ID" "Sample Index" "Admission Age" "Admission Age Days" "Duration" "Episodes EDN" "Aged Out"]
+        fields (juxt :provenance :period-id :iteration :admission-age :admission-age-days :duration (comp pr-str :episodes) (comp boolean :aged-out?))]
+    (into [headers]
+          (map fields)
+          periods)))
+
+(defn joiner-rates
+  [joiner-rates]
+  (let [headers ["age" "day" "rate"]
+        fields (juxt :age (comp date->str :day) (comp double :n-per-day))]
+    (into [headers]
+          (map fields)
+          joiner-rates)))
+
+(def joiner-rates-headers
   (mapv name [:simulation-id :period-from :period-to :age :n-per-day]))
 
 (defn joiner-rates-tap
   [joiner-rates]
   (let [fields (juxt :simulation-id (comp date->str :period-from) (comp date->str :period-to) :age (comp double :n-per-day))]
+    (into []
+          (map fields)
+          joiner-rates)))
+
+(def joiner-rate-headers
+  (mapv name [:simulation-id :date :age :n-per-day]))
+
+(defn joiner-rate-tap
+  [joiner-rates]
+  (let [fields (juxt :simulation-id (comp date->str :day) :age (comp double :n-per-day))]
     (into []
           (map fields)
           joiner-rates)))

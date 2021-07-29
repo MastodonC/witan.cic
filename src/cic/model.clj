@@ -13,10 +13,23 @@
             [kixi.stats.core :as k]
             [kixi.stats.distribution :as d]
             [kixi.stats.math :as m]
-            [kixi.stats.protocols :as p]))
+            [kixi.stats.protocols :as p]
+            [taoensso.timbre :as log]))
 
 (def period-in-days
   84)
+
+(def month->day-factor
+  (/ 12 365.25))
+
+(def month->period-factor
+  (* month->day-factor period-in-days))
+
+(def period->month-factor
+  (/ 1 month->period-factor))
+
+(def period->day-factor
+  (/ 1.0 period-in-days))
 
 (defn joiners-model
   "Given the date of a joiner at a particular age,
@@ -74,44 +87,61 @@
     (take n (iterate (partial + d) a))))
 
 (defn scenario-joiners-model
-  [joiner-rates project-from project-to]
+  [joiner-rates project-from project-to simulation-id seed]
   (let [scenario-dates (sort (map :date joiner-rates))
         rates-by-age (reduce (fn [coll x]
                                (assoc coll x
                                       (map (juxt :date (keyword (str x))) joiner-rates))) {}
                              (range 18))
-        rates-before (mapcat (fn [age]
-                               (let [[interpolation-start-date rate] (first (get rates-by-age age))]
-                                 (map (fn [date]
-                                        {:age age :day date :n-per-day (/ (* 12 rate) 365.25)})
-                                      (time/day-seq project-from interpolation-start-date))))
-                             (range 18))
-        rates-after (mapcat (fn [age]
-                              (let [[interpolation-end-date rate] (last (get rates-by-age age))]
-                                (map (fn [date]
-                                       {:age age :day date :n-per-day (/ (* 12 rate) 365.25)})
-                                     (time/day-seq interpolation-end-date (time/days-after project-to 2)))))
-                            (range 18))
-        rate-interpolation (mapcat (fn [[age dates-rates]]
-                                     (mapcat
-                                      (fn [[[d1 r1] [d2 r2]]]
-                                        (let [dates (time/day-seq d1 d2)
-                                              rates (linear-interpolation r1 r2 (count dates))]
-                                          (for [[date rate] (map vector dates rates)]
-                                            {:age age :day date :n-per-day (/ (* 12 rate) 365.25)})))
-                                      (partition 2 1 dates-rates)))
-                                   rates-by-age)
-        day-rate-lookup (->> (concat rates-before rate-interpolation rates-after)
-                             (reduce (fn [coll {:keys [age day n-per-day]}]
-                                       (assoc coll [age day] n-per-day))
-                                     {}))]
+        day-rates (into []
+                        (mapcat (fn [age]
+                                  (let [rates-before (let [[interpolation-start-date rate] (first (get rates-by-age age))]
+                                                       (into []
+                                                             (map (fn [date]
+                                                                    {:age age :day date :n-per-month rate}))
+                                                             (time/day-seq project-from interpolation-start-date)))
+                                        rates-after (let [[interpolation-end-date rate] (last (get rates-by-age age))]
+                                                      (into []
+                                                            (map (fn [date]
+                                                                   {:age age :day date :n-per-month rate}))
+                                                            (time/day-seq interpolation-end-date (time/days-after project-to 2))))
+                                        rate-interpolation (into []
+                                                                 (mapcat
+                                                                  (fn [[[d1 r1] [d2 r2]]]
+                                                                    (let [dates (time/day-seq d1 d2)
+                                                                          rates (linear-interpolation r1 r2 (count dates))]
+                                                                      (for [[date rate] (map vector dates rates)]
+                                                                        {:age age :day date :n-per-month rate}))))
+                                                                 (partition 2 1 (get rates-by-age age)))
+                                        rates (vec (concat rates-before rate-interpolation rates-after))
+                                        period-rates (partition-all period-in-days rates)]
+                                    (sequence (mapcat (fn [[period-rates seed]]
+                                                        (let [period-rate (* month->period-factor (:n-per-month (first period-rates)))
+                                                              n-per-period (p/sample-1 (d/poisson {:lambda period-rate}) seed)
+                                                              delta-per-period (- n-per-period period-rate)
+                                                              delta-per-month (* period->month-factor delta-per-period)]
+                                                          (into []
+                                                                (map (fn [{:keys [n-per-month] :as rate}]
+                                                                       (let [n-per-day (* month->day-factor (+ n-per-month delta-per-month))]
+                                                                         (assoc rate :n-per-day n-per-day))))
+                                                                period-rates))))
+                                              (map vector period-rates (rand/split-n seed (count period-rates)))))))
+                        (range 18))
+        day-rate-lookup (reduce (fn [coll {:keys [age day n-per-day]}]
+                                  (assoc coll [age day] n-per-day))
+                                {}
+                                day-rates)]
+    (tap> {:message-type :scenario-joiners :message day-rates})
     (fn [age join-after previous-joiner seed]
       (loop [seed seed sample-adjustment 0]
         (let [n-per-day (or (get day-rate-lookup [age previous-joiner])
                             (when (time/< previous-joiner project-from)
                               (get day-rate-lookup [age project-from]))
                             (get day-rate-lookup [age project-to]))
-              sample (+ sample-adjustment (p/sample-1 (d/exponential {:rate n-per-day}) seed))
+              ;;_ (log/info "n-per-day" n-per-day)
+              sample (p/sample-1 (d/exponential {:rate (max 0.001 n-per-day)}) seed)
+              _ (log/info sample)
+              sample (+ sample-adjustment sample)
               join-date (time/days-after previous-joiner sample)]
           (if (time/>= join-date join-after)
             sample
@@ -135,7 +165,7 @@
       (-> (read/joiner-csv output)
           (joiners-model project-from project-to simulation-id s2)))
     (= joiner-model-type :scenario)
-    (scenario-joiners-model scenario-joiner-rates project-from project-to)))
+    (scenario-joiners-model scenario-joiner-rates project-from project-to simulation-id seed)))
 
 (defn sample-ci
   "Given a 95% lower bound, median and 95% upper bound,
