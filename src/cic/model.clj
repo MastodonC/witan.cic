@@ -88,6 +88,7 @@
 
 (defn scenario-joiners-model
   [joiner-rates project-from project-to simulation-id seed]
+  (log/info "scenario-joiners-model begin")
   (let [scenario-dates (sort (map :date joiner-rates))
         rates-by-age (reduce (fn [coll x]
                                (assoc coll x
@@ -95,25 +96,24 @@
                              (range 18))
         day-rates (into []
                         (mapcat (fn [age]
-                                  (let [rates-before (let [[interpolation-start-date rate] (first (get rates-by-age age))]
-                                                       (into []
-                                                             (map (fn [date]
-                                                                    {:age age :day date :n-per-month rate}))
-                                                             (time/day-seq project-from interpolation-start-date)))
-                                        rates-after (let [[interpolation-end-date rate] (last (get rates-by-age age))]
-                                                      (into []
-                                                            (map (fn [date]
-                                                                   {:age age :day date :n-per-month rate}))
-                                                            (time/day-seq interpolation-end-date (time/days-after project-to 2))))
-                                        rate-interpolation (into []
-                                                                 (mapcat
-                                                                  (fn [[[d1 r1] [d2 r2]]]
-                                                                    (let [dates (time/day-seq d1 d2)
-                                                                          rates (linear-interpolation r1 r2 (count dates))]
-                                                                      (for [[date rate] (map vector dates rates)]
-                                                                        {:age age :day date :n-per-month rate}))))
-                                                                 (partition 2 1 (get rates-by-age age)))
-                                        rates (vec (concat rates-before rate-interpolation rates-after))
+                                  (let [rates (let [[interpolation-start-date rate] (first (get rates-by-age age))]
+                                                (into []
+                                                      (map (fn [date]
+                                                             {:age age :day date :n-per-month rate}))
+                                                      (time/day-seq project-from interpolation-start-date)))
+                                        rates (let [[interpolation-end-date rate] (last (get rates-by-age age))]
+                                                (into rates
+                                                      (map (fn [date]
+                                                             {:age age :day date :n-per-month rate}))
+                                                      (time/day-seq interpolation-end-date (time/days-after project-to 2))))
+                                        rates (into rates
+                                                    (mapcat
+                                                     (fn [[[d1 r1] [d2 r2]]]
+                                                       (let [dates (time/day-seq d1 d2)
+                                                             rates (linear-interpolation r1 r2 (count dates))]
+                                                         (for [[date rate] (map vector dates rates)]
+                                                           {:age age :day date :n-per-month rate}))))
+                                                    (partition 2 1 (get rates-by-age age)))
                                         period-rates (partition-all period-in-days rates)]
                                     (sequence (mapcat (fn [[period-rates seed]]
                                                         (let [period-rate (* month->period-factor (:n-per-month (first period-rates)))
@@ -132,20 +132,23 @@
                                 {}
                                 day-rates)]
     (tap> {:message-type :scenario-joiners :message day-rates})
+    (log/info "scenario-joiners-model end")
     (fn [age join-after previous-joiner seed]
       (loop [seed seed sample-adjustment 0]
         (let [n-per-day (or (get day-rate-lookup [age previous-joiner])
                             (when (time/< previous-joiner project-from)
                               (get day-rate-lookup [age project-from]))
                             (get day-rate-lookup [age project-to]))
-              ;;_ (log/info "n-per-day" n-per-day)
+              
               sample (p/sample-1 (d/exponential {:rate (max 0.001 n-per-day)}) seed)
-              _ (log/info sample)
+              _ (log/info "age" age "n-per-day" n-per-day "interarrival" sample)
+              ;;_ (log/info sample)
               sample (+ sample-adjustment sample)
               join-date (time/days-after previous-joiner sample)]
           (if (time/>= join-date join-after)
             sample
-            (recur (rand/next-seed seed) sample-adjustment)))))))
+            (do (log/info "looping...")
+                (recur (rand/next-seed seed) (inc sample-adjustment)))))))))
 
 (defn joiners-model-gen
   "Wraps R to trend joiner rates into the future."
