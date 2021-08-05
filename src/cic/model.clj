@@ -81,10 +81,11 @@
                             (when (time/< previous-joiner min-period)
                               (get day-rate-lookup [age min-period]))
                             (get day-rate-lookup [age max-period]))
-              sample (+ sample-adjustment (p/sample-1 (d/exponential {:rate (max n-per-day min-exponential-rate)}) seed))
+              exponential-rate (max n-per-day min-exponential-rate)
+              sample (+ sample-adjustment (p/sample-1 (d/exponential {:rate exponential-rate}) seed))
               join-date (time/days-after previous-joiner sample)]
           (if (time/>= join-date join-after)
-            (do (tap> {:message-type :joiner-interval :message [{:simulation-id simulation-id :age age :join-date join-date :interval-days sample}]})
+            (do (tap> {:message-type :joiner-interval :message [{:simulation-id simulation-id :age age :join-date join-date :n-per-day n-per-day :target-rate exponential-rate :interval-days sample :interval-adjustment sample-adjustment}]})
                 sample)
             (recur (rand/next-seed seed) (inc sample-adjustment))))))))
 
@@ -106,12 +107,12 @@
                                   (let [rates (let [[interpolation-start-date rate] (first (get rates-by-age age))]
                                                 (into []
                                                       (map (fn [date]
-                                                             {:age age :day date :n-per-month rate}))
+                                                             {:age age :day date :n-per-month rate :simulation-id simulation-id}))
                                                       (time/day-seq project-from interpolation-start-date)))
                                         rates (let [[interpolation-end-date rate] (last (get rates-by-age age))]
                                                 (into rates
                                                       (map (fn [date]
-                                                             {:age age :day date :n-per-month rate}))
+                                                             {:age age :day date :n-per-month rate :simulation-id simulation-id}))
                                                       (time/day-seq interpolation-end-date (time/days-after project-to 2))))
                                         rates (into rates
                                                     (mapcat
@@ -119,7 +120,7 @@
                                                        (let [dates (time/day-seq d1 d2)
                                                              rates (linear-interpolation r1 r2 (count dates))]
                                                          (for [[date rate] (map vector dates rates)]
-                                                           {:age age :day date :n-per-month rate}))))
+                                                           {:age age :day date :n-per-month rate :simulation-id simulation-id}))))
                                                     (partition 2 1 (get rates-by-age age)))
                                         period-rates (partition-all period-in-days rates)]
                                     (sequence (mapcat (fn [[period-rates seed]]
@@ -139,23 +140,23 @@
                                 {}
                                 day-rates)]
     (tap> {:message-type :scenario-joiners :message day-rates})
-    (log/info "scenario-joiners-model end")
+    ;; (log/info "scenario-joiners-model end")
     (fn [age join-after previous-joiner seed]
       (loop [seed seed sample-adjustment 0]
         (let [n-per-day (or (get day-rate-lookup [age previous-joiner])
                             (when (time/< previous-joiner project-from)
                               (get day-rate-lookup [age project-from]))
                             (get day-rate-lookup [age project-to]))
-              
-              sample (p/sample-1 (d/exponential {:rate (max n-per-day min-exponential-rate)}) seed)
-              _ (log/info "age" age "n-per-day" n-per-day "interarrival" sample)
+              target-rate (max n-per-day min-exponential-rate)
+              sample (p/sample-1 (d/exponential {:rate target-rate}) seed)
+              ;; _ (log/info "age" age "n-per-day" n-per-day "interarrival" sample)
               ;;_ (log/info sample)
               sample (+ sample-adjustment sample)
               join-date (time/days-after previous-joiner sample)]
           (if (time/>= join-date join-after)
-            (do (tap> {:message-type :joiner-interval :message [{:simulation-id simulation-id :age age :join-date join-date :interval-days sample}]})
+            (do (tap> {:message-type :joiner-interval :message [{:simulation-id simulation-id :age age :join-date join-date :n-per-day n-per-day :target-rate target-rate :interval-days sample :interval-adjustment sample-adjustment}]})
                 sample)
-            (do (log/info "looping...")
+            (do (log/info "looping..." age join-date join-after sample-adjustment)
                 (recur (rand/next-seed seed) (inc sample-adjustment)))))))))
 
 (defn joiners-model-gen

@@ -228,11 +228,15 @@
           (map fields)
           periods)))
 
+(def joiner-rate-headers
+  (mapv name [:simulation-id :date :date :n-per-month :n-per-day]))
+
 (defn joiner-rates
   [joiner-rates]
-  (let [headers ["age" "day" "rate"]
-        fields (juxt :age (comp date->str :day) (comp double :n-per-day))]
-    (into [headers]
+  (let [fields (juxt :simulation-id (comp date->str :day) :age
+                     (comp double :n-per-month)
+                     (comp double :n-per-day))]
+    (into []
           (map fields)
           joiner-rates)))
 
@@ -263,13 +267,15 @@
           joiner-rates)))
 
 (def joiner-interval-headers
-  (mapv name [:simulation-id :age :join-date :interval-days]))
+  (mapv name [:simulation-id :age :n-per-day :join-date :target-rate :interval-days :interval-adjustment]))
 
 (defn joiner-interval-tap
-  [joiner-interval]
-  (let [fields (juxt :simulation-id :age
+  [joiner-intervals]
+  (let [fields (juxt :simulation-id :age :n-per-day
                      (comp date->str :join-date)
-                     (comp double :interval-days))]
+                     (comp double :target-rate)
+                     (comp double :interval-days)
+                     :interval-adjustment)]
     (into []
           (map fields)
-          joiner-rates)))
+          joiner-intervals)))
