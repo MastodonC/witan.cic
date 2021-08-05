@@ -94,6 +94,40 @@
   (let [d (/ (- b a) n)]
     (take n (iterate (partial + d) a))))
 
+(defn poisson-crosscheck
+  []
+  (let [lambdas [0.5 1 1.5 2 2.5 3 3.5 4 4.5 5]
+        samples (mapcat (fn [lambda]
+                          (let [dist (d/poisson {:lambda lambda})
+                                samples (d/sample 10000 dist)]
+                            (map #(hash-map :lambda lambda :sample %) samples)))
+                        lambdas)]
+    (write/mapseq->csv! samples)))
+
+(defn exponential-crosscheck
+  []
+  (let [lambdas [0.5 1 1.5 2 2.5 3 3.5 4 4.5 5]
+        samples (mapcat (fn [lambda]
+                          (let [dist (d/exponential {:rate lambda})
+                                samples (d/sample 10000 dist)]
+                            (map #(hash-map :lambda lambda :sample %) samples)))
+                        lambdas)]
+    (write/mapseq->csv! samples)))
+
+(defn poisson-exponential-crosscheck
+  []
+  (let [lambdas [0.5 1 1.5 2 2.5 3 3.5 4 4.5 5]
+        samples (mapcat (fn [lambda]
+                          (let [dist (d/poisson {:lambda lambda})
+                                samples (d/sample 10000 dist)]
+                            (map (fn [sample-1]
+                                   (let [constrained-sample (max sample-1 min-exponential-rate)
+                                         dist (d/exponential {:rate constrained-sample})
+                                         sample-2 (d/draw dist)]
+                                     (hash-map :lambda lambda :constrained-sample constrained-sample :poisson-sample sample-1 :exponential-sample sample-2))) samples)))
+                        lambdas)]
+    (write/mapseq->csv! samples)))
+
 (defn scenario-joiners-model
   [joiner-rates project-from project-to simulation-id seed]
   (log/info "scenario-joiners-model begin")
@@ -124,14 +158,12 @@
                                                     (partition 2 1 (get rates-by-age age)))
                                         period-rates (partition-all period-in-days rates)]
                                     (sequence (mapcat (fn [[period-rates seed]]
-                                                        (let [period-rate (* month->period-factor (:n-per-month (first period-rates)))
-                                                              n-per-period (p/sample-1 (d/poisson {:lambda period-rate}) seed)
-                                                              delta-per-period (- n-per-period period-rate)
-                                                              delta-per-month (* period->month-factor delta-per-period)]
+                                                        (let [period-rate (* month->period-factor (transduce (map :n-per-month) k/mean period-rates))
+                                                              n-per-period period-rate #_(p/sample-1 (d/poisson {:lambda period-rate}) seed)
+                                                              n-per-day (* period->day-factor n-per-period)]
                                                           (into []
-                                                                (map (fn [{:keys [n-per-month] :as rate}]
-                                                                       (let [n-per-day (* month->day-factor (+ n-per-month delta-per-month))]
-                                                                         (assoc rate :n-per-day n-per-day))))
+                                                                (map (fn [rate]
+                                                                       (assoc rate :n-per-day n-per-day)))
                                                                 period-rates))))
                                               (map vector period-rates (rand/split-n seed (count period-rates)))))))
                         (range 18))

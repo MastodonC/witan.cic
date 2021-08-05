@@ -246,3 +246,8 @@ joiners_leavers_net <- function(labelled_episodes) {
           rename(n = net) %>%
           mutate(label = "net"))
 }
+
+financial_year <- function(date) {
+  y <- year(date - months(3))
+  paste0(y, "/", substr(y + 1, 3, 4))
+}
