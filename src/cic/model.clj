@@ -52,15 +52,13 @@
                               b (get model-coefs "quarter")
                               c (get model-coefs (str "quarter:admission_age" age) 0.0)
                               y (m/exp (+ intercept a (* b day) (* c day)))
-                              n-per-quarter (p/sample-1 (d/poisson {:lambda y}) seed)
-                              ;; We must protect against divide by zeros
-                              n-per-day (/ n-per-quarter period-in-days) ;; The R code assumes a quarter is 3 * 28 days
+                              n-per-day (* y period->day-factor) ;; The R code assumes a quarter is 3 * 28 days
                               ]
                           {:period-from period-from
                            :period-to period-to
                            :age age
                            :n-per-day n-per-day
-                           :n-per-period n-per-quarter
+                           :n-per-period 0
                            :y-per-period y
                            :simulation-id simulation-id}))
         
