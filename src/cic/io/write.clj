@@ -49,7 +49,7 @@
           projection)))
 
 (defn period->episodes
-  [t0 {:keys [period-id simulation-number beginning dob birthday admission-age episodes end provenance
+  [t0 {:keys [period-id simulation-id beginning dob birthday admission-age episodes end provenance
               match-offset matched-id matched-offset] :as period}]
   (let [placement-sequence (transduce (comp (map (comp name :placement))
                                             (interpose "-"))
@@ -68,7 +68,7 @@
                        (or (nil? b) (> (:offset b) (:offset a)))))
            (map-indexed (fn [idx [{:keys [placement offset]} to]]
                           (hash-map :period-id period-id
-                                    :simulation-number simulation-number
+                                    :simulation-id simulation-id
                                     :episode-number (inc idx)
                                     :dob dob
                                     :admission-age admission-age
@@ -93,12 +93,12 @@
   [project-to]
   (comp #_(filter (fn [{:keys [period-id dob episode start end placement]}]
                     (time/< start project-to)))
-        (map (fn [{:keys [period-id simulation-number dob birthday admission-age
+        (map (fn [{:keys [period-id simulation-id dob birthday admission-age
                           episode-number start end placement offset
                           provenance placement-sequence placement-pathway
                           period-start period-duration period-end period-offset
                           match-offset matched-id matched-offset] :as episode}]
-               (vector simulation-number period-id
+               (vector simulation-id period-id
                        episode-number dob admission-age
                        (date->str birthday)
                        (date->str start)
@@ -228,11 +228,54 @@
           (map fields)
           periods)))
 
+(def joiner-rate-headers
+  (mapv name [:simulation-id :date :date :n-per-month :n-per-day]))
+
 (defn joiner-rates
   [joiner-rates]
-  (let [headers ["age" "day" "rate"]
-        fields (juxt :age (comp date->str :day) (comp double :n-per-day))]
-    (into [headers]
+  (let [fields (juxt :simulation-id (comp date->str :day) :age
+                     (comp double :n-per-month)
+                     (comp double :n-per-day))]
+    (into []
           (map fields)
           joiner-rates)))
 
+(def joiner-rates-headers
+  (mapv name [:simulation-id :period-from :period-to :age :n-per-day
+              :n-per-period :y-per-period]))
+
+(defn joiner-rates-tap
+  [joiner-rates]
+  (let [fields (juxt :simulation-id (comp date->str :period-from) (comp date->str :period-to) :age
+                     (comp double :n-per-day)
+                     (comp double :n-per-period)
+                     (comp double :y-per-period))]
+    (into []
+          (map fields)
+          joiner-rates)))
+
+(def joiner-scenario-headers
+  (mapv name [:simulation-id :date :age :n-per-day :n-per-month]))
+
+(defn joiner-scenario-tap
+  [joiner-rates]
+  (let [fields (juxt :simulation-id (comp date->str :day) :age
+                     (comp double :n-per-day)
+                     (comp double :n-per-month))]
+    (into []
+          (map fields)
+          joiner-rates)))
+
+(def joiner-interval-headers
+  (mapv name [:simulation-id :age :n-per-day :join-date :target-rate :interval-days :interval-adjustment]))
+
+(defn joiner-interval-tap
+  [joiner-intervals]
+  (let [fields (juxt :simulation-id :age :n-per-day
+                     (comp date->str :join-date)
+                     (comp double :target-rate)
+                     (comp double :interval-days)
+                     :interval-adjustment)]
+    (into []
+          (map fields)
+          joiner-intervals)))

@@ -1,5 +1,6 @@
 {:input-directory "data/inputs/"
  :output-directory "data/outputs/"
+ :log-directory #join [#ref [:output-directory] "log/"]
  :file-inputs {:episodes #join [#ref [:input-directory] "scrubbed-episodes.csv"]
                :age-out-proportions #join [#ref [:input-directory] "age-out-proportions.csv"]
                :candidates-simulation #join [#ref [:input-directory] "simulated-candidates.csv"]
@@ -17,7 +18,7 @@
                          :episodes-extract-date #date "2020-03-31"
                          :candidate-variations 100 ;; Used in pre-step creating candidate periods
                          :joiners {:model :scenario
-                                   :train-years 3
+                                   :train-date-range [#date "2015-04-01" #date "2020-04-01"]
                                    }
                          }
 

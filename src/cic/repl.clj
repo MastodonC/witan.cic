@@ -10,6 +10,8 @@
             [cic.summary :as summary]
             [cic.time :as time]
             [clojure.set :as cs]
+            [clojure.java.io :as io]
+            [clojure.data.csv :as csv]
             [me.raynes.fs :as fs]
             [net.cgrand.xforms :as xf]
             [net.cgrand.xforms.rfs :as xrf]
@@ -99,7 +101,6 @@
       (update :ages #(into {} (map (fn [[k v]] (vector k {:median v}))) %))
       (update :placement-ages #(into {} (map (fn [[k v]] (vector k {:median v}))) %))))
 
-
 (defn generate-projection-csv!
   "Main REPL function for writing a projection CSV"
   [{{:keys [rewind-years project-years simulations random-seed episodes-extract-date] {joiner-model-type :model joiner-train-years :train-years joiner-train-date-range :train-date-range} :joiners} :projection-parameters
@@ -107,15 +108,22 @@
     output-parameters :output-parameters
     input-directory :input-directory
     output-directory :output-directory
+    log-directory :log-directory
     config-file :config-file}]
   (let [model-inputs (load-model-inputs file-inputs)
         {:keys [project-from periods duration-model
                 projection-model simulation-model
                 age-out-model age-out-projection-model age-out-simulation-model
                 scenario-joiner-rates]} (prepare-periods model-inputs episodes-extract-date rewind-years)
+        ;; Output files
         projection-summary-output (fs/file output-directory "projection-summary.csv")
         projection-episodes-output (fs/file output-directory "projection-episodes.csv")
         historic-episodes-output (fs/file output-directory "historic-episodes.csv")
+        ;; Log files
+        joiner-rates-log-output (fs/file log-directory "joiner-rates-log.csv")
+        joiner-scenario-log-output (fs/file log-directory "joiner-scenario-log.csv")
+        joiner-interval-log-output (fs/file log-directory "joiner-interval-log.csv")
+        ;;
         project-to (time/years-after project-from project-years)
         t0 (time/min-date (map :beginning periods))
         joiner-train-date-range (or joiner-train-date-range  [(time/years-before project-from joiner-train-years) project-from])
@@ -146,6 +154,7 @@
                       (:output-projection-episodes? output-parameters)
                       (conj :projection-episodes))]
     (fs/mkdir output-directory)
+    (fs/mkdir log-directory)
     (when (:output-file-inputs? output-parameters)
       (fs/copy config-file (fs/file output-directory (fs/base-name config-file)))
       (fs/mkdir (fs/file output-directory "inputs"))
@@ -169,12 +178,30 @@
              (write/episodes-table t0 project-to)
              (write/write-csv! projection-episodes-output))
         (a/>!! result-chan :projection-episodes)))
-    (projection/projection-chan projection-chan
-                                model-seed project-dates
-                                random-seed simulations)
-    (loop [completed #{}]
-      (when-not (= completed to-complete)
-        (recur (conj completed (a/<!! result-chan)))))))
+    (fs/delete joiner-rates-log-output) ;; We're appending, so make sure we have a blank slate
+    (fs/delete joiner-scenario-log-output)
+    (fs/delete joiner-interval-log-output)
+    (with-open [joiner-rates-writer (io/writer joiner-rates-log-output :append true)
+                joiner-scenario-writer (io/writer joiner-scenario-log-output :append true)
+                joiner-interval-writer (io/writer joiner-interval-log-output :append true)]
+      (csv/write-csv joiner-rates-writer (vector write/joiner-rates-headers))
+      (add-tap (fn [{:keys [message-type message]}]
+                 (when (= message-type :joiners)
+                   (csv/write-csv joiner-rates-writer (write/joiner-rates-tap message)))))
+      (csv/write-csv joiner-scenario-writer (vector write/joiner-scenario-headers))
+      (add-tap (fn [{:keys [message-type message]}]
+                 (when (= message-type :scenario-joiners)
+                   (csv/write-csv joiner-scenario-writer (write/joiner-scenario-tap message)))))
+      (csv/write-csv joiner-interval-writer (vector write/joiner-interval-headers))
+      (add-tap (fn [{:keys [message-type message]}]
+                 (when (= message-type :joiner-interval)
+                   (csv/write-csv joiner-interval-writer (write/joiner-interval-tap message)))))
+      (projection/projection-chan projection-chan
+                                  model-seed project-dates
+                                  random-seed simulations)
+      (loop [completed #{}]
+        (when-not (= completed to-complete)
+          (recur (conj completed (a/<!! result-chan))))))))
 
 (defn generate-candidates!
   [{{:keys [rewind-years train-years project-years simulations random-seed episodes-extract-date candidate-variations]} :projection-parameters
