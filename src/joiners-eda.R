@@ -656,3 +656,68 @@ periods %>%
   geom_histogram() +
   geom_vline(aes(xintercept = mean), colour = "orange", linetype = 2)
 
+## Output 8 - remove poisson from untrended
+
+input_dir <- '/Users/henry/Mastodon C/witan.cic/data/bwd/2021-08-05/output-8'
+episodes <- read.csv(file.path(input_dir, episodes_csv), na.strings = "")
+periods <- episodes %>% filter(Episode == 1) %>%
+  mutate(period.start = ymd(Period.Start), quarter = floor_quarter(period.start),
+         financial_year = financial_year(period.start),
+         month = floor_date(period.start, unit = "month"))
+
+joiner_rates_log_csv <- "log/joiner-rates-log.csv"
+joiner_rates_log <- read.csv(file.path(input_dir, joiner_rates_log_csv), na.strings = "")
+
+joiner_rates_log %>%
+  mutate(n.per.month = n.per.day * 365.25 / 12.0) %>%
+  group_by(age) %>%
+  summarise(avg.per.month = mean(n.per.month),
+            l50 = quantile(n.per.month, probs = 0.25),
+            u50 = quantile(n.per.month, probs = 0.75), 
+            l95 = quantile(n.per.month, probs = 0.025),
+            u95 = quantile(n.per.month, probs = 0.975)) %>%
+  mutate(expected = joiners_per_month$rate) %>%
+  ggplot() +
+  geom_segment(aes(x = age, y = l95, xend = age, yend = u95)) +
+  geom_segment(aes(x = age, y = l50, xend = age, yend = u50), size = 1) +
+  geom_point(aes(age, avg.per.month), size = 2) +
+  geom_point(aes(age, expected), color = "red", size = 2)
+
+joiner_rates_log %>%
+  mutate(n.per.month = y.per.period / 84.0 * 365.25 / 12.0) %>%
+  group_by(age) %>%
+  summarise(avg.per.month = mean(n.per.month),
+            l50 = quantile(n.per.month, probs = 0.25),
+            u50 = quantile(n.per.month, probs = 0.75), 
+            l95 = quantile(n.per.month, probs = 0.025),
+            u95 = quantile(n.per.month, probs = 0.975)) %>%
+  mutate(expected = joiners_per_month$rate) %>%
+  ggplot() +
+  geom_segment(aes(x = age, y = l95, xend = age, yend = u95)) +
+  geom_segment(aes(x = age, y = l50, xend = age, yend = u50), size = 1) +
+  geom_point(aes(age, avg.per.month), size = 2) +
+  geom_point(aes(age, expected), color = "red", size = 2)
+
+periods %>%
+  filter(Provenance == "S") %>%
+  group_by(Admission.Age, month, Simulation) %>%
+  summarise(n = n(), .groups = "drop_last") %>%
+  mutate(Admission.Age = factor(Admission.Age), Simulation = factor(Simulation)) %>%
+  complete(Admission.Age, month, Simulation, fill = list(n = 0)) %>%
+  group_by(Admission.Age) %>%
+  summarise(avg.n.per.month = mean(n)) %>%
+  mutate(target.n.per.month = joiners_per_month$rate) %>%
+  select(Admission.Age, target.n.per.month, avg.n.per.month) %>%
+  melt(id.vars = "Admission.Age") %>%
+  ggplot(aes(Admission.Age, value, colour = variable)) +
+  geom_point()
+
+periods %>%
+  filter(Provenance == "S" & financial_year %in% c("2022/23", "2023/24", "2024/25", "2025/26")) %>%
+  group_by(financial_year, Simulation) %>%
+  summarise(n = n(), .groups = "drop_last") %>%
+  ungroup %>%
+  mutate(mean = mean(n)) %>%
+  ggplot(aes(n)) +
+  geom_histogram() +
+  geom_vline(aes(xintercept = mean), colour = "orange", linetype = 2)

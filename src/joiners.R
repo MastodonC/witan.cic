@@ -53,8 +53,6 @@ if (trended) {
         sample_n(c, replace = TRUE) %>%
         dplyr::summarise(n = mean(n))
 
-    write.csv(mean_arrivals, file = paste0("/tmp/witan.cic/",seed.long,".csv"), append = TRUE)
-
     params.df <- data.frame(name = c("(Intercept)", "quarter",
                                      paste0("admission_age", mean_arrivals$admission_age),
                                      paste0("quarter:admission_age", mean_arrivals$admission_age)),
