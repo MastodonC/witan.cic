@@ -3,7 +3,7 @@
             [cic.episodes :as episodes]
             [cic.random :as rand]
             [clojure.set :as cs]
-            [taoensso.timbre :as timbre]))
+            [taoensso.timbre :as log]))
 
 (def segment-interval (* 365 6))
 
@@ -124,7 +124,7 @@
                                                           (time/month-end birth-month))]
                        (if (time/>= latest-birthday earliest-birthday)
                          (assoc period :birthday-bounds [earliest-birthday latest-birthday])
-                         (do (timbre/info (format "Birthday for %s can't be inferred, assuming passed 18. Closing case and truncating at 18" period-id))
+                         (do (log/info (format "Birthday for %s can't be inferred, assuming passed 18. Closing case and truncating at 18" period-id))
                              (assoc period
                                     :birthday-bounds [latest-birthday latest-birthday]
                                     :open? false
@@ -244,36 +244,43 @@
   (into
    []
    (map (fn [[{:keys [period-id beginning open? admission-age birthday duration] :as period} seed]]
-          (if open?
-            (let [[s1 s2] (rand/split seed)
-                  current-duration duration
-                  current-age-days (+ (time/day-interval birthday beginning) duration)
-                  age-out? (age-out-model admission-age current-age-days s1)]
-              (loop [iter 1
-                     seed s2]
-                (let [[s1 s2 s3] (rand/split-n seed 3)]
-                  (if-let [{:keys [episodes-edn duration]} (if age-out?
-                                                             (or (age-out-projection-model period-id s1)
-                                                                 (projection-model period-id s2))
-                                                             (projection-model period-id s3))]
-                    (if (and (< duration current-duration) (< iter 1000))
-                      (recur (inc iter) (rand/next-seed s1))
-                      (let [duration (if (or age-out? (>= (time/year-interval birthday (time/days-after beginning duration)) 17))
-                                       ;; Either we wanted to age out, or they did by virtue of staying beyond 17th birthday
-                                       (max-duration period)
-                                       (min duration (max-duration period)))]
-                        (assoc period
-                               :episodes (read-string episodes-edn)
-                               :duration duration
-                               :end (time/days-after beginning duration)
-                               :provenance "P")))
-                    ;; If we can't close a case, it's almost certainly
-                    ;; because they are an aged-out case. Set max duration
-                    (let [duration (max-duration period)]
-                      (assoc period
-                             :duration duration
-                             :end (time/days-after beginning duration)
-                             :provenance "P"))))))
-            (assoc period :provenance "H"))))
+          (let [{:keys [period-id end] :as period} (if open?
+                                                     (let [[s1 s2] (rand/split seed)
+                                                           current-duration duration
+                                                           current-age-days (+ (time/day-interval birthday beginning) duration)
+                                                           age-out? (age-out-model admission-age current-age-days s1)]
+                                                       (loop [iter 1
+                                                              seed s2]
+                                                         (let [[s1 s2 s3] (rand/split-n seed 3)]
+                                                           (if-let [{:keys [episodes-edn duration]} (if age-out?
+                                                                                                      (or (age-out-projection-model period-id s1)
+                                                                                                          (projection-model period-id s2))
+                                                                                                      (projection-model period-id s3))]
+                                                             (if (and (< duration current-duration) (< iter 1000))
+                                                               (recur (inc iter) (rand/next-seed s1))
+                                                               (let [duration (if (or age-out? (>= (time/year-interval birthday (time/days-after beginning duration)) 17))
+                                                                                ;; Either we wanted to age out, or they did by virtue of staying beyond 17th birthday
+                                                                                (max-duration period)
+                                                                                (min duration (max-duration period)))]
+                                                                 (assoc period
+                                                                        :episodes (read-string episodes-edn)
+                                                                        :duration duration
+                                                                        :end (time/days-after beginning duration)
+                                                                        :provenance "P")))
+                                                             ;; If we can't close a case, it's almost certainly
+                                                             ;; because they are an aged-out case. Set max duration
+                                                             (let [duration (max-duration period)]
+                                                               (assoc period
+                                                                      :duration duration
+                                                                      :end (time/days-after beginning duration)
+                                                                      :provenance "P"))))))
+                                                     (assoc period :provenance "H"))]
+            (when (> (time/year-interval birthday (time/days-before end 1)) 17)
+              (log/info "Closed period exceeds 18" period))
+            period)))
    (map vector periods (rand/split-n seed (count periods)))
    #_(keep identity)))
+
+(defn closed-before-eighteen?
+  [{:keys [birthday end] :as period}]
+  (< (time/year-interval birthday (time/days-before end 1)) 18))

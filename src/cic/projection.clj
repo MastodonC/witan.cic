@@ -7,7 +7,8 @@
             [cic.summary :as summary]
             [cic.time :as time]
             [kixi.stats.distribution :as d]
-            [kixi.stats.protocols :as p]))
+            [kixi.stats.protocols :as p]
+            [taoensso.timbre :as log]))
 
 (defn joiners-seq
   "Return a lazy sequence of projected joiners for a particular age of admission."
@@ -75,6 +76,8 @@
         [joiners-from joiners-to] joiner-range
         all-periods (rand/sample-birthdays periods s1)
         closed-periods (periods/close-open-periods all-periods projection-model age-out-model age-out-projection-model s3)]
+    (when-let [overstays (seq (remove periods/closed-before-eighteen? closed-periods))]
+      (log/error (count overstays) "overstays"))
     {:joiners-model (-> (filter #(time/between? (:beginning %) joiners-from joiners-to) all-periods)
                         (model/joiners-model-gen project-from project-to joiner-model-type scenario-joiner-rates simulation-id s2))
      :periods closed-periods

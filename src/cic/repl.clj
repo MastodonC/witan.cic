@@ -36,6 +36,7 @@
 (defn load-preparation-inputs
   ([{:keys [episodes-csv]}]
    (let [episodes (-> (read/episodes episodes-csv)
+                      ;; FIXME: This should be done in scrubbing
                       (episodes/remove-f6))
          latest-event-date (->> (mapcat (juxt :report-date :ceased) episodes)
                                 (keep identity)
@@ -52,6 +53,7 @@
             candidates-age-out-projection candidates-age-out-simulation
             scenario-joiner-rates]}]
    (let [episodes (-> (read/episodes episodes)
+                      ;; FIXME: This should be done in scrubbing
                       (episodes/remove-f6))
          latest-event-date (->> (mapcat (juxt :report-date :ceased) episodes)
                                 (keep identity)
