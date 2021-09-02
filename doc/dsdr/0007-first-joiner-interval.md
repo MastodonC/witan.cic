@@ -19,7 +19,7 @@ We repeat this loop as often as necessary.
 
 ## Status
 
-Accepted.
+No longer applicable.
 
 ## Consequences
 
