@@ -18,6 +18,8 @@ library(reshape2)
 library(zoo)
 library(dplyr)
 library(tidyr)
+library(ggthemes)
+library(RSQLite)
 ```
 
 ```{r}
@@ -196,7 +198,6 @@ write.csv(age_out_proportions, file = age_out_proportions_output_csv, row.names 
 ```
 
 ```{r}
-library(RSQLite)
 db <- dbConnect(RSQLite::SQLite(), "mastodon.sqlite")
 ```
 
@@ -339,8 +340,6 @@ combined_duration_groups <- rbind(cbind(id = "target", target_projected_duration
       non_join_duration_groups) %>%
   group_by(id, admission_age) %>%
   mutate(density = density / max(density))
-
-library(ggthemes)
 
 for (age in 0:16) {
   print(ggplot(combined_duration_groups %>% filter(admission_age == age), aes(duration_group, density, fill = id)) +
