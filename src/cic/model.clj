@@ -51,7 +51,10 @@
                               a (get model-coefs (str "admission_age" age) 0.0)
                               b (get model-coefs "quarter")
                               c (get model-coefs (str "quarter:admission_age" age) 0.0)
-                              y (m/exp (+ intercept a (* b day) (* c day)))
+                              y (try (m/exp (+ intercept a (* b day) (* c day)))
+                                     (catch Exception e
+                                       (print intercept a age model-coefs)
+                                       (throw e)))
                               n-per-day (* y period->day-factor) ;; The R code assumes a quarter is 3 * 28 days
                               ]
                           {:period-from period-from
@@ -61,7 +64,7 @@
                            :n-per-period 0
                            :y-per-period y
                            :simulation-id simulation-id}))
-        
+
         ;; _ (write/write-csv! "joiner-rates.csv" (write/joiner-rates day-rate-rows))
         day-rate-lookup (->> (mapcat (fn [{:keys [period-from period-to age n-per-day]}]
                                        (map (fn [day]
@@ -204,8 +207,10 @@
                     (time/date-as-string project-to)
                     (str trend-joiners?)
                     (str (Math/abs seed-long)))
-      (-> (read/joiner-csv output)
-          (joiners-model project-from project-to simulation-id s2)))
+      (try (-> (read/joiner-csv output)
+               (joiners-model project-from project-to simulation-id s2))
+           (catch Exception e (println "Failed to create joiners model" input output seed-long)
+                  (throw e))))
     (= joiner-model-type :scenario)
     (scenario-joiners-model scenario-joiner-rates project-from project-to simulation-id seed)))
 
@@ -466,7 +471,7 @@
                        sample)]
     (reduce (fn [counts age]
               (let [n (get-in counts [age :n] 0)
-                    
+
                     adj (/ 1 52)]
                 (reduce (fn [counts week]
                           (-> counts
