@@ -5,10 +5,13 @@
             [clojure.java.shell :as shell]
             [clojure.set :as cs]
             [clojure.string :as str]
+            [clojure.java.io :as io]
             [taoensso.timbre :as log]))
 
 (defn exec
   [script-path & args]
+  (when-not (.exists (io/file script-path))
+    (throw (ex-info "File does not exist" {:file-path script-path})))
   (log/info (format "Executing %s %s" script-path (str/join " " args)))
   (let [return-val (apply shell/sh "Rscript" "--vanilla" script-path args)]
     ;; rscript is quite chatty, so only pass on err text if exit was abnormal
