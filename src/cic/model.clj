@@ -54,8 +54,9 @@
                               c (get model-coefs (str "quarter:admission_age" age) 0.0)
                               y (try (m/exp (+ intercept a (* b day) (* c day)))
                                      (catch Exception e
-                                       (print intercept a age model-coefs)
-                                       (throw e)))
+                                       (throw (ex-info "Model params missing: "
+                                                       {:intercept intercept :a a :age age :model-coefs model-coefs}
+                                                       e))))
                               n-per-day (* y period->day-factor) ;; The R code assumes a quarter is 3 * 28 days
                               ]
                           {:period-from period-from
