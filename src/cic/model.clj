@@ -212,8 +212,10 @@
                     (str (Math/abs seed-long)))
       (try (-> (read/joiner-csv output)
                (joiners-model project-from project-to simulation-id s2))
-           (catch Exception e (println "Failed to create joiners model" input output seed-long)
-                  (throw e))))
+           (catch Exception e
+             (throw (ex-info "Failed to create joiners model"
+                             {:input input :output output :seed-long seed-long}
+                             e)))))
     (= joiner-model-type :scenario)
     (scenario-joiners-model scenario-joiner-rates project-from project-to simulation-id seed)))
 

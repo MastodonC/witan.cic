@@ -13,8 +13,9 @@
   (let [return-val (apply shell/sh "Rscript" "--vanilla" script-path args)]
     ;; rscript is quite chatty, so only pass on err text if exit was abnormal
     (if (not= 0 (:exit return-val))
-      (do (log/error script-path args)
-          (log/error return-val))
+      (throw (ex-info (str (:out return-val) " - " (:err return-val))
+                      (merge return-val
+                             {:script script-path :args-to-r args})))
       (log/info (format "Executed %s" script-path)))))
 
 (def date-format
