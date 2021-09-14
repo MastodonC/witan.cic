@@ -4,17 +4,18 @@
             [clj-time.format :as f]
             [clojure.java.shell :as shell]
             [clojure.set :as cs]
-            [clojure.string :as str]))
+            [clojure.string :as str]
+            [taoensso.timbre :as log]))
 
 (defn exec
   [script-path & args]
-  (println (format "Executing %s %s" script-path (str/join " " args)))
+  (log/info (format "Executing %s %s" script-path (str/join " " args)))
   (let [return-val (apply shell/sh "Rscript" "--vanilla" script-path args)]
     ;; rscript is quite chatty, so only pass on err text if exit was abnormal
-    (when (not= 0 (:exit return-val))
-      (apply println script-path args)
-      (println (:err return-val)))
-    (println (format "Executed %s" script-path))))
+    (if (not= 0 (:exit return-val))
+      (do (log/error script-path args)
+          (log/error return-val))
+      (log/info (format "Executed %s" script-path)))))
 
 (def date-format
   (f/formatter :date-hour-minute-second))
