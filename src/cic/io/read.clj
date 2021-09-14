@@ -108,7 +108,9 @@
                              (update :param parse-double)))
                    (map (juxt :name :param))
                    (into {}))]
-    {:model-coefs coefs}))
+    (when (empty? coefs)
+      (throw (ex-info "Tried to load empty joiner csv"
+                      {:model-coefs coefs :file joiners-csv})))))
 
 (defn costs-csv
   [filename]

@@ -10,6 +10,7 @@
             [clj-time.core :as t]
             [clojure.math.combinatorics :as c]
             [clojure.set :as set]
+            [clojure.java.io :as io]
             [kixi.stats.core :as k]
             [kixi.stats.distribution :as d]
             [kixi.stats.math :as m]
@@ -51,7 +52,12 @@
                               a (get model-coefs (str "admission_age" age) 0.0)
                               b (get model-coefs "quarter")
                               c (get model-coefs (str "quarter:admission_age" age) 0.0)
-                              y (m/exp (+ intercept a (* b day) (* c day)))
+                              y (try (m/exp (+ intercept a (* b day) (* c day)))
+                                     (catch Exception e
+                                       (throw (ex-info "Model params missing. "
+                                                       {:intercept intercept :a a :age age
+                                                        :model-coefs model-coefs :b b :c c}
+                                                       e))))
                               n-per-day (* y period->day-factor) ;; The R code assumes a quarter is 3 * 28 days
                               ]
                           {:period-from period-from
@@ -61,7 +67,7 @@
                            :n-per-period 0
                            :y-per-period y
                            :simulation-id simulation-id}))
-        
+
         ;; _ (write/write-csv! "joiner-rates.csv" (write/joiner-rates day-rate-rows))
         day-rate-lookup (->> (mapcat (fn [{:keys [period-from period-to age n-per-day]}]
                                        (map (fn [day]
@@ -194,7 +200,7 @@
   [periods project-from project-to joiner-model-type scenario-joiner-rates simulation-id seed]
   (cond
     (#{:trended :untrended} joiner-model-type)
-    (let [script "src/joiners.R"
+    (let [script (.getPath (io/resource "R/joiners.R"))
           input (str (rscript/write-periods! periods))
           output (str (write/temp-file "file" ".csv"))
           [s1 s2] (rand/split seed)
@@ -204,8 +210,12 @@
                     (time/date-as-string project-to)
                     (str trend-joiners?)
                     (str (Math/abs seed-long)))
-      (-> (read/joiner-csv output)
-          (joiners-model project-from project-to simulation-id s2)))
+      (try (-> (read/joiner-csv output)
+               (joiners-model project-from project-to simulation-id s2))
+           (catch Exception e
+             (throw (ex-info "Failed to create joiners model"
+                             {:input input :output output :seed-long seed-long}
+                             e)))))
     (= joiner-model-type :scenario)
     (scenario-joiners-model scenario-joiner-rates project-from project-to simulation-id seed)))
 
@@ -466,7 +476,7 @@
                        sample)]
     (reduce (fn [counts age]
               (let [n (get-in counts [age :n] 0)
-                    
+
                     adj (/ 1 52)]
                 (reduce (fn [counts week]
                           (-> counts
