@@ -10,6 +10,7 @@
             [clj-time.core :as t]
             [clojure.math.combinatorics :as c]
             [clojure.set :as set]
+            [clojure.java.io :as io]
             [kixi.stats.core :as k]
             [kixi.stats.distribution :as d]
             [kixi.stats.math :as m]
@@ -197,7 +198,7 @@
   [periods project-from project-to joiner-model-type scenario-joiner-rates simulation-id seed]
   (cond
     (#{:trended :untrended} joiner-model-type)
-    (let [script "src/joiners.R"
+    (let [script (.getPath (io/resource "R/joiners.R"))
           input (str (rscript/write-periods! periods))
           output (str (write/temp-file "file" ".csv"))
           [s1 s2] (rand/split seed)
