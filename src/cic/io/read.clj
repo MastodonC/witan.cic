@@ -109,8 +109,8 @@
                    (map (juxt :name :param))
                    (into {}))]
     (when (empty? coefs)
-      (throw (Exception. "Tried to load empty joiner csv")))
-    {:model-coefs coefs}))
+      (throw (ex-info "Tried to load empty joiner csv"
+                      {:model-coefs coefs :file joiners-csv})))))
 
 (defn costs-csv
   [filename]
