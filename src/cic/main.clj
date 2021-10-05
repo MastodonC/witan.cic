@@ -23,6 +23,12 @@
                    (assoc :config-file config-file))]
     (cic/run-generate-candidates-workflow config)))
 
+(defn run-rejection-sampling
+  [config-file]
+  (let [config (-> (read-config config-file)
+                   (assoc :config-file config-file))]
+    (cic/run-rejection-sampling config)))
+
 (def cli-options
   [
    ["-c" "--config FILE" "Config file"
@@ -36,5 +42,6 @@
         [task] arguments]
     (case task
       "generate-candidates" (run-generate-candidates config-file)
+      "rejection-sampling" (run-rejection-sampling config-file)
       "projection" (run-cic config-file)
       nil (run-cic config-file))))

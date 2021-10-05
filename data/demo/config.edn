@@ -2,6 +2,8 @@
  :output-directory "data/outputs/"
  :log-directory #join [#ref [:output-directory] "log/"]
  :file-inputs {:episodes #join [#ref [:input-directory] "scrubbed-episodes.csv"]
+               :generated-candidates #join [#ref [:input-directory] "generated-candidates.csv"]
+               :target-distribution #join [#ref [:input-directory] "target-distribution.csv"]
                :age-out-proportions #join [#ref [:input-directory] "age-out-proportions.csv"]
                :candidates-simulation #join [#ref [:input-directory] "simulated-candidates.csv"]
                :candidates-projection #join [#ref [:input-directory] "projected-candidates.csv"]
