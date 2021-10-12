@@ -279,3 +279,9 @@
     (into []
           (map fields)
           joiner-intervals)))
+
+(defn write-edn!
+  [out-file data]
+  (with-open [writer (io/writer out-file)]
+    (binding [*out* writer]
+      (pr data))))

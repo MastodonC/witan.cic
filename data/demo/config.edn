@@ -26,6 +26,7 @@
 
  :output-parameters {:output-historic-episodes? true
                      :output-projection-episodes? true
+                     :output-projection-periods? true
                      :output-projection-summary? false
                      :output-file-inputs? false
                      }
