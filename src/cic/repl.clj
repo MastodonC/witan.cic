@@ -1,5 +1,7 @@
 (ns cic.repl
   (:require [clojure.core.async :as a]
+            ;; Required for tagged literals in edn output
+            [clj-time.coerce :as c]
             [cic.episodes :as episodes]
             [cic.io.read :as read]
             [cic.io.write :as write]
