@@ -38,11 +38,11 @@ This simple approach to alternative scenario modelling will create in effect a b
 those for whom the duration cap is applied, and everyone else.
 It will not permit us to describe mode complicated dynamics such as, for example, a tendency of those for whom the cap doesn't apply to remain in care until 18.
 
+Since we cannot change history, we are unable to apply the duration cap to some projected closed period if it would result in shortening the period to before the projection started.
+In these cases we choose not to apply the cap at all for now, although we expect this logic may be made more sophisticated in future.
+
+Each simulation represents an entire potential future CiC timeline.
+If the scenario requires us to model some phased introduction of e.g. SGOs, then we ought to be able to model this per simulation.
+
 By definition the duration cap can't lengthen a child's time in care, only shorten it.
 All alternative duration scenarios will therefore result in the same of fewer children in care, never more.
-
-
-
-
-
-
