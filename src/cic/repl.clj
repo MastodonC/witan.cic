@@ -1,5 +1,7 @@
 (ns cic.repl
   (:require [clojure.core.async :as a]
+            ;; Required for tagged literals in edn output
+            [clj-time.coerce :as c]
             [cic.episodes :as episodes]
             [cic.io.read :as read]
             [cic.io.write :as write]
@@ -120,6 +122,7 @@
         ;; Output files
         projection-summary-output (fs/file output-directory "projection-summary.csv")
         projection-episodes-output (fs/file output-directory "projection-episodes.csv")
+        projection-periods-output (fs/file output-directory "projection-periods.edn")
         historic-episodes-output (fs/file output-directory "historic-episodes.csv")
         ;; Log files
         joiner-rates-log-output (fs/file log-directory "joiner-rates-log.csv")
@@ -154,7 +157,9 @@
                       (:output-projection-summary? output-parameters)
                       (conj :projection-summary)
                       (:output-projection-episodes? output-parameters)
-                      (conj :projection-episodes))]
+                      (conj :projection-episodes)
+                      (:output-projection-periods? output-parameters)
+                      (conj :projection-periods))]
     (fs/mkdir output-directory)
     (fs/mkdir log-directory)
     (when (:output-file-inputs? output-parameters)
@@ -180,6 +185,11 @@
              (write/episodes-table t0 project-to)
              (write/write-csv! projection-episodes-output))
         (a/>!! result-chan :projection-episodes)))
+    (when (:output-projection-periods? output-parameters)
+      (a/thread
+        (->> (projection/project-n projection-mult)
+             (write/write-edn! projection-periods-output))
+        (a/>!! result-chan :projection-periods)))
     (fs/delete joiner-rates-log-output) ;; We're appending, so make sure we have a blank slate
     (fs/delete joiner-scenario-log-output)
     (fs/delete joiner-interval-log-output)
