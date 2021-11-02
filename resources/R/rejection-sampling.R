@@ -10,7 +10,7 @@ library(tidyr)
 library(ggthemes)
 library(RSQLite)
 
-source(file.path(here(), "Resources/R/helpers.R"))
+source(file.path(here(), "resources/R/helpers.R"))
 
 args = commandArgs(trailingOnly=TRUE)
 input_csv <- args[1]
@@ -22,17 +22,23 @@ simulated_output_csv <- args[6]
 projected_output_csv <- args[7]
 simulated_age_out_output_csv <- args[8]
 projected_age_out_output_csv <- args[9]
-seed.long <- args[10]
+charts_output_directory <- args[10]
+seed.long <- args[11]
 set.seed(seed.long)
 
 data <- read.csv(input_csv)
 data$report_date <- ymd(data$report_date)
 data$ceased <- ymd(data$ceased)
 
+
+pdf(file = file.path(charts_output_directory, "ensure-no-date-outliers.pdf"))
+
 data.frame(xs = c(data$report_date, data$ceased)) %>%
   filter(!is.na(xs)) %>%
-  filter(xs > as.Date("2020-01-01")) %>%
-  ggplot(aes(xs)) + geom_histogram()
+  filter(xs > Sys.Date() - years(1)) %>%
+    ggplot(aes(xs)) + geom_histogram()
+
+dev.off()
 
 # Fix dodgy NAs
 
@@ -143,10 +149,15 @@ quantiles <- reshape2::melt(stats::quantile(fit, probs = seq(0,1,length.out = 10
   as.data.frame
 colnames(quantiles) <- c("quantile", "exit_age", "admission_age")
 
+pdf(file = file.path(charts_output_directory, "ensure-age-out-peak-after-threshold.pdf"))
+
 ggplot(quantiles %>% mutate(admission_age = factor(admission_age)), aes(exit_age, quantile)) +
   geom_line() +
   facet_wrap(vars(admission_age)) +
-  geom_vline(xintercept = 6565, linetype = 2, alpha = 0.2)
+  geom_vline(xintercept = 6565, linetype = 2, alpha = 0.2) +
+  coord_cartesian(xlim = c(5000, 7000))
+
+dev.off()
 
 age_out_proportions <- quantiles %>%
   arrange(admission_age) %>%
@@ -159,9 +170,13 @@ age_out_proportions <- quantiles %>%
   slice(1) %>%
   rename(current_age_days = exit_age)
 
+pdf(file = file.path(charts_output_directory, "leave-age-distribution-before-age-out.pdf"))
+
 ggplot(age_out_proportions, aes(current_age_days, p, group = admission_age)) +
   geom_line() +
   facet_wrap(vars(admission_age))
+
+dev.off()
 
 write.csv(age_out_proportions, file = age_out_proportions_output_csv, row.names = FALSE)
 
@@ -257,11 +272,15 @@ GROUP BY admission_age, duration_group;")
 target_projected_duration_groups <- dbGetQuery(db, "SELECT admission_age, duration_group, density
                                   FROM target_projected_distribution")
 
+pdf(file = file.path(charts_output_directory, "target-duration-distributions.pdf"))
+
 for (age in 0:16) {
   print(ggplot(target_projected_duration_groups %>% filter(admission_age == age), aes(duration_group, density)) +
     geom_bar(stat = "identity") +
     facet_wrap(vars(admission_age), scales = "free_y"))
 }
+
+dev.off()
 
 non_join_duration_groups <- dbGetQuery(db, "WITH empty_ids AS (
 SELECT fp.id
@@ -283,12 +302,16 @@ combined_duration_groups <- rbind(cbind(id = "target", target_projected_duration
   group_by(id, admission_age) %>%
   mutate(density = density / max(density))
 
+pdf(file = file.path(charts_output_directory, "flag-cases-with-no-duration-match.pdf"))
+
 for (age in 0:16) {
   print(ggplot(combined_duration_groups %>% filter(admission_age == age), aes(duration_group, density, fill = id)) +
   geom_bar(stat = "identity", position = "fill") +
   facet_wrap(vars(admission_age)) +
   scale_fill_manual(values = tableau_color_pal("Tableau 20")(20)))
 }
+
+dev.off()
 
 ## Shows they should all remain until 18
 
