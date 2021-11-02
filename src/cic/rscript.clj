@@ -12,6 +12,8 @@
   [script-path & args]
   (when-not (.exists (io/file script-path))
     (throw (ex-info "File does not exist" {:file-path script-path})))
+  (when-not (every? (complement nil?) args)
+    (throw (ex-info (str "All arguments to script must be non-nil: " args) {:args args})))
   (log/info (format "Executing %s %s" script-path (str/join " " args)))
   (let [return-val (apply shell/sh "Rscript" "--vanilla" script-path args)]
     ;; rscript is quite chatty, so only pass on err text if exit was abnormal

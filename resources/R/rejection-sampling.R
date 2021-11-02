@@ -1,15 +1,4 @@
----
-title: "CiC Rejection Sampling"
-output: html_notebook
----
-
-This workbook is responsible for creating some useful model inputs:
-* Creating a target duration distribution for each join age using survival analysis
-* Accounting for the effect of aging out (a dynamic which must be handled separately from survival analysis)
-* Creating model input files containing pre-calculated CiC periods which when sampled match the inferred target duration distribution
-
-
-```{r}
+library(here)
 library(lubridate)
 library(survival)
 library(survminer)
@@ -20,36 +9,36 @@ library(dplyr)
 library(tidyr)
 library(ggthemes)
 library(RSQLite)
-```
 
-```{r}
-source("helpers.R")
-```
+source(file.path(here(), "resources/R/helpers.R"))
 
-```{r}
-
-extract_date <- as.Date("2020-03-31")
-input_csv <- "../data/scc/2021-04-08/suffolk-scrubbed-episodes-20210219.csv"
-# All of the periods we have simulated
-periods_universe_csv <- "/Users/Seb/code/witan.csc.suffolk/data/outputs/generated-candidates.csv"
-
-output_csv <- "../data/scc/2021-04-08/target-distribution.csv"
-age_out_proportions_output_csv <- "../data/scc/2021-04-08/age-out-proportions.csv"
-
-simulated_output_csv <- "../data/scc/2021-04-08/simulated-candidates.csv"
-projected_output_csv <- "../data/scc/2021-04-08/projected-candidates.csv"
-simulated_age_out_output_csv <- "../data/scc/2021-04-08/simulated-age-out-candidates.csv"
-projected_age_out_output_csv <- "../data/scc/2021-04-08/projected-age-out-candidates.csv"
+args = commandArgs(trailingOnly=TRUE)
+input_csv <- args[1]
+periods_universe_csv <- args[2]
+extract_date <- as.Date(parse_date_time(args[3], "%Y-%m-%d"))
+output_csv <- args[4]
+age_out_proportions_output_csv <- args[5]
+simulated_output_csv <- args[6]
+projected_output_csv <- args[7]
+simulated_age_out_output_csv <- args[8]
+projected_age_out_output_csv <- args[9]
+charts_output_directory <- args[10]
+seed.long <- args[11]
+set.seed(seed.long)
 
 data <- read.csv(input_csv)
 data$report_date <- ymd(data$report_date)
 data$ceased <- ymd(data$ceased)
 
+
+pdf(file = file.path(charts_output_directory, "ensure-no-date-outliers.pdf"))
+
 data.frame(xs = c(data$report_date, data$ceased)) %>%
   filter(!is.na(xs)) %>%
-  filter(xs > as.Date("2020-01-01")) %>%
-  ggplot(aes(xs)) + geom_histogram()
+  filter(xs > Sys.Date() - years(1)) %>%
+    ggplot(aes(xs)) + geom_histogram()
 
+dev.off()
 
 # Fix dodgy NAs
 
@@ -60,9 +49,7 @@ data.frame(xs = c(data$report_date, data$ceased)) %>%
 # data %>% filter(period_id == "486-1")
 #
 # data %>% filter(period_id == "1815-1")
-```
 
-```{r}
 
 # Creates data that will be fed to the survival curve fitting model.
 # We only know which month each child's birthday falls in, so we create a record
@@ -119,11 +106,6 @@ survival_data4 <- survival_data3 %>%
          fuzzed_duration = if_else(aged_out, max_duration, fuzzed_duration),
          fuzzed_exit_age = fuzzed_duration + day_diff(birthday, period_start))
 
-```
-
-
-
-```{r}
 fit <- survfit(Surv(fuzzed_duration, event) ~ admission_age, data = survival_data4 %>% filter(!aged_out))
 quantiles <- reshape2::melt(stats::quantile(fit, probs = seq(0,0.9999,length.out = 10000))$quantile) %>%
   mutate(join_age = as.integer(str_replace(Var1, "admission_age=", ""))) %>%
@@ -156,12 +138,7 @@ target_distribution <- quantiles %>%
   mutate(density = quantile - coalesce(lag(quantile), 0)) %>%
   mutate(density = density * 100 / sum(density))
 
-
-
 write.csv(target_distribution, file = output_csv, row.names = FALSE)
-```
-
-```{r}
 
 # Calculate probability that joiner of each age makes it past 17th birthday
 
@@ -172,11 +149,15 @@ quantiles <- reshape2::melt(stats::quantile(fit, probs = seq(0,1,length.out = 10
   as.data.frame
 colnames(quantiles) <- c("quantile", "exit_age", "admission_age")
 
+pdf(file = file.path(charts_output_directory, "ensure-age-out-peak-after-threshold.pdf"))
+
 ggplot(quantiles %>% mutate(admission_age = factor(admission_age)), aes(exit_age, quantile)) +
   geom_line() +
   facet_wrap(vars(admission_age)) +
-  geom_vline(xintercept = 6565, linetype = 2, alpha = 0.2)
+  geom_vline(xintercept = 6565, linetype = 2, alpha = 0.2) +
+  coord_cartesian(xlim = c(5000, 7000))
 
+dev.off()
 
 age_out_proportions <- quantiles %>%
   arrange(admission_age) %>%
@@ -189,19 +170,18 @@ age_out_proportions <- quantiles %>%
   slice(1) %>%
   rename(current_age_days = exit_age)
 
+pdf(file = file.path(charts_output_directory, "leave-age-distribution-before-age-out.pdf"))
+
 ggplot(age_out_proportions, aes(current_age_days, p, group = admission_age)) +
   geom_line() +
   facet_wrap(vars(admission_age))
 
+dev.off()
+
 write.csv(age_out_proportions, file = age_out_proportions_output_csv, row.names = FALSE)
 
-```
-
-```{r}
 db <- dbConnect(RSQLite::SQLite(), "mastodon.sqlite")
-```
 
-```{r}
 # Upload periods universe
 periods_universe <- read.csv(periods_universe_csv)
 
@@ -212,23 +192,17 @@ dbWriteTable(db, "periods", staged, overwrite = TRUE, row.names = FALSE)
 # Upload target distribution
 staged <- target_distribution[,c("admission_age", "duration_group", "density")]
 dbWriteTable(db, "target_distribution", staged, overwrite = TRUE, row.names = FALSE)
-```
 
-We create versions of the input periods to try and get good coverage of the whole target distribution.
-This means adjusting the total duration by up to 10 weeks either way.
-We don't filter periods which go over 18 because we adjust the birthdays in the following section.
+## We create versions of the input periods to try and get good coverage of the whole target distribution.
+## This means adjusting the total duration by up to 10 weeks either way.
+## We don't filter periods which go over 18 because we adjust the birthdays in the following section.
 
-```{r}
 noise <- data.frame(x = (seq(-10, 10) * 7))
 dbWriteTable(db, "noise", noise, overwrite = TRUE, row.names = FALSE)
-```
 
-```{sql connection=db}
-DROP TABLE IF EXISTS fuzzy_periods;
-```
+dbExecute(db, "DROP TABLE IF EXISTS fuzzy_periods;")
 
-```{sql connection=db}
-CREATE TABLE fuzzy_periods AS
+dbExecute(db, "CREATE TABLE fuzzy_periods AS
 WITH x AS (
   SELECT x FROM noise
 )
@@ -237,12 +211,9 @@ SELECT p.provenance, p.id, p.sample_index, p.admission_age, p.admission_age_days
 FROM periods AS p
   CROSS JOIN x
 WHERE (duration + x >= 28 OR x = 0)
-AND aged_out = 'false';
-```
+AND aged_out = 'false';")
 
-```{sql connection=db}
-
-INSERT INTO fuzzy_periods
+dbExecute(db, "INSERT INTO fuzzy_periods
 WITH x AS (
   SELECT x FROM noise
 )
@@ -253,17 +224,14 @@ FROM periods AS p
 WHERE duration + x >= 0
 AND duration + x < 28
 AND x != 0
-AND aged_out = 'false';
-```
+AND aged_out = 'false';")
 
-For all those who join aged at least 1, we create versions of all simulated and projected data with fuzzed birthdays: up to 5 weeks in either direction.
-```{r}
+# For all those who join aged at least 1, we create versions of all simulated and projected data with fuzzed birthdays: up to 5 weeks in either direction.
+
 noise <- data.frame(x = (seq(-5, 5) * 7))
 dbWriteTable(db, "noise", noise, overwrite = TRUE, row.names = FALSE)
-```
 
-```{sql connection=db}
-WITH x AS (
+dbExecute(db, "WITH x AS (
   SELECT x FROM noise
 )
 INSERT INTO fuzzy_periods
@@ -271,26 +239,18 @@ SELECT p.provenance, p.id, p.sample_index, CAST(p.admission_age_days + x AS int)
 FROM fuzzy_periods AS p
 CROSS JOIN x
 WHERE x != 0 AND CAST(p.admission_age_days + x AS int) / 365 >= 1
-AND provenance IN ('S', 'P');
-```
-```{sql connection=db}
-DROP TABLE IF EXISTS candidate_distributions;
-```
+AND provenance IN ('S', 'P');")
 
-```{sql connection=db}
-DROP TABLE IF EXISTS target_projected_distribution;
-```
+dbExecute(db, "DROP TABLE IF EXISTS candidate_distributions;")
 
-```{sql connection=db}
-CREATE TABLE candidate_distributions AS
+dbExecute(db, "DROP TABLE IF EXISTS target_projected_distribution;")
+
+dbExecute(db, "CREATE TABLE candidate_distributions AS
 SELECT provenance, admission_age, duration_group, COUNT(*) AS density
 FROM fuzzy_periods
-GROUP BY provenance, admission_age, duration_group;
-```
+GROUP BY provenance, admission_age, duration_group;")
 
-
-```{sql connection=db}
-CREATE TABLE target_projected_distribution AS
+dbExecute(db, "CREATE TABLE target_projected_distribution AS
 WITH open_period_durations AS (
   SELECT *, CAST(duration AS int) / 7 AS duration_group
   FROM periods
@@ -305,21 +265,22 @@ tpd AS (
 )
 SELECT admission_age, duration_group, SUM(density) AS density
 FROM tpd
-GROUP BY admission_age, duration_group;
-```
+GROUP BY admission_age, duration_group;")
 
-We need to ensure that every ID to be projected has at least one period with a non-zero density in the target (otherwise it will never be chosen)
-
-```{r}
+## We need to ensure that every ID to be projected has at least one period with a non-zero density in the target (otherwise it will never be chosen)
 
 target_projected_duration_groups <- dbGetQuery(db, "SELECT admission_age, duration_group, density
                                   FROM target_projected_distribution")
+
+pdf(file = file.path(charts_output_directory, "target-duration-distributions.pdf"))
 
 for (age in 0:16) {
   print(ggplot(target_projected_duration_groups %>% filter(admission_age == age), aes(duration_group, density)) +
     geom_bar(stat = "identity") +
     facet_wrap(vars(admission_age), scales = "free_y"))
 }
+
+dev.off()
 
 non_join_duration_groups <- dbGetQuery(db, "WITH empty_ids AS (
 SELECT fp.id
@@ -341,6 +302,8 @@ combined_duration_groups <- rbind(cbind(id = "target", target_projected_duration
   group_by(id, admission_age) %>%
   mutate(density = density / max(density))
 
+pdf(file = file.path(charts_output_directory, "flag-cases-with-no-duration-match.pdf"))
+
 for (age in 0:16) {
   print(ggplot(combined_duration_groups %>% filter(admission_age == age), aes(duration_group, density, fill = id)) +
   geom_bar(stat = "identity", position = "fill") +
@@ -348,26 +311,20 @@ for (age in 0:16) {
   scale_fill_manual(values = tableau_color_pal("Tableau 20")(20)))
 }
 
+dev.off()
+
 ## Shows they should all remain until 18
 
-```
-```{sql connection=db}
-SELECT *
+dbExecute(db, "SELECT *
   FROM fuzzy_periods
   WHERE provenance = 'S'
-  AND admission_age = 17
-```
+  AND admission_age = 17;")
 
-```{sql connection=db}
-DROP TABLE IF EXISTS simulated_candidates;
-```
+dbExecute(db, "DROP TABLE IF EXISTS simulated_candidates;")
 
-```{sql connection=db}
-DROP TABLE IF EXISTS projected_candidates;
-```
+dbExecute(db, "DROP TABLE IF EXISTS projected_candidates;")
 
-```{sql connection=db}
--- Update destination if necessary
+dbExecute(db, "-- Update destination if necessary
 CREATE TABLE projected_candidates AS
 WITH source_periods AS (
   -- Update source periods if necessary
@@ -396,13 +353,12 @@ FROM source_periods fp
 INNER JOIN reject_proportions rp
 ON fp.admission_age = rp.admission_age
 AND fp.duration_group = rp.duration_group
-WHERE random() <= 0.25;
-```
+WHERE random() <= 0.25;")
 
-```{sql connection=db}
--- If no samples from a particular candidate made it through rejection sampling,
--- bypass rejection sampling to add them in, because otherwise they will be dropped completely.
-INSERT INTO projected_candidates
+## If no samples from a particular candidate made it through rejection sampling,
+## bypass rejection sampling to add them in, because otherwise they will be dropped completely.
+
+dbExecute(db, "INSERT INTO projected_candidates
 WITH missing_periods AS (
 SELECT *, row_number() OVER (PARTITION BY id ORDER BY random()) AS rand_id
 FROM fuzzy_periods fp
@@ -416,12 +372,10 @@ AND id NOT IN (
 -- However this would cause them to remain in their final placement for a long time.
 SELECT provenance, id, sample_index, admission_age, admission_age_days, duration, duration_group, episodes_edn, 1.0 AS reject_ratio
 FROM missing_periods
-WHERE rand_id <= 100;
-```
+WHERE rand_id <= 100;")
 
-```{sql connection=db}
--- Update destination if necessary
-CREATE TABLE simulated_candidates AS
+## Update destination if necessary
+dbExecute(db, "CREATE TABLE simulated_candidates AS
 WITH source_periods AS (
   -- Update source periods if necessary
   SELECT *
@@ -449,28 +403,17 @@ FROM source_periods fp
 INNER JOIN reject_proportions rp
 ON fp.admission_age = rp.admission_age
 AND fp.duration_group = rp.duration_group
-WHERE random() <= 0.25;
+WHERE random() <= 0.25;")
 
-```
-
-```{sql connection=db}
-SELECT *
+dbExecute(db, "SELECT *
   FROM simulated_candidates
-  WHERE admission_age = 17;
+  WHERE admission_age = 17;")
 
-```
-
-```{sql connection=db}
-
-INSERT INTO simulated_candidates
+dbExecute(db, "INSERT INTO simulated_candidates
 SELECT *, 1 AS reject_ratio
   FROM fuzzy_periods
   WHERE provenance = 'S'
-  AND admission_age = 17;
-
-```
-
-```{r}
+  AND admission_age = 17;")
 
 staged <- dbGetQuery(db, "SELECT * FROM projected_candidates");
 write.csv(staged, file = projected_output_csv, row.names = FALSE)
@@ -489,7 +432,6 @@ FROM fuzzy_periods
 WHERE provenance = 'S' AND admission_age = 17")
 write.csv(staged, file = simulated_age_out_output_csv, row.names = FALSE)
 
-
 staged <- dbGetQuery(db, "SELECT provenance, id, sample_index, admission_age, admission_age_days, duration, episodes_edn
 FROM periods
 WHERE provenance = 'P'
@@ -497,13 +439,6 @@ AND aged_out = 'true'
 AND admission_age_days + duration > (17 * 365)")
 write.csv(staged, file = projected_age_out_output_csv, row.names = FALSE)
 
-```
-
-
-```{sql connection=db}
-
-SELECT provenance, id, sample_index, admission_age, admission_age_days, duration, episodes_edn
+dbExecute(db, "SELECT provenance, id, sample_index, admission_age, admission_age_days, duration, episodes_edn
 FROM fuzzy_periods
-WHERE provenance = 'S' AND admission_age = 17
-
-```
+WHERE provenance = 'S' AND admission_age = 17")
