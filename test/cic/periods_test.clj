@@ -100,3 +100,42 @@
 	       :join-age-days 31
 	       :initial? false}]
              (sut/segment period))))))
+
+(deftest assoc-birthday-bounds-test
+  (testing "birthday bounds are constrained to the birth month"
+    (let [period {:beginning (time/make-date 2010 2 1)
+                  :snapshot-date (time/make-date 2010 2 2)
+                  :birth-month (time/make-date 2010 1 1)
+                  :period-id "abc"}]
+      (is (= [(assoc period :birthday-bounds [(time/make-date 2010 1 1)
+                                              (time/make-date 2010 1 31)])]
+             (sut/assoc-birthday-bounds [period])))))
+  (testing "birthday must be before beginning"
+    (let [period {:beginning (time/make-date 2010 1 15)
+                  :snapshot-date (time/make-date 2010 2 2)
+                  :birth-month (time/make-date 2010 1 1)
+                  :period-id "abc"}]
+      (is (= [(assoc period :birthday-bounds [(time/make-date 2010 1 1)
+                                              (time/make-date 2010 1 15)])]
+             (sut/assoc-birthday-bounds [period])))))
+  (testing "birthday should not result in adult leaver"
+    (let [period {:beginning (time/make-date 2010 2 1)
+                  :snapshot-date (time/make-date 2028 2 2)
+                  :birth-month (time/make-date 2010 1 1)
+                  :end (time/make-date 2028 1 15)
+                  :period-id "abc"}]
+      (is (= [(assoc period :birthday-bounds [(time/make-date 2010 1 15)
+                                              (time/make-date 2010 1 31)])]
+             (sut/assoc-birthday-bounds [period])))))
+  (testing "impossible constraints result in closed and truncated case"
+    (let [period {:beginning (time/make-date 2010 2 1)
+                  :snapshot-date (time/make-date 2028 2 2)
+                  :birth-month (time/make-date 2010 1 1)
+                  :end (time/make-date 2028 2 15)
+                  :period-id "abc"}]
+      (is (= [(assoc period :birthday-bounds [(time/make-date 2010 1 31)
+                                              (time/make-date 2010 1 31)]
+                     :end (time/make-date 2028 1 30)
+                     :open? false
+                     :duration 6573)]
+             (sut/assoc-birthday-bounds [period]))))))
