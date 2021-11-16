@@ -45,3 +45,19 @@
 	    :provenance "S"
 	    :end (time/make-date 2027 12 31)}
            (dissoc (sut/markov-period period offset-segments rejection-model) :seed)))))
+
+(deftest projection-model-test
+  (let [candidates [{:id "abc" :reject-ratio 1}
+                    {:id "abc" :reject-ratio 0.5}]
+        model (sut/projection-model candidates)
+        seed (random/seed 42)]
+    (is (= {:id "abc" :reject-ratio 1 :iterations 3}
+           (model "abc" seed)))))
+
+(deftest simulation-model-test
+  (let [candidates [{:admission-age 0 :reject-ratio 1}
+                    {:admission-age 0 :reject-ratio 0.5}]
+        model (sut/simulation-model candidates)
+        seed (random/seed 21)]
+    (is (= {:admission-age 0 :reject-ratio 1 :iterations 0}
+           (model 0 seed)))))
