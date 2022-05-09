@@ -10,8 +10,6 @@ library(tidyr)
 library(ggthemes)
 library(RSQLite)
 
-source(file.path(here(), "resources/R/helpers.R"))
-
 args = commandArgs(trailingOnly=TRUE)
 input_csv <- args[1]
 periods_universe_csv <- args[2]
@@ -24,7 +22,10 @@ simulated_age_out_output_csv <- args[8]
 projected_age_out_output_csv <- args[9]
 charts_output_directory <- args[10]
 seed.long <- args[11]
+helper_file <- args[12]
+
 set.seed(seed.long)
+source(helper_file)
 
 data <- read.csv(input_csv)
 data$report_date <- ymd(data$report_date)
