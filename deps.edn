@@ -14,7 +14,7 @@
          org.clojure/tools.cli {:mvn/version "1.0.206"}}
  :aliases
  {:big-mem {:jvm-opts ["-Xmx8g"]}
-  :test   {:extra-paths ["clojure/test"]
+  :test   {:extra-paths ["test"]
            :extra-deps  {org.clojure/test.check {:mvn/version "0.10.0"}}}
   :runner
   {:extra-deps {com.cognitect/test-runner

@@ -641,7 +641,7 @@
                 {:keys [reject-ratio] :as candidate} (rand/rand-nth candidates s1)
                 u (rand/rand-double s2)]
             (if (or (<= u (* c reject-ratio)) (> counter 100000))
-              candidate
+              (assoc candidate :iterations counter)
               (recur (inc counter) (rand/next-seed s1)))))
         (println "Couldn't complete" period-id)))))
 

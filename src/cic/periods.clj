@@ -263,6 +263,7 @@
                                                                                 (max-duration period)
                                                                                 (min duration (max-duration period)))]
                                                                  (assoc period
+                                                                        :open? false
                                                                         :episodes (read-string episodes-edn)
                                                                         :duration duration
                                                                         :end (time/days-after beginning duration)
@@ -271,10 +272,12 @@
                                                              ;; because they are an aged-out case. Set max duration
                                                              (let [duration (max-duration period)]
                                                                (assoc period
+                                                                      :open? false
                                                                       :duration duration
                                                                       :end (time/days-after beginning duration)
                                                                       :provenance "P"))))))
-                                                     (assoc period :provenance "H"))]
+                                                     (assoc period
+                                                            :provenance "H"))]
             (when (> (time/year-interval birthday (time/days-before end 1)) 17)
               (log/info "Closed period exceeds 18" period))
             period)))
