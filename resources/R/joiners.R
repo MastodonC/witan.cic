@@ -50,7 +50,7 @@ if (trended) {
     mean_arrivals <- dat %>%
         group_by(admission_age) %>%
         dplyr::mutate(c = n()) %>%
-        sample_n(c, replace = TRUE) %>%
+        slice_sample(prop = 1, replace = TRUE) %>%
         dplyr::summarise(n = mean(n))
 
     params.df <- data.frame(name = c("(Intercept)", "quarter",
