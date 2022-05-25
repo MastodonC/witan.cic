@@ -204,17 +204,17 @@
           input (str (rscript/write-periods! periods))
           output (str (write/temp-file "file" ".csv"))
           [s1 s2] (rand/split seed)
-          seed-long (rand/rand-long s1)
+          seed-int (rand/rand-int 999999999 s1)
           trend-joiners? (= joiner-model-type :trended)]
       (rscript/exec script input output
                     (time/date-as-string project-to)
                     (str trend-joiners?)
-                    (str (Math/abs seed-long)))
+                    (str (Math/abs seed-int)))
       (try (-> (read/joiner-csv output)
                (joiners-model project-from project-to simulation-id s2))
            (catch Exception e
              (throw (ex-info "Failed to create joiners model"
-                             {:input input :output output :seed-long seed-long}
+                             {:input input :output output :seed-int seed-int}
                              e)))))
     (= joiner-model-type :scenario)
     (scenario-joiners-model scenario-joiner-rates project-from project-to simulation-id seed)))
