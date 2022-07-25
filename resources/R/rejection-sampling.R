@@ -10,6 +10,8 @@ library(tidyr)
 library(ggthemes)
 library(RSQLite)
 
+eighteen_years = 6575 # in days
+
 args = commandArgs(trailingOnly=TRUE)
 input_csv <- args[1]
 periods_universe_csv <- args[2]
@@ -155,7 +157,7 @@ pdf(file = file.path(charts_output_directory, "ensure-age-out-peak-after-thresho
 ggplot(quantiles %>% mutate(admission_age = factor(admission_age)), aes(exit_age, quantile)) +
   geom_line() +
   facet_wrap(vars(admission_age)) +
-  geom_vline(xintercept = 6565, linetype = 2, alpha = 0.2) +
+  geom_vline(xintercept = eighteen_years, linetype = 2, alpha = 0.2) +
   coord_cartesian(xlim = c(5000, 7000))
 
 dev.off()
@@ -163,7 +165,7 @@ dev.off()
 age_out_proportions <- quantiles %>%
   arrange(admission_age) %>%
   group_by(admission_age) %>%
-  mutate(age_out_quantile = min(if_else(exit_age >= 6565, quantile, NA_real_), na.rm = TRUE)) %>%
+  mutate(age_out_quantile = min(if_else(exit_age > eighteen_years, quantile, NA_real_), na.rm = TRUE)) %>%
   mutate(age_out_quantile = if_else(is.infinite(age_out_quantile), 100, age_out_quantile)) %>%
   mutate(p = (100 - age_out_quantile) / (100 - quantile)) %>%
   mutate(p = pmin(p, 1.0)) %>%
