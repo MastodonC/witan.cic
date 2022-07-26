@@ -165,7 +165,7 @@ dev.off()
 age_out_proportions <- quantiles %>%
   arrange(admission_age) %>%
   group_by(admission_age) %>%
-  mutate(age_out_quantile = min(if_else(exit_age > eighteen_years, quantile, NA_real_), na.rm = TRUE)) %>%
+  mutate(age_out_quantile = min(if_else(exit_age >= eighteen_years, quantile, NA_real_), na.rm = TRUE)) %>%
   mutate(age_out_quantile = if_else(is.infinite(age_out_quantile), 100, age_out_quantile)) %>%
   mutate(p = (100 - age_out_quantile) / (100 - quantile)) %>%
   mutate(p = pmin(p, 1.0)) %>%
