@@ -124,7 +124,7 @@ for (row in 1:nrow(quantiles)) {
   quantiles[row,is.na(quantiles[row,])] <- max_days
   quantiles[row,quantiles[row,] > max_days] <- max_days
 }
-quantiles <- cbind(quantiles, data.frame(`100` = 17:1*365))
+quantiles <- cbind(quantiles, data.frame(`100` = (17:1)*365))
 colnames(quantiles) <- c("admission_age", seq(0, 10000, length.out = ncol(quantiles) - 1))
 quantiles <- melt(quantiles, id.vars = "admission_age") %>%
   mutate(quantile = as.numeric(variable) / 10000.0,
