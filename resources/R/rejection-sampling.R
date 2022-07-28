@@ -124,7 +124,7 @@ for (row in 1:nrow(quantiles)) {
   quantiles[row,is.na(quantiles[row,])] <- max_days
   quantiles[row,quantiles[row,] > max_days] <- max_days
 }
-quantiles <- cbind(quantiles, data.frame(`100` = 17:1*365))
+quantiles <- cbind(quantiles, data.frame(`100` = (17:1)*365))
 colnames(quantiles) <- c("admission_age", seq(0, 10000, length.out = ncol(quantiles) - 1))
 quantiles <- melt(quantiles, id.vars = "admission_age") %>%
   mutate(quantile = as.numeric(variable) / 10000.0,
@@ -165,7 +165,7 @@ dev.off()
 age_out_proportions <- quantiles %>%
   arrange(admission_age) %>%
   group_by(admission_age) %>%
-  mutate(age_out_quantile = min(if_else(exit_age > eighteen_years, quantile, NA_real_), na.rm = TRUE)) %>%
+  mutate(age_out_quantile = min(if_else(exit_age >= eighteen_years, quantile, NA_real_), na.rm = TRUE)) %>%
   mutate(age_out_quantile = if_else(is.infinite(age_out_quantile), 100, age_out_quantile)) %>%
   mutate(p = (100 - age_out_quantile) / (100 - quantile)) %>%
   mutate(p = pmin(p, 1.0)) %>%
