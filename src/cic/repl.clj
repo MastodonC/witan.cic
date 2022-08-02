@@ -222,6 +222,8 @@
     input-directory :input-directory
     output-directory :output-directory
     config-file :config-file}]
+  (when (false? (.exists (io/file output-directory)))
+    (.mkdir (java.io.File. output-directory)))
   (let [episodes-extract-date (if (string? episodes-extract-date)
                                 (clj-time.format/parse (clj-time.format/formatter "yyyy-MM-dd") episodes-extract-date)
                                 episodes-extract-date)
@@ -270,5 +272,3 @@
     (->> (concat historic-periods open-periods completed-periods simulated-periods candidate-periods)
          (write/periods-universe)
          (write/write-csv! periods-universe-output))))
-
-
