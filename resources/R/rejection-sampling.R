@@ -10,7 +10,7 @@ library(tidyr)
 library(ggthemes)
 library(RSQLite)
 
-eighteen_years = 6575 # in days
+eighteen_years = 6565 # in days
 
 args = commandArgs(trailingOnly=TRUE)
 input_csv <- args[1]
