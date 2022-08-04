@@ -10,7 +10,7 @@ People must leave care by their eighteenth birthday. Previously 6565 days was us
 
 ## Status
 
-Accepted
+In discussion
 
 ## Consequences
 
@@ -20,7 +20,7 @@ Technically we could be including some individuals older than eighteen years, bu
 
 ### Changes to previous results
 
-This may prove to be a somewhat significant change to the model as a greater number of records will now contribute to "aging out" leavers.
+This may prove to be a somewhat significant change to the model as a greater number of records will now contribute to "aging out" leavers. It causes the number of leavers to spike, especially around the projection start date, leading to a falling population in all tests.
 
 ### Year 1900 or 2100 problem
 
