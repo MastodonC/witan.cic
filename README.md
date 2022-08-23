@@ -17,28 +17,15 @@ Alternatively:
 
 1. Execute `clj -m cic.main -main` optionally passing `--config FILE` to use custom config.
 
-### Prerequisites
-
-The rejection-sampling.Rmd notebook expects a local Postgres database called `mastodon` containing a schema also called `mastodon`.
-
-Provided postgres has been installed you will probably need to run the below, or an equivalent, in the Postgres prompt:
-
-```SQL
-CREATE DATABASE mastodon;
-\connect mastodon
-CREATE SCHEMA mastodon;
-```
-
-The R script will create all the database tables it needs.
-
 ## Dictionary
 
 - Total time in care - the total length of time in care
 - Period - the length of contiguous time in care
 - Phase - the length of time in a placement type
 - Episode - the length of time spent in the same placement/placement provider/legal status/CIN
+- CIN - acronym for 'child in need', however corresponds to category of need, being the main reason a child is being provided with care services.
 
-### Provenance tag
+### Provenance tags
 
 The episodes output contains a provenance field which contains a single character representing the source of the period.
 
