@@ -31,7 +31,7 @@ The episodes output contains a provenance field which contains a single characte
 
 - *H: Historic* - historic joiners who leave before the projection start date
 - *O: Open* - historic joiners who have not left by the projection start date
-- *P: Projected closed* - O periods the model closes
+- *P: Projected closed* - Open periods the model closes
 - *C: Candidate* - potential simulated joiners whose placements and age of entry is known but who do not have a start date
 - *S: Simulated* - joiners the model creates by assigning a start date
 
